@@ -838,10 +838,11 @@ const MASS = 1775;                 // kg Leergewicht
 const POWER_WHEEL = 375000 * 0.85 * 1.05 * 1.1; // W an den Rädern (~15 % Verlust, +5 % Tuning, +10 % Durchzug)
 const F_TRACTION = 17800 * 1.05;          // N Traktionsgrenze beim Start (+5 % Tuning)
 const ACCEL_BOOST = 1.32;                  // +32 % Beschleunigung (1,1 × 1,2: zusätzlich +20 % aus Kurven und im Fahren)
-// Power-Oversteer (heckgetriebener M4, 650 Nm @ 2750 min⁻¹, ~50:50-Gewichtsverteilung):
-// Übersteigt die angeforderte Antriebskraft die Längs-Haftung am Heck, drehen die
+// Power-Oversteer (xDrive AWD, 10 % vorne / 90 % hinten, 650 Nm @ 2750 min⁻¹):
+// Übersteigt der Heck-Anteil (90 %) die Längs-Haftung am Heck, drehen die
 // Hinterräder durch und das Heck bricht aus. Eckdaten: automobile-catalog / auto-data.net
 // (BMW M4 Competition, 3,0-l-R6, 650 Nm, ~1775 kg).
+const DRIVE_REAR = 0.90;                     // 90 % Antrieb hinten, 10 % vorne
 const REAR_GRIP = 0.5 * MASS * 9.81 * 1.05; // max. Längskraft am Heck (~50 % Achslast, μ≈1.05)
 const OVERSTEER_GAIN = 0.8;                  // wie stark das Heck bei Schlupf eindreht
 const BRAKE_DECEL = 13.5;          // m/s² (M-Sportbremse +15 %, 100–0 in ~29 m)
@@ -1097,8 +1098,8 @@ function updateCar(dt) {
       const fade = Math.max(0, 1 - Math.pow(v / vmaxGear, 2.2)); // am Limit kein Vortrieb mehr
       // weiterhin leistungsbegrenzt (P = F·v), beim Anfahren traktionsbegrenzt
       const fDrive = Math.min(pull, POWER_WHEEL / Math.max(v, 3)) * throttle * fade * ACCEL_BOOST;
-      // Überschreitet die Antriebskraft die Heck-Haftung, drehen die Räder durch
-      slipTarget = Math.max(0, (fDrive - REAR_GRIP) / REAR_GRIP);
+      // Überschreitet der Heck-Anteil (90 %) die Heck-Haftung, drehen die Räder durch
+      slipTarget = Math.max(0, (fDrive * DRIVE_REAR - REAR_GRIP) / REAR_GRIP);
       const grip = 1 - 0.12 * Math.min(1, slipTarget); // durchdrehende Reifen ziehen etwas schlechter
       accel = (fDrive * grip - fDrag - fRoll) / MASS;
     } else {
