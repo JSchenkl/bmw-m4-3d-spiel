@@ -161,7 +161,7 @@ const steeringParts = [];
 const STEER_RATIO = 13;   // Lenkrad dreht ~13× stärker als die Vorderräder
 // Alle Maße relativ zum Fahrerauge (zuverlässiger als Fahrzeug-Bruchteile):
 const STEER_WHEEL = {
-  debug: true,   // true = herausgelöster Bereich wird ROT eingefärbt (zum Justieren)
+  debug: false,  // true = herausgelöster Bereich wird ROT eingefärbt (zum Justieren)
   ahead: 0.42,   // Meter vor dem Auge (Lenkrad-Mitte)
   drop: 0.05,    // Meter unter dem Auge
   side: 0.18,    // Meter weiter zur Fahrerseite als das Auge
@@ -630,8 +630,15 @@ function loadCar(index) {
     currentCar = car;
     if (prevHeading) setHeading(prevHeading); // Kurs des vorherigen Autos übernehmen
     else alignCarToPitlane();
+    // Startbildschirm: Nachtmodus + alle Lichter + Rotation einschalten
+    isNight = true;
+    headlightsOn = true;
+    taillightsOn = true;
     applyMode();
+    controls.autoRotate = true;
     loaderEl.classList.add('hidden');
+    // Startscreen einblenden (requestAnimationFrame damit CSS-Transition greift)
+    requestAnimationFrame(() => document.getElementById('start-screen').classList.add('visible'));
   },
   (xhr) => {
     if (xhr.total > 0) {
@@ -774,6 +781,40 @@ btnSound.addEventListener('click', () => {
   btnSound.classList.toggle('active', soundOn);
 });
 
+// ---------- Startbildschirm ----------
+{
+  const startScreen = document.getElementById('start-screen');
+  document.getElementById('btn-start').addEventListener('click', () => {
+    // Startscreen ausblenden
+    startScreen.classList.remove('visible');
+    startScreen.addEventListener('transitionend', () => { startScreen.style.display = 'none'; }, { once: true });
+
+    // Auf Tagmodus zurückschalten, Rotation stoppen
+    isNight = false;
+    headlightsOn = false;
+    taillightsOn = false;
+    btnDayNight.textContent = '🌙 Nachtmodus';
+    btnDayNight.classList.remove('active');
+    btnHead.textContent = '💡 Scheinwerfer: AUS';
+    btnHead.classList.remove('active');
+    btnTail.textContent = '🔴 Rücklichter: AUS';
+    btnTail.classList.remove('active');
+    applyMode();
+    controls.autoRotate = false;
+    btnRotate.textContent = '🔄 Auto-Rotation: AUS';
+
+    // Menü schließen und Start-Modus beenden
+    uiPanel.classList.add('hidden');
+    uiPanel.classList.remove('start-mode');
+    btnMenu.classList.remove('active');
+
+    // HUD und Steuerelemente einblenden
+    document.getElementById('hud-top').style.display = '';
+    document.getElementById('hint').style.display = '';
+    document.getElementById('title').style.display = '';
+  });
+}
+
 // ---------- Menü ein-/ausblenden (Taste M, Klick auf den Menü-Button, Esc schließt) ----------
 const uiPanel = document.getElementById('ui');
 const btnMenu = document.getElementById('menu-toggle');
@@ -855,11 +896,11 @@ const MAX_REVERSE = -20 / 3.6;     // m/s rückwärts
 // Querdynamik (Einspurmodell), ebenfalls nach echten Daten:
 //   Radstand 2857 mm (BMW-Datenblatt), max. Querbeschleunigung
 //   1,07 g im Edmunds-Skidpad-Test des M4 Competition
-const WHEELBASE = 2.857;             // m
-const MAX_LAT_ACC = 1.07 * 9.81;     // m/s² Haftgrenze der Reifen
-const MAX_STEER = 32 * Math.PI / 180; // max. Radeinschlag (rad)
-const STEER_RATE = 2.5;              // Lenkgeschwindigkeit (Volleinschläge pro Sekunde)
-let steerAngle = 0;                  // aktueller Radeinschlag
+const WHEELBASE   = 2.857;             // m
+const MAX_LAT_ACC = 1.07 * 9.81;       // m/s² Haftgrenze der Reifen
+const MAX_STEER   = 32 * Math.PI / 180; // max. Radeinschlag (rad)
+const STEER_RATE  = 2.5;               // Lenkgeschwindigkeit (Volleinschläge pro Sekunde)
+let steerAngle = 0;                    // aktueller Radeinschlag
 
 let speed = 0;
 const keys = new Set();
@@ -1129,28 +1170,20 @@ function updateCar(dt) {
     let omega = (speed / WHEELBASE) * Math.tan(steerAngle);
 
     // Kammscher Kreis: wer stark bremst oder beschleunigt, hat weniger Seitengrip
-    // (Untergrenze 30 %, da das ABS Lenkfähigkeit erhält)
     const usedLong = Math.min(Math.abs(accel) / MAX_LAT_ACC, 0.9);
     const latMax = Math.max(0.3 * MAX_LAT_ACC, MAX_LAT_ACC * Math.sqrt(1 - usedLong * usedLong));
 
     const aLat = Math.abs(speed * omega);
     if (aLat > latMax) {
-      omega *= latMax / aLat;                                        // Untersteuern: das Auto schiebt
-      speed -= Math.sign(speed) * Math.min(2 * dt, Math.abs(speed)); // Reifen schrubben Tempo ab
+      omega *= latMax / aLat;
+      speed -= Math.sign(speed) * Math.min(2 * dt, Math.abs(speed));
     }
 
     carYaw += omega * dt;
   }
 
-  // Power-Oversteer: drehen die Hinterräder durch (zu viel Gas), schwenkt das Heck
-  // zusätzlich in Lenkrichtung herum. Gegenlenken dreht die Richtung um und fängt den
-  // Drift wieder ein – wie beim echten heckgetriebenen M4.
+  // Heck-Schlupf glätten
   rearSlip += (slipTarget - rearSlip) * Math.min(1, dt * 8);
-  if (rearSlip > 0.02 && speed > 1.5 && Math.abs(steerAngle) > 0.01) {
-    const dir = Math.sign(steerAngle);
-    const spd = Math.min(1, speed / 6); // bei mehr Tempo bricht das Heck leichter aus
-    carYaw += dir * Math.min(1, rearSlip) * spd * OVERSTEER_GAIN * dt;
-  }
 
   // Bewegung in Blickrichtung der Fahrzeugfront
   if (speed !== 0 && carForward) {
@@ -1171,9 +1204,6 @@ function updateCar(dt) {
     if (w.steer) w.steer.quaternion.setFromAxisAngle(w.upLocal, steerAngle);
   }
 
-  // Lenkrad dreht mit (stärker als die Räder, je nach Lenkübersetzung)
-  const wheelAngle = steerAngle * STEER_RATIO * STEER_WHEEL.sign;
-  for (const sp of steeringParts) sp.pivot.quaternion.setFromAxisAngle(sp.axisLocal, wheelAngle);
 
   speedNumEl.textContent = Math.round(Math.abs(speed) * 3.6);
   gearEl.innerHTML = `<span>GANG${autoGearbox ? ' · A' : ''}</span> ${gear === 0 ? 'R' : gear}`;

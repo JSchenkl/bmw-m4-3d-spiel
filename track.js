@@ -124,6 +124,141 @@ export async function createSpaTrack() {
     group.add(mesh);
   }
 
+  // ===== Tribünen mit Zuschauern =====
+  {
+    const T_TIERS   = 4;
+    const T_TIER_H  = 1.5;                    // m Höhe je Stufe
+    const T_TIER_D  = 3.0;                    // m Tiefe je Stufe
+    const T_OFFSET  = CURB_WIDTH + 3.5;       // m hinter Curb-Außenkante
+    const T_TOTAL_D = T_TIERS * T_TIER_D;     // Gesamttiefe
+    const T_BACK_H  = T_TIERS * T_TIER_H + 2.5; // Rückwandhöhe
+
+    const matS = new THREE.MeshStandardMaterial({ color: 0x909090, roughness: 0.85, side: THREE.DoubleSide });
+    const matR = new THREE.MeshStandardMaterial({ color: 0x404040, roughness: 0.8 });
+    const CROWD = [0xd32f2f, 0x1976d2, 0xf57c00, 0x388e3c, 0xfdd835, 0xfafafa, 0x8e24aa, 0x0097a7];
+
+    // Vertikaler Wandstreifen (für Risers und Rückwand)
+    function buildWallStrip(pts3d, y0, y1) {
+      const pos = [];
+      for (const p of pts3d) { pos.push(p.x, y0, p.z, p.x, y1, p.z); }
+      const idx = [];
+      for (let k = 0; k < pts3d.length - 1; k++) {
+        const a = k * 2, b = k * 2 + 1, c = (k + 1) * 2, d = (k + 1) * 2 + 1;
+        idx.push(a, b, c, b, d, c);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setIndex(idx);
+      geo.computeVertexNormals();
+      return geo;
+    }
+
+    function addStand(iCenter, halfSpan, side) {
+      const idxs = Array.from({ length: halfSpan * 2 + 1 },
+        (_, k) => ((iCenter - halfSpan + k) % n + n) % n);
+      const tw = (i) => (side > 0 ? wLeft[i] : wRight[i]);
+      const sp = (i, d) => pts[i].clone().addScaledVector(leftNs[i], side * (tw(i) + d));
+
+      // Sitzflächen + Risers
+      for (let t = 0; t < T_TIERS; t++) {
+        const y   = ASPHALT_Y + t * T_TIER_H;
+        const fPts = idxs.map(i => sp(i, T_OFFSET + t * T_TIER_D));
+        const bPts = idxs.map(i => sp(i, T_OFFSET + (t + 1) * T_TIER_D));
+        const sm  = new THREE.Mesh(buildStrip(fPts, bPts, y, false), matS);
+        sm.receiveShadow = sm.castShadow = true;
+        group.add(sm);
+        if (t > 0) {
+          const rm = new THREE.Mesh(buildWallStrip(fPts, y - T_TIER_H, y), matS);
+          rm.castShadow = rm.receiveShadow = true;
+          group.add(rm);
+        }
+      }
+
+      // Rückwand
+      const bwPts = idxs.map(i => sp(i, T_OFFSET + T_TOTAL_D));
+      const bwm   = new THREE.Mesh(buildWallStrip(bwPts, 0, T_BACK_H), matS);
+      bwm.castShadow = bwm.receiveShadow = true;
+      group.add(bwm);
+
+      // Dach
+      const dachF = idxs.map(i => sp(i, T_OFFSET));
+      const dachM = new THREE.Mesh(buildStrip(dachF, bwPts, T_BACK_H, false), matR);
+      dachM.castShadow = true;
+      group.add(dachM);
+
+      // Kollisionsboxen (Rückwand, alle 4 Segmente)
+      for (let k = 0; k < idxs.length - 1; k += 4) {
+        const j   = Math.min(k + 4, idxs.length - 1);
+        const a   = bwPts[k], b = bwPts[j];
+        const len = a.distanceTo(b);
+        if (len < 0.1) continue;
+        const mid = a.clone().add(b).multiplyScalar(0.5);
+        colliders.push({
+          cx: mid.x, cz: mid.z,
+          ax: (b.x - a.x) / len, az: (b.z - a.z) / len,
+          halfLen: len / 2, halfWid: T_TOTAL_D / 2,
+        });
+      }
+
+      // Zuschauer (InstancedMesh)
+      const pCount = T_TIERS * Math.floor(idxs.length / 2);
+      const crowd  = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(0.45, 1.1, 0.35),
+        new THREE.MeshStandardMaterial({ color: 0xffffff }),
+        pCount
+      );
+      crowd.castShadow = true;
+      const _pd = new THREE.Object3D();
+      let pi = 0;
+      for (let t = 0; t < T_TIERS; t++) {
+        const y = ASPHALT_Y + t * T_TIER_H + 0.55;
+        const d = T_OFFSET + t * T_TIER_D + T_TIER_D * 0.5;
+        for (let r = 0; r + 2 <= idxs.length; r += 2) {
+          const i = idxs[r];
+          const pos = sp(i, d);
+          _pd.position.set(pos.x, y, pos.z);
+          _pd.rotation.y = Math.atan2(-side * leftNs[i].x, -side * leftNs[i].z);
+          _pd.scale.set(1, 1, 1);
+          _pd.updateMatrix();
+          crowd.setMatrixAt(pi, _pd.matrix);
+          crowd.setColorAt(pi, new THREE.Color(CROWD[pi % CROWD.length]));
+          pi++;
+        }
+      }
+      crowd.count = pi;
+      crowd.instanceMatrix.needsUpdate = true;
+      if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
+      group.add(crowd);
+    }
+
+    // Kurvenerkennung: Krümmung glätten, Peaks finden
+    const curvRaw = Array.from({ length: n }, (_, i) =>
+      Math.max(0, 1 - tangents[i].dot(tangents[(i + 1) % n])));
+    const curvS = Array.from({ length: n }, (_, i) => {
+      let s = 0;
+      for (let k = -2; k <= 2; k++) s += curvRaw[(i + k + n) % n];
+      return s / 5;
+    });
+    const allPeaks = [];
+    for (let i = 0; i < n; i++) {
+      if (curvS[i] > curvS[(i - 1 + n) % n] && curvS[i] > curvS[(i + 1) % n] && curvS[i] > 0.005) {
+        const cross = tangents[i].x * tangents[(i + 1) % n].z - tangents[i].z * tangents[(i + 1) % n].x;
+        allPeaks.push({ i, c: curvS[i], side: cross > 0 ? -1 : 1 });
+      }
+    }
+    allPeaks.sort((a, b) => b.c - a.c);
+    const tightCorners = [];
+    for (const p of allPeaks) {
+      const far = (q) => Math.min(Math.abs(p.i - q.i), n - Math.abs(p.i - q.i)) > 300;
+      if (tightCorners.every(far)) { tightCorners.push(p); if (tightCorners.length >= 2) break; }
+    }
+
+    // Startgerade: links, zentriert bei Punkt 200, ±150 Punkte
+    addStand(200, 150, 1);
+    // Zwei engste Kurven: Außenseite
+    for (const c of tightCorners) addStand(c.i, 60, c.side);
+  }
+
   // --- Start/Ziel-Linie (am Datenpunkt 0) ---
   const sfA = [leftEdge[0], rightEdge[0]].map((p) => p.clone().addScaledVector(tangents[0], -2));
   const sfB = [leftEdge[0], rightEdge[0]].map((p) => p.clone().addScaledVector(tangents[0], 2));
