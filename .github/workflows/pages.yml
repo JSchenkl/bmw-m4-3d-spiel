@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - master
-      - claude/repo-access-5t3uy1
   workflow_dispatch:
 
 permissions:
