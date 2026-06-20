@@ -13,10 +13,28 @@
     #ui {
       position: absolute; top: 72px; left: 20px;
       display: flex; flex-direction: column; gap: 10px;
-      z-index: 10;
+      z-index: 55;
     }
     #ui.hidden { display: none; }
-    #menu-toggle { position: absolute; top: 20px; left: 20px; z-index: 11; }
+    #menu-toggle { position: absolute; top: 20px; left: 20px; z-index: 55; }
+
+    /* Transparente Button-Variante auf dem Startscreen */
+    #ui.start-mode .btn {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.12);
+      color: rgba(255, 255, 255, 0.65);
+      backdrop-filter: blur(12px);
+    }
+    #ui.start-mode .btn:hover {
+      background: rgba(255, 255, 255, 0.10);
+      border-color: rgba(255, 255, 255, 0.28);
+      color: #fff;
+    }
+    #ui.start-mode .btn.active {
+      background: rgba(30, 70, 120, 0.25);
+      border-color: rgba(77, 163, 255, 0.4);
+      color: #fff;
+    }
     #menu-toggle .key {
       display: inline-block; margin-left: 8px; padding: 1px 8px;
       border: 1px solid rgba(255,255,255,0.35); border-radius: 5px;
@@ -113,6 +131,58 @@
     #bar-bg { width: 280px; height: 6px; background: #222; border-radius: 3px; overflow: hidden; }
     #bar { width: 0%; height: 100%; background: linear-gradient(90deg, #4da3ff, #7fd0ff); transition: width 0.2s; }
     #loader .pct { font-size: 13px; color: #888; }
+
+    /* ===== Startbildschirm ===== */
+    #start-screen {
+      position: absolute; inset: 0; z-index: 50;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      padding-bottom: 90px;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.9s;
+    }
+    #start-screen.visible { opacity: 1; pointer-events: auto; }
+    #start-gradient {
+      position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(to top,
+        rgba(0,0,5,0.92) 0%,
+        rgba(0,0,5,0.55) 30%,
+        rgba(0,0,5,0.15) 60%,
+        transparent 85%);
+    }
+    #start-content {
+      position: relative; display: flex; flex-direction: column;
+      align-items: center; gap: 18px; text-align: center;
+    }
+    #start-brand {
+      font-size: 12px; letter-spacing: 6px; color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+    }
+    #start-title {
+      font-size: 46px; font-weight: 700; letter-spacing: 5px; color: #fff;
+      text-shadow: 0 0 40px rgba(77,163,255,0.3), 0 2px 20px rgba(0,0,0,0.9);
+      line-height: 1;
+    }
+    #start-sub {
+      font-size: 13px; letter-spacing: 3px; color: rgba(255,255,255,0.4);
+      margin-top: -6px;
+    }
+    #btn-start {
+      margin-top: 22px;
+      padding: 15px 72px; font-size: 15px; font-weight: 600;
+      letter-spacing: 5px; text-transform: uppercase;
+      background: transparent; color: #fff;
+      border: 1px solid rgba(255,255,255,0.5); border-radius: 3px;
+      cursor: pointer; transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+      font-family: 'Segoe UI', Arial, sans-serif;
+    }
+    #btn-start:hover {
+      background: rgba(255,255,255,0.08); border-color: #fff;
+      box-shadow: 0 0 30px rgba(255,255,255,0.08);
+    }
+    #start-keys {
+      font-size: 11px; color: rgba(255,255,255,0.25); letter-spacing: 1px;
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body>
@@ -122,8 +192,20 @@
     <div class="pct" id="pct">Lade Modell … 0%</div>
   </div>
 
+  <!-- Startbildschirm: 3D-Auto im Nachtmodus als Hintergrund -->
+  <div id="start-screen">
+    <div id="start-gradient"></div>
+    <div id="start-content">
+      <div id="start-brand">Munich · Bavaria · Germany</div>
+      <div id="start-title">BMW M4 COMPETITION</div>
+      <div id="start-sub">M Package &middot; 3D Rennspiel</div>
+      <button id="btn-start">SPIELEN</button>
+      <div id="start-keys">W Gas &nbsp;&middot;&nbsp; A / D Lenken &nbsp;&middot;&nbsp; Leertaste Bremse &nbsp;&middot;&nbsp; T Kamera</div>
+    </div>
+  </div>
+
   <button class="btn" id="menu-toggle">☰ Menü <span class="key">M</span></button>
-  <div id="ui" class="hidden">
+  <div id="ui" class="start-mode">
     <button class="btn" id="btn-daynight">🌙 Nachtmodus</button>
     <button class="btn" id="btn-headlights">💡 Scheinwerfer: AUS</button>
     <button class="btn" id="btn-taillights">🔴 Rücklichter: AUS</button>
@@ -133,16 +215,16 @@
     <button class="btn active" id="btn-sound">🔊 Motorsound: AN</button>
   </div>
 
-  <div id="title">
+  <div id="title" style="display:none">
     <h1>BMW M4 COMPETITION</h1>
     <p>M Package &middot; 3D Viewer</p>
   </div>
 
-  <div id="hint">
+  <div id="hint" style="display:none">
     <b>W</b> Gas &nbsp;·&nbsp; <b>A</b>/<b>D</b> Lenken &nbsp;·&nbsp; <b>Leertaste</b> Bremse &nbsp;·&nbsp; <b>S</b> Rückwärts &nbsp;·&nbsp; <b>E</b>/<b>Q</b> Schalten &nbsp;·&nbsp; <b>T</b> Ansicht &nbsp;·&nbsp; <b>M</b> Menü<br>
     Maus: Drehen / Zoomen / Verschieben &nbsp;·&nbsp; 🎮 Xbox-Controller wird automatisch erkannt
   </div>
-  <div id="hud-top">
+  <div id="hud-top" style="display:none">
     <div id="gear"><span>GANG</span> 1</div>
     <div id="revlights"><i></i><i></i><i></i><i></i><i></i></div>
     <div id="speed"><span id="speed-num">0</span><span class="unit">km/h</span></div>
