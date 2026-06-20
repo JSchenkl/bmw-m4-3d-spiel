@@ -808,9 +808,9 @@ btnSound.addEventListener('click', () => {
     uiPanel.classList.remove('start-mode');
     btnMenu.classList.remove('active');
 
-    // HUD und Steuerelemente einblenden
+    // HUD und Steuerelemente einblenden (Steuerungs-Hinweis bleibt nur im Startmenü)
     document.getElementById('hud-top').style.display = '';
-    document.getElementById('hint').style.display = '';
+    document.getElementById('hint').style.display = 'none';
     document.getElementById('title').style.display = '';
   });
 }
@@ -1009,9 +1009,12 @@ const has = (...codes) => codes.some((c) => keys.has(c));
 const padPrev = {};
 window.addEventListener('gamepadconnected', (e) => {
   console.log('Controller verbunden:', e.gamepad.id);
-  document.getElementById('hint').innerHTML =
-    '🎮 <b>RT</b> Gas · <b>LT</b> Bremse · <b>L-Stick</b> Lenken · <b>R-Stick</b> Kamera · <b>RB</b>/<b>LB</b> Schalten (LB bis <b>R</b>) · <b>X</b>/<b>B</b> Licht · <b>Y</b> Tag/Nacht · <b>☰</b> Menü (<b>D-Pad</b> ↑↓ · <b>A</b> wählen)<br>' +
-    'Tastatur: <b>W</b> Gas · <b>A</b>/<b>D</b> Lenken · <b>Leertaste</b> Bremse · <b>S</b> Rückwärts · <b>E</b>/<b>Q</b> Schalten';
+  // Steuerungs-Erklärung erscheint nur im Startmenü (#start-keys)
+  const startKeys = document.getElementById('start-keys');
+  if (startKeys) {
+    startKeys.innerHTML =
+      '🎮 RT Gas · LT Bremse · L-Stick Lenken · R-Stick Kamera · RB/LB Schalten · X/B Licht · Y Tag/Nacht · ☰ Menü (D-Pad ↑↓ · A wählen) · D-Pad ←/→ Zoom';
+  }
 });
 
 function readGamepad() {
@@ -1306,6 +1309,17 @@ renderer.setAnimationLoop(() => {
         sph.makeSafe();
         offset.setFromSpherical(sph);
         camera.position.copy(controls.target).add(offset);
+      }
+
+      // D-Pad links: reinzoomen, D-Pad rechts: rauszoomen
+      const zoomIn = padCam.buttons[14]?.pressed;  // links
+      const zoomOut = padCam.buttons[15]?.pressed; // rechts
+      if (zoomIn || zoomOut) {
+        const off = camera.position.clone().sub(controls.target);
+        const factor = zoomIn ? Math.exp(-1.8 * dt) : Math.exp(1.8 * dt);
+        const dist = THREE.MathUtils.clamp(off.length() * factor, controls.minDistance, controls.maxDistance);
+        off.setLength(dist);
+        camera.position.copy(controls.target).add(off);
       }
     }
 
