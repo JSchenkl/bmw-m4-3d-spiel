@@ -987,7 +987,7 @@ const padPrev = {};
 window.addEventListener('gamepadconnected', (e) => {
   console.log('Controller verbunden:', e.gamepad.id);
   document.getElementById('hint').innerHTML =
-    '🎮 <b>RT</b> Gas · <b>LT</b> Bremse · <b>L-Stick</b> Lenken · <b>R-Stick</b> Kamera · <b>RB</b>/<b>LB</b> Schalten (LB bis <b>R</b>) · <b>X</b>/<b>B</b> Licht · <b>Y</b> Tag/Nacht<br>' +
+    '🎮 <b>RT</b> Gas · <b>LT</b> Bremse · <b>L-Stick</b> Lenken · <b>R-Stick</b> Kamera · <b>RB</b>/<b>LB</b> Schalten (LB bis <b>R</b>) · <b>X</b>/<b>B</b> Licht · <b>Y</b> Tag/Nacht · <b>☰</b> Menü<br>' +
     'Tastatur: <b>W</b> Gas · <b>A</b>/<b>D</b> Lenken · <b>Leertaste</b> Bremse · <b>S</b> Rückwärts · <b>E</b>/<b>Q</b> Schalten';
 });
 
@@ -1099,6 +1099,7 @@ function updateCar(dt) {
     if (padPressedOnce(pad, 3)) btnDayNight.click(); // Y
     if (padPressedOnce(pad, 5)) shiftUp();           // RB = hochschalten
     if (padPressedOnce(pad, 4)) shiftDown();         // LB = runterschalten
+    if (padPressedOnce(pad, 9)) toggleMenu();        // ☰ Menü-Button (drei Striche)
 
     if ((throttle > 0 || brakeInput > 0 || Math.abs(stickX) > dz) && controls.autoRotate) {
       controls.autoRotate = false;
