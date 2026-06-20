@@ -33,8 +33,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - Motorgeräusch (synthetisierter Reihensechszylinder)
 - Cockpit-Kamera mit Umsehen per Maus
 - Automatik- und Schaltgetriebe (6 Gänge)
-- Tribünen mit Zuschauern an der Zielgeraden und in engen Kurven
-- Kollisionserkennung (Mauern, Gebäude, Tribünen)
+- Kollisionserkennung (Mauern, Gebäude)
 - Startbildschirm mit Auto-Rotation im Nachtmodus
 
 ## Physik
