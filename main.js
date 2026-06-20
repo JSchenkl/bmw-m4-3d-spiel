@@ -823,8 +823,31 @@ function toggleMenu(show) {
   const open = (show === undefined) ? uiPanel.classList.contains('hidden') : show;
   uiPanel.classList.toggle('hidden', !open);
   btnMenu.classList.toggle('active', open);
+  // Controller-Navigation: beim Öffnen erste Option markieren, beim Schließen aufräumen
+  if (open) { menuIndex = 0; highlightMenuItem(); }
+  else { clearMenuHighlight(); }
 }
 btnMenu.addEventListener('click', () => toggleMenu());
+
+// ---------- Menü-Navigation per Controller (D-Pad hoch/runter, A wählt aus) ----------
+let menuIndex = 0;
+function getMenuItems() {
+  return Array.from(uiPanel.querySelectorAll('.btn'));
+}
+function highlightMenuItem() {
+  const items = getMenuItems();
+  items.forEach((b, i) => b.classList.toggle('nav-selected', i === menuIndex));
+  items[menuIndex]?.scrollIntoView({ block: 'nearest' });
+}
+function clearMenuHighlight() {
+  getMenuItems().forEach((b) => b.classList.remove('nav-selected'));
+}
+function moveMenuSelection(dir) {
+  const items = getMenuItems();
+  if (!items.length) return;
+  menuIndex = (menuIndex + dir + items.length) % items.length;
+  highlightMenuItem();
+}
 
 // ---------- Kameraperspektive umschalten (Taste T, Klick auf den Ansicht-Button) ----------
 const btnView = document.getElementById('btn-view');
@@ -987,7 +1010,7 @@ const padPrev = {};
 window.addEventListener('gamepadconnected', (e) => {
   console.log('Controller verbunden:', e.gamepad.id);
   document.getElementById('hint').innerHTML =
-    '🎮 <b>RT</b> Gas · <b>LT</b> Bremse · <b>L-Stick</b> Lenken · <b>R-Stick</b> Kamera · <b>RB</b>/<b>LB</b> Schalten (LB bis <b>R</b>) · <b>X</b>/<b>B</b> Licht · <b>Y</b> Tag/Nacht · <b>☰</b> Menü<br>' +
+    '🎮 <b>RT</b> Gas · <b>LT</b> Bremse · <b>L-Stick</b> Lenken · <b>R-Stick</b> Kamera · <b>RB</b>/<b>LB</b> Schalten (LB bis <b>R</b>) · <b>X</b>/<b>B</b> Licht · <b>Y</b> Tag/Nacht · <b>☰</b> Menü (<b>D-Pad</b> ↑↓ · <b>A</b> wählen)<br>' +
     'Tastatur: <b>W</b> Gas · <b>A</b>/<b>D</b> Lenken · <b>Leertaste</b> Bremse · <b>S</b> Rückwärts · <b>E</b>/<b>Q</b> Schalten';
 });
 
@@ -1100,6 +1123,14 @@ function updateCar(dt) {
     if (padPressedOnce(pad, 5)) shiftUp();           // RB = hochschalten
     if (padPressedOnce(pad, 4)) shiftDown();         // LB = runterschalten
     if (padPressedOnce(pad, 9)) toggleMenu();        // ☰ Menü-Button (drei Striche)
+
+    // Menü-Navigation: D-Pad hoch/runter bewegt die Auswahl, A löst sie aus
+    const menuOpen = !uiPanel.classList.contains('hidden');
+    if (menuOpen) {
+      if (padPressedOnce(pad, 12)) moveMenuSelection(-1); // D-Pad hoch
+      if (padPressedOnce(pad, 13)) moveMenuSelection(1);  // D-Pad runter
+      if (padPressedOnce(pad, 0)) getMenuItems()[menuIndex]?.click(); // A = auswählen
+    }
 
     if ((throttle > 0 || brakeInput > 0 || Math.abs(stickX) > dz) && controls.autoRotate) {
       controls.autoRotate = false;
