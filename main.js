@@ -1394,9 +1394,10 @@ const ghost = {
   maxProgress: 0,  // höchster Streckenfortschritt der laufenden Runde (gegen Fehl-Überfahrten)
 };
 
-// Startet eine frische, gemessene Runde (am Startplatz / nach Reset)
+// Startet als Aus-Runde (Warm-up): Die Zeit wird erst ab dem ersten Überfahren der
+// Start/Ziel-Linie gezählt. Checkpoints werden aber schon angezeigt/gezählt.
 function armLap() {
-  ghost.timing = true;
+  ghost.timing = false;
   ghost.lapElapsed = 0;
   ghost.recording = [];
   ghost.cursor = 0;
@@ -1524,7 +1525,7 @@ function updateTimeAttack(dt) {
   // maxProgress-Guard verhindert Fehl-Überfahrten durch Springen des Fortschritts an der Linie.
   if (hadProgress && prev > total * 0.7 && progress < total * 0.3 && ghost.maxProgress > total * 0.5) {
     if (ghost.timing) {
-      // Runde zählt nur, wenn alle Checkpoints durchfahren wurden
+      // Abgeschlossene gemessene Runde: zählt nur, wenn alle Checkpoints durchfahren wurden
       const allPassed = cpPassed.length > 0 && cpPassed.every(Boolean);
       if (allPassed) {
         ghost.lastLap = ghost.lapElapsed;
@@ -1538,6 +1539,9 @@ function updateTimeAttack(dt) {
       } else {
         showRaceMsg('Runde ungültig – Checkpoint verpasst!');
       }
+    } else {
+      // Erste Linienüberfahrt: Aus-Runde beendet, ab jetzt wird die Zeit gemessen
+      showRaceMsg('Zeitmessung gestartet!', '#69f0ae');
     }
     ghost.timing = true;
     ghost.lapElapsed = 0;
@@ -1545,8 +1549,8 @@ function updateTimeAttack(dt) {
     ghost.cursor = 0;
     ghost.maxProgress = 0;
     resetCheckpoints();
-  } else if (hadProgress && ghost.timing) {
-    // Checkpoints der Reihe nach prüfen: zählt nur, wenn man am Tor auf der Strecke ist
+  } else if (hadProgress) {
+    // Checkpoints immer prüfen (auch in der Aus-Runde) – zählt nur am Tor auf der Strecke
     while (cpNextIdx < CP_COUNT && progress >= cpArc[cpNextIdx] && prev < cpArc[cpNextIdx]) {
       const g = cpGates[cpNextIdx];
       const Pc = centerline.P[g.ci], nv = curbData.nrm[g.ci];
