@@ -824,6 +824,8 @@ btnSound.addEventListener('click', () => {
 const uiPanel = document.getElementById('ui');
 const btnMenu = document.getElementById('menu-toggle');
 function toggleMenu(show) {
+  // Im Startmodus (vor dem Spielstart) ist das Menü nicht bedienbar
+  if (!gameStarted) return;
   // ohne Argument umschalten, sonst gezielt öffnen/schließen
   const open = (show === undefined) ? uiPanel.classList.contains('hidden') : show;
   uiPanel.classList.toggle('hidden', !open);
@@ -1133,7 +1135,8 @@ function updateCar(dt) {
     if (padPressedOnce(pad, 9)) toggleMenu();        // ☰ Menü-Button (drei Striche)
 
     // Menü-Navigation: D-Pad hoch/runter bewegt die Auswahl, A löst sie aus
-    const menuOpen = !uiPanel.classList.contains('hidden');
+    // (nur nach dem Start – im Startmodus ist das Menü nicht bedienbar)
+    const menuOpen = gameStarted && !uiPanel.classList.contains('hidden');
     if (menuOpen) {
       if (padPressedOnce(pad, 12)) moveMenuSelection(-1); // D-Pad hoch
       if (padPressedOnce(pad, 13)) moveMenuSelection(1);  // D-Pad runter
@@ -1497,14 +1500,10 @@ renderer.setAnimationLoop(() => {
   updateCar(dt);
   updateLightsFollow();
 
-  // Bei offenem Menü ist das Spiel pausiert: Bild einfrieren (Kamera & Zeitfahren ruhen,
-  // Auto behält seine Geschwindigkeit)
-  if (gamePaused()) {
-    renderer.render(scene, camera);
-    return;
-  }
-
-  updateTimeAttack(dt);
+  // Bei offenem Menü pausiert nur die Fahrphysik & die Rundenuhr (das Auto behält sein Tempo).
+  // Kamera und Anzeige laufen weiter, damit Menüaktionen (z. B. Ansicht wechseln) sofort
+  // sichtbar werden, statt erst beim Schließen des Menüs.
+  if (!gamePaused()) updateTimeAttack(dt);
 
   if (cameraMode === 0) {
     // ===== Verfolgerkamera (Außenansicht) =====
@@ -1546,7 +1545,7 @@ renderer.setAnimationLoop(() => {
 
     // Während der Fahrt dreht sich die Kamera sanft hinter die FAHRTRICHTUNG
     // (rückwärts also nach hinten). Zoom und Neigungswinkel des Spielers bleiben erhalten.
-    if (carForward && Math.abs(speed) > 0.5 && !camOrbiting) {
+    if (carForward && Math.abs(speed) > 0.5 && !camOrbiting && !gamePaused()) {
       const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
       const dir = speed >= 0 ? fwd : fwd.clone().negate(); // beim Rückwärtsfahren umkehren
       const desiredAzimuth = Math.atan2(-dir.x, -dir.z);
