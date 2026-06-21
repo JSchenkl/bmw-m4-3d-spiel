@@ -1494,6 +1494,27 @@ btnResetTime.addEventListener('click', () => {
   updateLapHud();
 });
 
+// Zurück in die Boxengasse: Auto an den Startplatz zurücksetzen (Tempo/Lenkung/Gang zurück)
+const btnPit = document.getElementById('btn-pit');
+btnPit.addEventListener('click', () => {
+  carGroup.position.set(0, 0.05, 0);
+  speed = 0;
+  steerAngle = 0;
+  carRoll = 0;
+  gear = 1;
+  prevGearSound = 1;
+  alignCarToPitlane();                 // in Fahrtrichtung der Boxengasse ausrichten
+  prevCarPos.copy(carGroup.position);  // keinen Kamerasprung erzeugen
+  // laufende Rundenmessung verwerfen (verhindert eine Fehl-Runde durch das Zurücksetzen)
+  ghost.timing = false;
+  ghost.lapElapsed = 0;
+  ghost.recording = [];
+  ghost.cursor = 0;
+  ghost.hasProgress = false;
+  ghost.prevProgress = 0;
+  updateLapHud();
+});
+
 // ---------- Resize & Render-Loop ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
