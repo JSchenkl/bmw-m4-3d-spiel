@@ -71,7 +71,7 @@ export async function createSpaTrack() {
   // --- Asphaltband der Strecke ---
   const leftEdge = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], wLeft[i]));
   const rightEdge = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], -wRight[i]));
-  const asphaltMat = new THREE.MeshStandardMaterial({ color: 0xff4fb0, roughness: 0.95, side: THREE.DoubleSide });
+  const asphaltMat = new THREE.MeshStandardMaterial({ color: 0x3c3c40, roughness: 0.95, side: THREE.DoubleSide });
   const asphalt = new THREE.Mesh(buildStrip(leftEdge, rightEdge, ASPHALT_Y, true), asphaltMat);
   asphalt.receiveShadow = true;
   group.add(asphalt);
@@ -160,7 +160,7 @@ export async function createSpaTrack() {
   }
   const pitLeft = pitCenter.map((p, k) => p.clone().addScaledVector(leftNs[seq[k]], PIT_HALF_WIDTH));
   const pitRight = pitCenter.map((p, k) => p.clone().addScaledVector(leftNs[seq[k]], -PIT_HALF_WIDTH));
-  const pitMat = new THREE.MeshStandardMaterial({ color: 0xff4fb0, roughness: 0.95, side: THREE.DoubleSide });
+  const pitMat = new THREE.MeshStandardMaterial({ color: 0x2e2e33, roughness: 0.95, side: THREE.DoubleSide });
   const pit = new THREE.Mesh(buildStrip(pitLeft, pitRight, PIT_Y, false), pitMat);
   pit.receiveShadow = true;
   group.add(pit);
