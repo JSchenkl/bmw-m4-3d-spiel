@@ -127,6 +127,24 @@
     }
     #credit a { color: rgba(255,255,255,0.45); }
 
+    /* ===== Zeitfahren / Rundenzeiten ===== */
+    #laptimer {
+      position: absolute; top: 86px; right: 20px; z-index: 12;
+      text-align: right; color: rgba(255,255,255,0.92);
+      font-family: Consolas, 'Courier New', monospace;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.85);
+    }
+    #laptimer .lt-row {
+      display: flex; gap: 12px; justify-content: flex-end; align-items: baseline; margin-top: 4px;
+    }
+    #laptimer .lt-label {
+      font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px;
+      letter-spacing: 2px; color: rgba(255,255,255,0.5); min-width: 54px; text-align: left;
+    }
+    #laptimer #lt-cur { font-size: 28px; font-weight: 700; }
+    #laptimer #lt-last { font-size: 16px; }
+    #laptimer #lt-best { font-size: 16px; color: #4da3ff; }
+
     #loader {
       position: absolute; inset: 0; background: #0a0a0f;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -219,6 +237,7 @@
     <button class="btn" id="btn-rotate">🔄 Auto-Rotation: AN</button>
     <button class="btn" id="btn-gearbox">⚙️ Getriebe: Schaltung</button>
     <button class="btn active" id="btn-sound">🔊 Motorsound: AN</button>
+    <button class="btn active" id="btn-ghost">👻 Ghost-Car: AN</button>
   </div>
 
   <div id="title" style="display:none">
@@ -234,6 +253,11 @@
     <div id="gear"><span>GANG</span> 1</div>
     <div id="revlights"><i></i><i></i><i></i><i></i><i></i></div>
     <div id="speed"><span id="speed-num">0</span><span class="unit">km/h</span></div>
+  </div>
+  <div id="laptimer" style="display:none">
+    <div class="lt-row"><span class="lt-label">RUNDE</span><span id="lt-cur">--:--</span></div>
+    <div class="lt-row"><span class="lt-label">LETZTE</span><span id="lt-last">--:--</span></div>
+    <div class="lt-row"><span class="lt-label">BESTE</span><span id="lt-best">--:--</span></div>
   </div>
   <div id="credit">
     Modell: „BMW M4 Competition M Package" von SRT Performance ·
