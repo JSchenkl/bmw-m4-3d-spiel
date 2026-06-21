@@ -771,8 +771,8 @@ function unlockAudio() {
   audioUnlocked = true;
   engineAudio.setEnabled(soundOn);
 }
-window.addEventListener('pointerdown', unlockAudio);
-window.addEventListener('keydown', unlockAudio);
+// Hinweis: Der Ton wird erst beim Klick auf „SPIELEN" freigeschaltet, damit der
+// Startbildschirm komplett stumm bleibt (siehe Start-Handler unten).
 
 btnSound.addEventListener('click', () => {
   soundOn = !soundOn;
@@ -818,6 +818,9 @@ btnSound.addEventListener('click', () => {
     // Immer in der Cockpit-Sicht ins Spiel starten
     cameraMode = 1;
     applyCameraMode();
+
+    // Ton erst jetzt freischalten – der Startbildschirm bleibt stumm
+    unlockAudio();
 
     // Zeitfahren starten: Rundenmessung beginnt beim ersten Überfahren der Start/Ziel-Linie
     gameStarted = true;
