@@ -1316,6 +1316,62 @@ function buildCenterline(cd) {
   }
   const total = s[n - 1] + Math.hypot(P[0].x - P[n - 1].x, P[0].z - P[n - 1].z);
   centerline = { P, s, total, n };
+  buildCheckpoints();
+}
+
+// ---------- Checkpoints ----------
+// Über die Strecke verteilte Tore. Eine Runde zählt nur, wenn alle der Reihe nach
+// durchfahren wurden. Wird eines verfehlt (abseits der Strecke), gibt es eine Meldung.
+const CP_COUNT = 5;
+let cpArc = [];     // Bogenlängen-Positionen
+let cpPassed = [];  // pro Runde: durchfahren?
+let cpGates = [];   // { mesh, mat, ci }
+let cpNextIdx = 0;  // nächster erwarteter Checkpoint
+
+function buildCheckpoints() {
+  for (const g of cpGates) scene.remove(g.mesh);
+  cpArc = []; cpPassed = []; cpGates = [];
+  for (let k = 0; k < CP_COUNT; k++) {
+    const arc = centerline.total * (k + 1) / (CP_COUNT + 1);
+    // nächstgelegenen Mittellinien-Index zu dieser Bogenlänge finden
+    let ci = 0, bestD = Infinity;
+    for (let i = 0; i < centerline.n; i++) {
+      const d = Math.abs(centerline.s[i] - arc);
+      if (d < bestD) { bestD = d; ci = i; }
+    }
+    const Pc = centerline.P[ci], nv = curbData.nrm[ci];
+    const wl = curbData.wl[ci], wr = curbData.wr[ci];
+    const len = wl + wr + 2;
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xffd400, emissive: 0x332b00, transparent: true, opacity: 0.32,
+      side: THREE.DoubleSide, depthWrite: false,
+    });
+    const gate = new THREE.Mesh(new THREE.BoxGeometry(0.4, 5, len), mat);
+    gate.position.set(Pc.x + nv.x * (wl - wr) / 2, 2.5, Pc.z + nv.z * (wl - wr) / 2);
+    gate.rotation.y = Math.atan2(nv.x, nv.z);
+    scene.add(gate);
+    cpArc.push(arc); cpPassed.push(false); cpGates.push({ mesh: gate, mat, ci });
+  }
+  resetCheckpoints();
+}
+
+function resetCheckpoints() {
+  cpNextIdx = 0;
+  for (let k = 0; k < cpGates.length; k++) {
+    cpPassed[k] = false;
+    cpGates[k].mat.color.setHex(0xffd400);
+  }
+}
+
+// Kurze Bildschirmmeldung (z. B. „Checkpoint verpasst!")
+let raceMsgTimer = null;
+const raceMsgEl = document.getElementById('race-msg');
+function showRaceMsg(text, color) {
+  raceMsgEl.textContent = text;
+  raceMsgEl.style.color = color || '#ff5252';
+  raceMsgEl.classList.add('visible');
+  clearTimeout(raceMsgTimer);
+  raceMsgTimer = setTimeout(() => raceMsgEl.classList.remove('visible'), 2600);
 }
 
 const ghost = {
@@ -1336,6 +1392,7 @@ const ghost = {
 const ltCur = document.getElementById('lt-cur');
 const ltLast = document.getElementById('lt-last');
 const ltBest = document.getElementById('lt-best');
+const ltCp = document.getElementById('lt-cp');
 const _gYawQ = new THREE.Quaternion();
 const _gRollQ = new THREE.Quaternion();
 
@@ -1433,6 +1490,8 @@ function updateLapHud() {
   ltCur.textContent = ghost.timing ? fmtTime(ghost.lapElapsed) : '--:--';
   ltLast.textContent = fmtTime(ghost.lastLap);
   ltBest.textContent = fmtTime(ghost.bestLap === Infinity ? null : ghost.bestLap);
+  const passed = cpPassed.filter(Boolean).length;
+  ltCp.textContent = `${passed}/${CP_COUNT}`;
 }
 
 function updateTimeAttack(dt) {
@@ -1441,21 +1500,48 @@ function updateTimeAttack(dt) {
   const progress = trackProgress(px, pz);
   const total = centerline.total;
 
+  const prev = ghost.prevProgress;
+  const hadProgress = ghost.hasProgress;
+
   // Vorwärts-Überfahrt der Start/Ziel-Linie: Fortschritt springt von ~Ende auf ~Anfang
-  if (ghost.hasProgress && ghost.prevProgress > total * 0.7 && progress < total * 0.3) {
+  if (hadProgress && prev > total * 0.7 && progress < total * 0.3) {
     if (ghost.timing) {
-      ghost.lastLap = ghost.lapElapsed;
-      if (ghost.lapElapsed < ghost.bestLap) {
-        ghost.bestLap = ghost.lapElapsed;
-        ghost.best = ghost.recording;
-        ghost.bestDur = ghost.lapElapsed;
-        buildGhostMesh();
+      // Runde zählt nur, wenn alle Checkpoints durchfahren wurden
+      const allPassed = cpPassed.length > 0 && cpPassed.every(Boolean);
+      if (allPassed) {
+        ghost.lastLap = ghost.lapElapsed;
+        if (ghost.lapElapsed < ghost.bestLap) {
+          ghost.bestLap = ghost.lapElapsed;
+          ghost.best = ghost.recording;
+          ghost.bestDur = ghost.lapElapsed;
+          buildGhostMesh();
+        }
+        showRaceMsg(`Runde: ${fmtTime(ghost.lapElapsed)}`, '#69f0ae');
+      } else {
+        showRaceMsg('Runde ungültig – Checkpoint verpasst!');
       }
     }
     ghost.timing = true;
     ghost.lapElapsed = 0;
     ghost.recording = [];
     ghost.cursor = 0;
+    resetCheckpoints();
+  } else if (hadProgress && ghost.timing) {
+    // Checkpoints der Reihe nach prüfen: zählt nur, wenn man am Tor auf der Strecke ist
+    while (cpNextIdx < CP_COUNT && progress >= cpArc[cpNextIdx] && prev < cpArc[cpNextIdx]) {
+      const g = cpGates[cpNextIdx];
+      const Pc = centerline.P[g.ci], nv = curbData.nrm[g.ci];
+      const lat = (px - Pc.x) * nv.x + (pz - Pc.z) * nv.z; // seitl. Abstand zur Mitte
+      const onTrack = lat <= curbData.wl[g.ci] + 1 && lat >= -(curbData.wr[g.ci] + 1);
+      if (onTrack) {
+        cpPassed[cpNextIdx] = true;
+        g.mat.color.setHex(0x00e676); // grün = durchfahren
+      } else {
+        g.mat.color.setHex(0xff1744); // rot = verpasst
+        showRaceMsg('Checkpoint verpasst!');
+      }
+      cpNextIdx++;
+    }
   }
   ghost.prevProgress = progress;
   ghost.hasProgress = true;
@@ -1491,6 +1577,7 @@ btnResetTime.addEventListener('click', () => {
   ghost.cursor = 0;
   ghost.hasProgress = false;
   ghost.prevProgress = 0;
+  resetCheckpoints();
   updateLapHud();
 });
 
@@ -1512,6 +1599,7 @@ btnPit.addEventListener('click', () => {
   ghost.cursor = 0;
   ghost.hasProgress = false;
   ghost.prevProgress = 0;
+  resetCheckpoints();
   updateLapHud();
 });
 
