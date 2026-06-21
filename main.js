@@ -822,8 +822,9 @@ btnSound.addEventListener('click', () => {
     // Ton erst jetzt freischalten – der Startbildschirm bleibt stumm
     unlockAudio();
 
-    // Zeitfahren starten: Rundenmessung beginnt beim ersten Überfahren der Start/Ziel-Linie
+    // Zeitfahren & Checkpoints ab der ersten Runde scharf schalten
     gameStarted = true;
+    armLap();
   });
 }
 
@@ -1387,7 +1388,20 @@ const ghost = {
   bestDur: 0,
   mesh: null,      // Ghost-Objekt in der Szene
   cursor: 0,       // Abspiel-Cursor in best[]
+  maxProgress: 0,  // höchster Streckenfortschritt der laufenden Runde (gegen Fehl-Überfahrten)
 };
+
+// Startet eine frische, gemessene Runde (am Startplatz / nach Reset)
+function armLap() {
+  ghost.timing = true;
+  ghost.lapElapsed = 0;
+  ghost.recording = [];
+  ghost.cursor = 0;
+  ghost.hasProgress = false;
+  ghost.prevProgress = 0;
+  ghost.maxProgress = 0;
+  resetCheckpoints();
+}
 
 const ltCur = document.getElementById('lt-cur');
 const ltLast = document.getElementById('lt-last');
@@ -1503,8 +1517,9 @@ function updateTimeAttack(dt) {
   const prev = ghost.prevProgress;
   const hadProgress = ghost.hasProgress;
 
-  // Vorwärts-Überfahrt der Start/Ziel-Linie: Fortschritt springt von ~Ende auf ~Anfang
-  if (hadProgress && prev > total * 0.7 && progress < total * 0.3) {
+  // Vorwärts-Überfahrt der Start/Ziel-Linie: Fortschritt springt von ~Ende auf ~Anfang.
+  // maxProgress-Guard verhindert Fehl-Überfahrten durch Springen des Fortschritts an der Linie.
+  if (hadProgress && prev > total * 0.7 && progress < total * 0.3 && ghost.maxProgress > total * 0.5) {
     if (ghost.timing) {
       // Runde zählt nur, wenn alle Checkpoints durchfahren wurden
       const allPassed = cpPassed.length > 0 && cpPassed.every(Boolean);
@@ -1525,6 +1540,7 @@ function updateTimeAttack(dt) {
     ghost.lapElapsed = 0;
     ghost.recording = [];
     ghost.cursor = 0;
+    ghost.maxProgress = 0;
     resetCheckpoints();
   } else if (hadProgress && ghost.timing) {
     // Checkpoints der Reihe nach prüfen: zählt nur, wenn man am Tor auf der Strecke ist
@@ -1532,7 +1548,7 @@ function updateTimeAttack(dt) {
       const g = cpGates[cpNextIdx];
       const Pc = centerline.P[g.ci], nv = curbData.nrm[g.ci];
       const lat = (px - Pc.x) * nv.x + (pz - Pc.z) * nv.z; // seitl. Abstand zur Mitte
-      const onTrack = lat <= curbData.wl[g.ci] + 1 && lat >= -(curbData.wr[g.ci] + 1);
+      const onTrack = lat <= curbData.wl[g.ci] + 2 && lat >= -(curbData.wr[g.ci] + 2);
       if (onTrack) {
         cpPassed[cpNextIdx] = true;
         g.mat.color.setHex(0x00e676); // grün = durchfahren
@@ -1545,6 +1561,7 @@ function updateTimeAttack(dt) {
   }
   ghost.prevProgress = progress;
   ghost.hasProgress = true;
+  ghost.maxProgress = Math.max(ghost.maxProgress, progress);
 
   if (ghost.timing) {
     ghost.lapElapsed += dt;
@@ -1577,6 +1594,7 @@ btnResetTime.addEventListener('click', () => {
   ghost.cursor = 0;
   ghost.hasProgress = false;
   ghost.prevProgress = 0;
+  ghost.maxProgress = 0;
   resetCheckpoints();
   updateLapHud();
 });
@@ -1592,14 +1610,7 @@ btnPit.addEventListener('click', () => {
   prevGearSound = 1;
   alignCarToPitlane();                 // in Fahrtrichtung der Boxengasse ausrichten
   prevCarPos.copy(carGroup.position);  // keinen Kamerasprung erzeugen
-  // laufende Rundenmessung verwerfen (verhindert eine Fehl-Runde durch das Zurücksetzen)
-  ghost.timing = false;
-  ghost.lapElapsed = 0;
-  ghost.recording = [];
-  ghost.cursor = 0;
-  ghost.hasProgress = false;
-  ghost.prevProgress = 0;
-  resetCheckpoints();
+  armLap();                            // frische, gemessene Runde ab der Box
   updateLapHud();
 });
 
