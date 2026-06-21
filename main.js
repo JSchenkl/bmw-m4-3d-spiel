@@ -1146,6 +1146,14 @@ function updateCar(dt) {
     }
   }
 
+  // Bei geöffnetem Menü pausieren: Auto einfrieren, nur die Menü-Bedienung läuft weiter
+  if (gamePaused()) {
+    speed = 0;
+    speedNumEl.textContent = '0';
+    engineAudio.update(0, 0, dt); // Motor im Leerlauf halten
+    return;
+  }
+
   // Bremslichter folgen dem Bremszustand (Tastatur wie Controller)
   const wantBrake = brakeInput > 0.05;
   if (wantBrake !== braking) {
@@ -1280,6 +1288,11 @@ function updateLightsFollow() {
 // Runden als halbtransparentes, durchfahrbares Ghost-Car synchron abgespielt.
 let gameStarted = false;
 let centerline = null; // { P, s, total, n }
+
+// Spiel ist pausiert, solange das Menü während der Fahrt geöffnet ist
+function gamePaused() {
+  return gameStarted && !uiPanel.classList.contains('hidden');
+}
 
 function buildCenterline(cd) {
   const P = cd.pts, n = P.length;
@@ -1482,7 +1495,7 @@ renderer.setAnimationLoop(() => {
 
   updateCar(dt);
   updateLightsFollow();
-  updateTimeAttack(dt);
+  if (!gamePaused()) updateTimeAttack(dt);
 
   if (cameraMode === 0) {
     // ===== Verfolgerkamera (Außenansicht) =====
