@@ -767,12 +767,13 @@ btnGearbox.addEventListener('click', () => {
 let soundOn = true;
 let audioUnlocked = false;
 function unlockAudio() {
-  if (audioUnlocked) return;
+  // Erst nach dem Spielstart und beim ersten Knopfdruck – der Startbildschirm bleibt stumm
+  if (audioUnlocked || !gameStarted) return;
   audioUnlocked = true;
   engineAudio.setEnabled(soundOn);
 }
-// Hinweis: Der Ton wird erst beim Klick auf „SPIELEN" freigeschaltet, damit der
-// Startbildschirm komplett stumm bleibt (siehe Start-Handler unten).
+window.addEventListener('pointerdown', unlockAudio);
+window.addEventListener('keydown', unlockAudio);
 
 btnSound.addEventListener('click', () => {
   soundOn = !soundOn;
@@ -818,9 +819,6 @@ btnSound.addEventListener('click', () => {
     // Immer in der Cockpit-Sicht ins Spiel starten
     cameraMode = 1;
     applyCameraMode();
-
-    // Ton erst jetzt freischalten – der Startbildschirm bleibt stumm
-    unlockAudio();
 
     // Zeitfahren & Checkpoints ab der ersten Runde scharf schalten
     gameStarted = true;
@@ -1128,6 +1126,11 @@ function updateCar(dt) {
     const rt = pad.buttons[7]?.value ?? 0; // rechter Trigger
     const lt = pad.buttons[6]?.value ?? 0; // linker Trigger
     const stickX = pad.axes[0] ?? 0;
+
+    // Ton beim ersten Controller-Knopfdruck freischalten (Gamepad löst kein keydown aus)
+    if (!audioUnlocked && (rt > 0.02 || lt > 0.02 || Math.abs(stickX) > 0.12 || pad.buttons.some((b) => b?.pressed))) {
+      unlockAudio();
+    }
 
     if (rt > 0.02) throttle = Math.max(throttle, rt);
     // LT bremst nur noch – in jedem Gang. Rückwärts fährt man über den R-Gang.
