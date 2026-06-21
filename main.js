@@ -1450,6 +1450,23 @@ btnGhost.addEventListener('click', () => {
   if (ghost.mesh && !ghost.enabled) ghost.mesh.visible = false;
 });
 
+// Zeit löschen: Bestzeit, letzte Runde und Ghost-Car verwerfen, Messung neu starten
+const btnResetTime = document.getElementById('btn-reset-time');
+btnResetTime.addEventListener('click', () => {
+  if (ghost.mesh) { scene.remove(ghost.mesh); disposeGhostMaterials(); ghost.mesh = null; }
+  ghost.timing = false;
+  ghost.lapElapsed = 0;
+  ghost.lastLap = null;
+  ghost.bestLap = Infinity;
+  ghost.best = null;
+  ghost.bestDur = 0;
+  ghost.recording = [];
+  ghost.cursor = 0;
+  ghost.hasProgress = false;
+  ghost.prevProgress = 0;
+  updateLapHud();
+});
+
 // ---------- Resize & Render-Loop ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
