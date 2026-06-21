@@ -21,6 +21,15 @@
       font-family: Consolas, 'Courier New', monospace; font-size: 11px;
       color: rgba(255,255,255,0.5); letter-spacing: 1px; padding: 0 4px 2px;
     }
+    /* Pausen-Hinweis (mittig), sichtbar solange das Menü im Spiel geöffnet ist */
+    #pause-label {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 54; pointer-events: none; display: none;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 36px; font-weight: 700; letter-spacing: 5px; text-transform: uppercase;
+      color: rgba(255,255,255,0.92); text-shadow: 0 2px 18px rgba(0,0,0,0.9);
+    }
+    #pause-label.visible { display: block; }
 
     /* Im Startmodus ist das Menü nur Deko – nicht bedienbar */
     #ui.start-mode { pointer-events: none; }
@@ -233,6 +242,8 @@
       <div id="start-keys">W Gas &nbsp;&middot;&nbsp; A / D Lenken &nbsp;&middot;&nbsp; Leertaste Bremse &nbsp;&middot;&nbsp; T Kamera</div>
     </div>
   </div>
+
+  <div id="pause-label">Spiel pausiert</div>
 
   <button class="btn" id="menu-toggle">☰ Menü <span class="key">M</span></button>
   <div id="ui" class="start-mode">

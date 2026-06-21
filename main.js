@@ -830,6 +830,7 @@ btnSound.addEventListener('click', () => {
 // ---------- Menü ein-/ausblenden (Taste M, Klick auf den Menü-Button, Esc schließt) ----------
 const uiPanel = document.getElementById('ui');
 const btnMenu = document.getElementById('menu-toggle');
+const pauseLabel = document.getElementById('pause-label');
 function toggleMenu(show) {
   // Im Startmodus (vor dem Spielstart) ist das Menü nicht bedienbar
   if (!gameStarted) return;
@@ -837,6 +838,8 @@ function toggleMenu(show) {
   const open = (show === undefined) ? uiPanel.classList.contains('hidden') : show;
   uiPanel.classList.toggle('hidden', !open);
   btnMenu.classList.toggle('active', open);
+  // „Spiel pausiert" mittig einblenden, solange das Menü offen ist
+  pauseLabel.classList.toggle('visible', open);
   // Controller-Navigation: beim Öffnen erste Option markieren, beim Schließen aufräumen
   if (open) { menuIndex = 0; highlightMenuItem(); }
   else { clearMenuHighlight(); }
