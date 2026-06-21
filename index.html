@@ -17,6 +17,10 @@
     }
     #ui.hidden { display: none; }
     #menu-toggle { position: absolute; top: 20px; left: 20px; z-index: 55; }
+    #commit-id {
+      font-family: Consolas, 'Courier New', monospace; font-size: 11px;
+      color: rgba(255,255,255,0.5); letter-spacing: 1px; padding: 0 4px 2px;
+    }
 
     /* Transparente Button-Variante auf dem Startscreen */
     #ui.start-mode .btn {
@@ -230,6 +234,7 @@
 
   <button class="btn" id="menu-toggle">☰ Menü <span class="key">M</span></button>
   <div id="ui" class="start-mode">
+    <div id="commit-id">Build __COMMIT_ID__</div>
     <button class="btn" id="btn-daynight">🌙 Nachtmodus</button>
     <button class="btn" id="btn-headlights">💡 Scheinwerfer: AUS</button>
     <button class="btn" id="btn-taillights">🔴 Rücklichter: AUS</button>
