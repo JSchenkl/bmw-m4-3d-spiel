@@ -68,6 +68,7 @@ createSpaTrack()
     pitDirection = dir;
     trackColliders = colliders;
     curbData = cd;
+    buildCenterline(cd);
     alignCarToPitlane();
   })
   .catch((err) => console.error('Strecke konnte nicht geladen werden:', err));
@@ -812,6 +813,10 @@ btnSound.addEventListener('click', () => {
     document.getElementById('hud-top').style.display = '';
     document.getElementById('hint').style.display = 'none';
     document.getElementById('title').style.display = '';
+    document.getElementById('laptimer').style.display = '';
+
+    // Zeitfahren starten: Rundenmessung beginnt beim ersten Überfahren der Start/Ziel-Linie
+    gameStarted = true;
   });
 }
 
@@ -1269,6 +1274,182 @@ function updateLightsFollow() {
   moon.target.position.set(p.x, 0, p.z);
 }
 
+// ---------- Zeitfahren & Ghost-Car ----------
+// Eine Runde wird gemessen, sobald das Auto die Start/Ziel-Linie (Mittellinienpunkt 0)
+// vorwärts überfährt. Die schnellste Runde wird aufgezeichnet und in den folgenden
+// Runden als halbtransparentes, durchfahrbares Ghost-Car synchron abgespielt.
+let gameStarted = false;
+let centerline = null; // { P, s, total, n }
+
+function buildCenterline(cd) {
+  const P = cd.pts, n = P.length;
+  const s = new Float64Array(n);
+  for (let i = 1; i < n; i++) {
+    s[i] = s[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].z - P[i - 1].z);
+  }
+  const total = s[n - 1] + Math.hypot(P[0].x - P[n - 1].x, P[0].z - P[n - 1].z);
+  centerline = { P, s, total, n };
+}
+
+const ghost = {
+  enabled: true,
+  timing: false,
+  lapElapsed: 0,
+  prevProgress: 0,
+  hasProgress: false,
+  lastLap: null,
+  bestLap: Infinity,
+  recording: [],   // Samples der laufenden Runde: {t,x,y,z,yaw,roll}
+  best: null,      // Samples der bisher schnellsten Runde
+  bestDur: 0,
+  mesh: null,      // Ghost-Objekt in der Szene
+  cursor: 0,       // Abspiel-Cursor in best[]
+};
+
+const ltCur = document.getElementById('lt-cur');
+const ltLast = document.getElementById('lt-last');
+const ltBest = document.getElementById('lt-best');
+const _gYawQ = new THREE.Quaternion();
+const _gRollQ = new THREE.Quaternion();
+
+function fmtTime(sec) {
+  if (sec == null || !isFinite(sec)) return '--:--';
+  const m = Math.floor(sec / 60);
+  const s = sec - m * 60;
+  return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+}
+
+function lerpAngle(a, b, f) {
+  let d = b - a;
+  d = Math.atan2(Math.sin(d), Math.cos(d)); // kürzester Drehweg
+  return a + d * f;
+}
+
+// Bogenlängen-Position des nächstgelegenen Mittellinienpunkts (= Streckenfortschritt)
+function trackProgress(px, pz) {
+  const P = centerline.P, n = centerline.n;
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < n; i++) {
+    const dx = px - P[i].x, dz = pz - P[i].z;
+    const d = dx * dx + dz * dz;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return centerline.s[best];
+}
+
+function disposeGhostMaterials() {
+  if (!ghost.mesh) return;
+  ghost.mesh.traverse((node) => {
+    if (!node.isMesh) return;
+    const mats = Array.isArray(node.material) ? node.material : [node.material];
+    mats.forEach((m) => m.dispose()); // nur die Material-Klone, Geometrie bleibt geteilt
+  });
+}
+
+// Baut das Ghost-Car als halbtransparenten Klon des aktuellen Autos (ohne Kollision)
+function buildGhostMesh() {
+  if (ghost.mesh) { scene.remove(ghost.mesh); disposeGhostMaterials(); ghost.mesh = null; }
+  if (!currentCar) return;
+  const clone = currentCar.clone(true); // teilt Geometrie, Hierarchie wird kopiert
+  clone.traverse((node) => {
+    if (!node.isMesh) return;
+    node.castShadow = false;
+    node.receiveShadow = false;
+    const mats = Array.isArray(node.material) ? node.material : [node.material];
+    const ghosted = mats.map((m) => {
+      const gm = m.clone();
+      gm.transparent = true;
+      gm.opacity = 0.32;
+      gm.depthWrite = false;
+      if ('emissive' in gm) { gm.emissive = new THREE.Color(0x3a6cff); gm.emissiveIntensity = 0.5; }
+      return gm;
+    });
+    node.material = Array.isArray(node.material) ? ghosted : ghosted[0];
+  });
+  // currentCar trägt die zentrierende/skalierende Lokal-Transform; der Klon übernimmt sie.
+  // Die äußere Gruppe spiegelt Position + Quaternion der carGroup.
+  const g = new THREE.Group();
+  g.add(clone);
+  g.renderOrder = 1;
+  ghost.mesh = g;
+  scene.add(g);
+}
+
+function updateGhost() {
+  const g = ghost.mesh;
+  if (!g) return;
+  if (!ghost.enabled || !ghost.best || !ghost.timing) { g.visible = false; return; }
+  const t = ghost.lapElapsed;
+  const rec = ghost.best;
+  if (t > ghost.bestDur || rec.length < 2) { g.visible = false; return; } // Ghost ist im Ziel
+  // Cursor monoton zum Sample bei Zeit t vorrücken
+  let i = ghost.cursor;
+  while (i < rec.length - 1 && rec[i + 1].t <= t) i++;
+  ghost.cursor = i;
+  const a = rec[i], b = rec[Math.min(i + 1, rec.length - 1)];
+  const span = (b.t - a.t) || 1;
+  const f = THREE.MathUtils.clamp((t - a.t) / span, 0, 1);
+  g.position.set(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f, a.z + (b.z - a.z) * f);
+  const yaw = lerpAngle(a.yaw, b.yaw, f);
+  const roll = a.roll + (b.roll - a.roll) * f;
+  _gYawQ.setFromAxisAngle(UP, yaw);
+  if (carForward && roll !== 0) {
+    _gRollQ.setFromAxisAngle(carForward, roll);
+    g.quaternion.copy(_gYawQ).multiply(_gRollQ);
+  } else {
+    g.quaternion.copy(_gYawQ);
+  }
+  g.visible = true;
+}
+
+function updateLapHud() {
+  ltCur.textContent = ghost.timing ? fmtTime(ghost.lapElapsed) : '--:--';
+  ltLast.textContent = fmtTime(ghost.lastLap);
+  ltBest.textContent = fmtTime(ghost.bestLap === Infinity ? null : ghost.bestLap);
+}
+
+function updateTimeAttack(dt) {
+  if (!centerline || !carForward || !gameStarted) return;
+  const px = carGroup.position.x, pz = carGroup.position.z;
+  const progress = trackProgress(px, pz);
+  const total = centerline.total;
+
+  // Vorwärts-Überfahrt der Start/Ziel-Linie: Fortschritt springt von ~Ende auf ~Anfang
+  if (ghost.hasProgress && ghost.prevProgress > total * 0.7 && progress < total * 0.3) {
+    if (ghost.timing) {
+      ghost.lastLap = ghost.lapElapsed;
+      if (ghost.lapElapsed < ghost.bestLap) {
+        ghost.bestLap = ghost.lapElapsed;
+        ghost.best = ghost.recording;
+        ghost.bestDur = ghost.lapElapsed;
+        buildGhostMesh();
+      }
+    }
+    ghost.timing = true;
+    ghost.lapElapsed = 0;
+    ghost.recording = [];
+    ghost.cursor = 0;
+  }
+  ghost.prevProgress = progress;
+  ghost.hasProgress = true;
+
+  if (ghost.timing) {
+    ghost.lapElapsed += dt;
+    ghost.recording.push({ t: ghost.lapElapsed, x: px, y: carGroup.position.y, z: pz, yaw: carYaw, roll: carRoll });
+  }
+
+  updateGhost();
+  updateLapHud();
+}
+
+const btnGhost = document.getElementById('btn-ghost');
+btnGhost.addEventListener('click', () => {
+  ghost.enabled = !ghost.enabled;
+  btnGhost.textContent = `👻 Ghost-Car: ${ghost.enabled ? 'AN' : 'AUS'}`;
+  btnGhost.classList.toggle('active', ghost.enabled);
+  if (ghost.mesh && !ghost.enabled) ghost.mesh.visible = false;
+});
+
 // ---------- Resize & Render-Loop ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -1284,6 +1465,7 @@ renderer.setAnimationLoop(() => {
 
   updateCar(dt);
   updateLightsFollow();
+  updateTimeAttack(dt);
 
   if (cameraMode === 0) {
     // ===== Verfolgerkamera (Außenansicht) =====
