@@ -815,6 +815,10 @@ btnSound.addEventListener('click', () => {
     document.getElementById('title').style.display = '';
     document.getElementById('laptimer').style.display = '';
 
+    // Immer in der Cockpit-Sicht ins Spiel starten
+    cameraMode = 1;
+    applyCameraMode();
+
     // Zeitfahren starten: Rundenmessung beginnt beim ersten Überfahren der Start/Ziel-Linie
     gameStarted = true;
   });
