@@ -1146,11 +1146,12 @@ function updateCar(dt) {
     }
   }
 
-  // Bei geöffnetem Menü pausieren: Auto einfrieren, nur die Menü-Bedienung läuft weiter
+  // Bei geöffnetem Menü pausieren: Auto an Ort und Stelle einfrieren – das Tempo bleibt
+  // erhalten, beim Schließen geht es nahtlos mit gleicher Geschwindigkeit weiter.
+  // Die Menü-Bedienung (oben verarbeitet) bleibt aktiv.
   if (gamePaused()) {
-    speed = 0;
-    speedNumEl.textContent = '0';
-    engineAudio.update(0, 0, dt); // Motor im Leerlauf halten
+    const gearForRev = gear >= 1 ? gear : 1;
+    engineAudio.update(Math.min(1, Math.abs(speed) / GEAR_MAX_SPEED[gearForRev]), 0, dt);
     return;
   }
 
@@ -1495,7 +1496,15 @@ renderer.setAnimationLoop(() => {
 
   updateCar(dt);
   updateLightsFollow();
-  if (!gamePaused()) updateTimeAttack(dt);
+
+  // Bei offenem Menü ist das Spiel pausiert: Bild einfrieren (Kamera & Zeitfahren ruhen,
+  // Auto behält seine Geschwindigkeit)
+  if (gamePaused()) {
+    renderer.render(scene, camera);
+    return;
+  }
+
+  updateTimeAttack(dt);
 
   if (cameraMode === 0) {
     // ===== Verfolgerkamera (Außenansicht) =====
