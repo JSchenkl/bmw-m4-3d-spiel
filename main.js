@@ -951,12 +951,12 @@ const gearEl = document.getElementById('gear');
 // umgekehrt. Man muss mit RB/E hochschalten, um schneller als das Gang-Limit zu fahren.
 const GEAR_MAX_SPEED = [0, 55, 95, 140, 190, 240, 290].map((v) => v / 3.6); // km/h → m/s
 const GEAR_PULL = [0, 1.0, 0.72, 0.52, 0.4, 0.31, 0.25]; // Zugkraft-Faktor je Gang
-let gear = 1; // 0 = Rückwärtsgang (R), 1…6 = Vorwärtsgänge
+let gear = 1; // -1 = Rückwärtsgang (R), 0 = Leerlauf (N), 1…6 = Vorwärtsgänge
 let prevGearSound = 1; // letzter Gang – für den Schaltsound (Hoch-/Runterschalten)
 let autoGearbox = false; // false = Handschaltung, true = Automatikgetriebe
 // Manuell schalten geht nur bei der Handschaltung – im Automatikmodus übernimmt das Spiel.
 const shiftUp = () => { if (!autoGearbox) gear = Math.min(6, gear + 1); };
-const shiftDown = () => { if (!autoGearbox) gear = Math.max(0, gear - 1); };
+const shiftDown = () => { if (!autoGearbox) gear = Math.max(-1, gear - 1); };
 
 // Automatikgetriebe: wählt Fahrtrichtung (D/R) und Gang selbsttätig nach Tempo.
 function autoShiftGear(throttle, reverse) {
@@ -965,7 +965,7 @@ function autoShiftGear(throttle, reverse) {
   if (vAbs < 0.5 && !braking) {
     // Im Stand wie bei einer Automatik die Richtung wählen
     if (throttle) gear = Math.max(gear, 1);      // W → Fahrstufe D (1. Gang)
-    else if (reverse) gear = 0;                  // S → Rückwärtsgang R
+    else if (reverse) gear = -1;                 // S → Rückwärtsgang R
   } else if (gear >= 1) {
     // Vorwärts: kurz vorm Gang-Höchsttempo hoch-, bei zu niedriger Drehzahl runterschalten
     const frac = vAbs / GEAR_MAX_SPEED[gear];
@@ -1189,8 +1189,9 @@ function updateCar(dt) {
   // Automatikgetriebe wählt Gang/Richtung, bevor der Antrieb berechnet wird
   autoShiftGear(throttle, reverse);
 
-  // Im Rückwärtsgang (R = Gang 0) fährt Gas rückwärts; sonst zählt die S/LT-Taste
-  const reverseInput = gear === 0 ? Math.max(throttle, reverse) : reverse;
+  // Im Rückwärtsgang (R) fährt Gas rückwärts; im Leerlauf (N) gibt es keinen Antrieb;
+  // sonst zählt die S/LT-Taste.
+  const reverseInput = gear === -1 ? Math.max(throttle, reverse) : gear === 0 ? 0 : reverse;
 
   if (braking) {
     accel = -Math.sign(speed) * (BRAKE_DECEL * brakeInput + (fDrag + fRoll) / MASS);
@@ -1272,7 +1273,8 @@ function updateCar(dt) {
 
 
   speedNumEl.textContent = Math.round(Math.abs(speed) * 3.6);
-  gearEl.innerHTML = `<span>GANG${autoGearbox ? ' · A' : ''}</span> ${gear === 0 ? 'R' : gear}`;
+  const gearLabel = gear === -1 ? 'R' : gear === 0 ? 'N' : gear;
+  gearEl.innerHTML = `<span>GANG${autoGearbox ? ' · A' : ''}</span> ${gearLabel}`;
   updateRevLights(speed);
 
   // Schaltsound bei Gangwechsel (gilt für Hand- wie Automatikgetriebe; R bleibt stumm)
@@ -1284,9 +1286,12 @@ function updateCar(dt) {
     prevGearSound = gear;
   }
 
-  // Motorsound: Drehzahl aus dem Tempo im aktuellen Gang ableiten
+  // Motorsound: Drehzahl aus dem Tempo im aktuellen Gang ableiten.
+  // Im Leerlauf (N) dreht der Motor beim Gasgeben frei hoch, ohne Vortrieb.
   const gearForRev = gear >= 1 ? gear : 1;
-  const rev = Math.min(1, Math.abs(speed) / GEAR_MAX_SPEED[gearForRev]);
+  const rev = gear === 0
+    ? Math.min(1, throttle * 0.9)
+    : Math.min(1, Math.abs(speed) / GEAR_MAX_SPEED[gearForRev]);
   engineAudio.update(rev, throttle, dt);
 }
 

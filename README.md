@@ -32,7 +32,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - Tag-/Nachtmodus
 - Motorgeräusch (synthetisierter Reihensechszylinder)
 - Cockpit-Kamera mit Umsehen per Maus
-- Automatik- und Schaltgetriebe (6 Gänge)
+- Automatik- und Schaltgetriebe (6 Gänge, R, Leerlauf N mit freiem Hochdrehen)
 - Kollisionserkennung (Mauern, Gebäude)
 - Startbildschirm mit Auto-Rotation im Nachtmodus
 
