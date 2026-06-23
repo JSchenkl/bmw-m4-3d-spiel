@@ -1326,7 +1326,7 @@ function buildCenterline(cd) {
 // ---------- Checkpoints ----------
 // Über die Strecke verteilte Tore. Eine Runde zählt nur, wenn alle der Reihe nach
 // durchfahren wurden. Wird eines verfehlt (abseits der Strecke), gibt es eine Meldung.
-const CP_COUNT = 5;
+const CP_COUNT = 30;
 let cpArc = [];     // Bogenlängen-Positionen
 let cpPassed = [];  // pro Runde: durchfahren?
 let cpGates = [];   // { mesh, mat, ci }
@@ -1353,6 +1353,7 @@ function buildCheckpoints() {
     const gate = new THREE.Mesh(new THREE.BoxGeometry(0.4, 5, len), mat);
     gate.position.set(Pc.x + nv.x * (wl - wr) / 2, 2.5, Pc.z + nv.z * (wl - wr) / 2);
     gate.rotation.y = Math.atan2(nv.x, nv.z);
+    gate.visible = false; // Checkpoints unsichtbar – werden weiterhin gezählt
     scene.add(gate);
     cpArc.push(arc); cpPassed.push(false); cpGates.push({ mesh: gate, mat, ci });
   }
