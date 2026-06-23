@@ -1411,7 +1411,6 @@ function armLap() {
 const ltCur = document.getElementById('lt-cur');
 const ltLast = document.getElementById('lt-last');
 const ltBest = document.getElementById('lt-best');
-const ltCp = document.getElementById('lt-cp');
 const _gYawQ = new THREE.Quaternion();
 const _gRollQ = new THREE.Quaternion();
 
@@ -1509,8 +1508,6 @@ function updateLapHud() {
   ltCur.textContent = ghost.timing ? fmtTime(ghost.lapElapsed) : '--:--';
   ltLast.textContent = fmtTime(ghost.lastLap);
   ltBest.textContent = fmtTime(ghost.bestLap === Infinity ? null : ghost.bestLap);
-  const passed = cpPassed.filter(Boolean).length;
-  ltCp.textContent = `${passed}/${CP_COUNT}`;
 }
 
 function updateTimeAttack(dt) {
