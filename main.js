@@ -820,7 +820,7 @@ btnSound.addEventListener('click', () => {
     cameraMode = 1;
     applyCameraMode();
 
-    // Zeitfahren & Checkpoints ab der ersten Runde scharf schalten
+    // Zeitfahren ab der ersten Runde scharf schalten
     gameStarted = true;
     armLap();
   });
@@ -1320,54 +1320,9 @@ function buildCenterline(cd) {
   }
   const total = s[n - 1] + Math.hypot(P[0].x - P[n - 1].x, P[0].z - P[n - 1].z);
   centerline = { P, s, total, n };
-  buildCheckpoints();
 }
 
-// ---------- Checkpoints ----------
-// Über die Strecke verteilte Tore. Eine Runde zählt nur, wenn alle der Reihe nach
-// durchfahren wurden. Wird eines verfehlt (abseits der Strecke), gibt es eine Meldung.
-const CP_COUNT = 5;
-let cpArc = [];     // Bogenlängen-Positionen
-let cpPassed = [];  // pro Runde: durchfahren?
-let cpGates = [];   // { mesh, mat, ci }
-let cpNextIdx = 0;  // nächster erwarteter Checkpoint
-
-function buildCheckpoints() {
-  for (const g of cpGates) scene.remove(g.mesh);
-  cpArc = []; cpPassed = []; cpGates = [];
-  for (let k = 0; k < CP_COUNT; k++) {
-    const arc = centerline.total * (k + 1) / (CP_COUNT + 1);
-    // nächstgelegenen Mittellinien-Index zu dieser Bogenlänge finden
-    let ci = 0, bestD = Infinity;
-    for (let i = 0; i < centerline.n; i++) {
-      const d = Math.abs(centerline.s[i] - arc);
-      if (d < bestD) { bestD = d; ci = i; }
-    }
-    const Pc = centerline.P[ci], nv = curbData.nrm[ci];
-    const wl = curbData.wl[ci], wr = curbData.wr[ci];
-    const len = wl + wr + 2;
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0xffd400, emissive: 0x332b00, transparent: true, opacity: 0.32,
-      side: THREE.DoubleSide, depthWrite: false,
-    });
-    const gate = new THREE.Mesh(new THREE.BoxGeometry(0.4, 5, len), mat);
-    gate.position.set(Pc.x + nv.x * (wl - wr) / 2, 2.5, Pc.z + nv.z * (wl - wr) / 2);
-    gate.rotation.y = Math.atan2(nv.x, nv.z);
-    scene.add(gate);
-    cpArc.push(arc); cpPassed.push(false); cpGates.push({ mesh: gate, mat, ci });
-  }
-  resetCheckpoints();
-}
-
-function resetCheckpoints() {
-  cpNextIdx = 0;
-  for (let k = 0; k < cpGates.length; k++) {
-    cpPassed[k] = false;
-    cpGates[k].mat.color.setHex(0xffd400);
-  }
-}
-
-// Kurze Bildschirmmeldung (z. B. „Checkpoint verpasst!")
+// Kurze Bildschirmmeldung (z. B. „Zeitmessung gestartet!")
 let raceMsgTimer = null;
 const raceMsgEl = document.getElementById('race-msg');
 function showRaceMsg(text, color) {
@@ -1395,7 +1350,7 @@ const ghost = {
 };
 
 // Startet als Aus-Runde (Warm-up): Die Zeit wird erst ab dem ersten Überfahren der
-// Start/Ziel-Linie gezählt. Checkpoints werden aber schon angezeigt/gezählt.
+// Start/Ziel-Linie gezählt.
 function armLap() {
   ghost.timing = false;
   ghost.lapElapsed = 0;
@@ -1404,13 +1359,11 @@ function armLap() {
   ghost.hasProgress = false;
   ghost.prevProgress = 0;
   ghost.maxProgress = 0;
-  resetCheckpoints();
 }
 
 const ltCur = document.getElementById('lt-cur');
 const ltLast = document.getElementById('lt-last');
 const ltBest = document.getElementById('lt-best');
-const ltCp = document.getElementById('lt-cp');
 const _gYawQ = new THREE.Quaternion();
 const _gRollQ = new THREE.Quaternion();
 
@@ -1508,8 +1461,6 @@ function updateLapHud() {
   ltCur.textContent = ghost.timing ? fmtTime(ghost.lapElapsed) : '--:--';
   ltLast.textContent = fmtTime(ghost.lastLap);
   ltBest.textContent = fmtTime(ghost.bestLap === Infinity ? null : ghost.bestLap);
-  const passed = cpPassed.filter(Boolean).length;
-  ltCp.textContent = `${passed}/${CP_COUNT}`;
 }
 
 function updateTimeAttack(dt) {
@@ -1525,20 +1476,15 @@ function updateTimeAttack(dt) {
   // maxProgress-Guard verhindert Fehl-Überfahrten durch Springen des Fortschritts an der Linie.
   if (hadProgress && prev > total * 0.7 && progress < total * 0.3 && ghost.maxProgress > total * 0.5) {
     if (ghost.timing) {
-      // Abgeschlossene gemessene Runde: zählt nur, wenn alle Checkpoints durchfahren wurden
-      const allPassed = cpPassed.length > 0 && cpPassed.every(Boolean);
-      if (allPassed) {
-        ghost.lastLap = ghost.lapElapsed;
-        if (ghost.lapElapsed < ghost.bestLap) {
-          ghost.bestLap = ghost.lapElapsed;
-          ghost.best = ghost.recording;
-          ghost.bestDur = ghost.lapElapsed;
-          buildGhostMesh();
-        }
-        showRaceMsg(`Runde: ${fmtTime(ghost.lapElapsed)}`, '#69f0ae');
-      } else {
-        showRaceMsg('Runde ungültig – Checkpoint verpasst!');
+      // Abgeschlossene gemessene Runde
+      ghost.lastLap = ghost.lapElapsed;
+      if (ghost.lapElapsed < ghost.bestLap) {
+        ghost.bestLap = ghost.lapElapsed;
+        ghost.best = ghost.recording;
+        ghost.bestDur = ghost.lapElapsed;
+        buildGhostMesh();
       }
+      showRaceMsg(`Runde: ${fmtTime(ghost.lapElapsed)}`, '#69f0ae');
     } else {
       // Erste Linienüberfahrt: Aus-Runde beendet, ab jetzt wird die Zeit gemessen
       showRaceMsg('Zeitmessung gestartet!', '#69f0ae');
@@ -1548,23 +1494,6 @@ function updateTimeAttack(dt) {
     ghost.recording = [];
     ghost.cursor = 0;
     ghost.maxProgress = 0;
-    resetCheckpoints();
-  } else if (hadProgress) {
-    // Checkpoints immer prüfen (auch in der Aus-Runde) – zählt nur am Tor auf der Strecke
-    while (cpNextIdx < CP_COUNT && progress >= cpArc[cpNextIdx] && prev < cpArc[cpNextIdx]) {
-      const g = cpGates[cpNextIdx];
-      const Pc = centerline.P[g.ci], nv = curbData.nrm[g.ci];
-      const lat = (px - Pc.x) * nv.x + (pz - Pc.z) * nv.z; // seitl. Abstand zur Mitte
-      const onTrack = lat <= curbData.wl[g.ci] + 2 && lat >= -(curbData.wr[g.ci] + 2);
-      if (onTrack) {
-        cpPassed[cpNextIdx] = true;
-        g.mat.color.setHex(0x00e676); // grün = durchfahren
-      } else {
-        g.mat.color.setHex(0xff1744); // rot = verpasst
-        showRaceMsg('Checkpoint verpasst!');
-      }
-      cpNextIdx++;
-    }
   }
   ghost.prevProgress = progress;
   ghost.hasProgress = true;
@@ -1602,7 +1531,6 @@ btnResetTime.addEventListener('click', () => {
   ghost.hasProgress = false;
   ghost.prevProgress = 0;
   ghost.maxProgress = 0;
-  resetCheckpoints();
   updateLapHud();
 });
 
