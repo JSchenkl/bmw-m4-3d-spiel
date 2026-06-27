@@ -1347,6 +1347,7 @@ const ghost = {
   mesh: null,      // Ghost-Objekt in der Szene
   cursor: 0,       // Abspiel-Cursor in best[]
   maxProgress: 0,  // höchster Streckenfortschritt der laufenden Runde (gegen Fehl-Überfahrten)
+  offTrack: false, // alle vier Reifen abseits der Strecke (entprellt die Meldung)
 };
 
 // Startet als Aus-Runde (Warm-up): Die Zeit wird erst ab dem ersten Überfahren der
@@ -1359,6 +1360,27 @@ function armLap() {
   ghost.hasProgress = false;
   ghost.prevProgress = 0;
   ghost.maxProgress = 0;
+  ghost.offTrack = false;
+}
+
+// True, wenn alle vier Reifen abseits der Strecke sind (jenseits der äußeren
+// Randstein-Kante – also komplett im Grünen/Auslauf, nicht nur auf dem Curb).
+function allWheelsOffTrack(px, pz) {
+  if (!curbData) return false;
+  const P = curbData.pts;
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < P.length; i++) {
+    const dx = px - P[i].x, dz = pz - P[i].z;
+    const d = dx * dx + dz * dz;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  const c = P[best], nv = curbData.nrm[best];
+  const lat = (px - c.x) * nv.x + (pz - c.z) * nv.z; // seitl. Abstand zur Mitte (links = +)
+  const hw = carHalf.wid, w = curbData.width;
+  const innerLeft = lat - hw;   // das am weitesten innen liegende Rad bei Abflug nach links
+  const innerRight = lat + hw;  // das am weitesten innen liegende Rad bei Abflug nach rechts
+  // Komplett links jenseits des Curbs ODER komplett rechts jenseits des Curbs
+  return innerLeft > curbData.wl[best] + w || innerRight < -(curbData.wr[best] + w);
 }
 
 const ltCur = document.getElementById('lt-cur');
@@ -1498,6 +1520,20 @@ function updateTimeAttack(dt) {
   ghost.prevProgress = progress;
   ghost.hasProgress = true;
   ghost.maxProgress = Math.max(ghost.maxProgress, progress);
+
+  // Track-Limits: Sind alle vier Reifen abseits der Strecke, ist die laufende
+  // Zeit ungültig. Sie wird verworfen und es geht zurück in die Aus-Runde –
+  // gemessen wird erst wieder ab der nächsten Start/Ziel-Überfahrt.
+  const off = allWheelsOffTrack(px, pz);
+  if (off && !ghost.offTrack && ghost.timing) {
+    showRaceMsg('Zeit ist ungültig');
+    ghost.timing = false;
+    ghost.lapElapsed = 0;
+    ghost.recording = [];
+    ghost.cursor = 0;
+    ghost.maxProgress = ghost.prevProgress; // Fortschritt halten, kein Fehl-Rundenzähler
+  }
+  ghost.offTrack = off;
 
   if (ghost.timing) {
     ghost.lapElapsed += dt;
