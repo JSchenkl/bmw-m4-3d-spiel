@@ -30,7 +30,7 @@
       color: rgba(255,255,255,0.92); text-shadow: 0 2px 18px rgba(0,0,0,0.9);
     }
     #pause-label.visible { display: block; }
-    /* Renn-Meldungen (z. B. „Checkpoint verpasst") */
+    /* Renn-Meldungen (z. B. „Zeitmessung gestartet!") */
     #race-msg {
       position: absolute; top: 110px; left: 50%; transform: translateX(-50%);
       z-index: 30; pointer-events: none; text-align: center;
@@ -287,7 +287,6 @@
     <div class="lt-row"><span class="lt-label">RUNDE</span><span id="lt-cur">--:--</span></div>
     <div class="lt-row"><span class="lt-label">LETZTE</span><span id="lt-last">--:--</span></div>
     <div class="lt-row"><span class="lt-label">BESTE</span><span id="lt-best">--:--</span></div>
-    <div class="lt-row"><span class="lt-label">CHECKPOINT</span><span id="lt-cp">0/0</span></div>
   </div>
 
   <div id="race-msg"></div>
