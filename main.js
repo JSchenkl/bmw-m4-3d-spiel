@@ -1659,7 +1659,7 @@ btnHome.addEventListener('click', () => {
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
 const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
 const BOT_SPEED = 28;           // m/s (~100 km/h) Reisetempo der Bots
-const BOT_ACCEL = 8;            // m/s² Beschleunigung am Start (ähnlich dem Spielerauto)
+const BOT_ACCEL = 10;           // m/s² Beschleunigung am Start (25 % stärker als zuvor)
 const bots = [];                // { group, s, offset }
 const _botFwd = new THREE.Vector3();
 
