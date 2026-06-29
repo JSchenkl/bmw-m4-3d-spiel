@@ -1865,6 +1865,82 @@ function updateRace(dt) {
 
 raceStartBtn.addEventListener('click', setupGrid);
 
+// ---------- Boxengasse: geparkte Autos + animierte Boxencrew (Reifenwechsel) ----------
+let pitScene = null;
+const pitCrew = [];   // { mesh, baseY, phase }
+let pitClock = 0;
+
+function makeCrewMember(color) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.42, 0.8, 0.32),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.85 }));
+  body.position.y = 0.55; body.castShadow = true;
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.15, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 })); // Helm
+  head.position.y = 1.05;
+  // „Schlagschrauber"-Arm, der sich beim Arbeiten bewegt
+  const arm = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.12, 0.12),
+    new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6 }));
+  arm.position.set(0.3, 0.55, 0.18);
+  g.add(body, head, arm);
+  g.userData.arm = arm;
+  return g;
+}
+
+function buildPitScene() {
+  pitScene = new THREE.Group();
+  const total = centerline.total;
+  const team = [0x2aa6e0, 0xe2001a, 0xf0f0f0];
+  const arcs = [total - 70, total - 120, total - 170]; // drei Boxen-Plätze vor der Linie
+  arcs.forEach((arc, idx) => {
+    const c = centerlineAt(arc);
+    const tx = c.tx, tz = c.tz;
+    const lnx = tz, lnz = -tx;                 // Quernormale (Boxengassen-Seite)
+    const px = c.x + lnx * -15, pz = c.z + lnz * -15;
+    const fwd = new THREE.Vector3(tx, 0, tz);
+
+    // geparktes Auto (gleiches Modell)
+    const carG = new THREE.Group();
+    carG.add(currentCar.clone(true));
+    carG.position.set(px, carGroup.position.y, pz);
+    carG.quaternion.setFromUnitVectors(carForward, fwd);
+    pitScene.add(carG);
+
+    // Reifenstapel neben der Box
+    for (let t = 0; t < 3; t++) {
+      const tire = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.34, 0.34, 0.22, 16),
+        new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.95 }));
+      tire.position.set(px + tx * 2.2 + lnx * -2.6, 0.12 + t * 0.24, pz + tz * 2.2 + lnz * -2.6);
+      pitScene.add(tire);
+    }
+
+    // 4 Crew-Mitglieder an den Radpositionen
+    const wheels = [[2, 0.9], [2, -0.9], [-2, 0.9], [-2, -0.9]];
+    wheels.forEach(([lon, lat], wi) => {
+      const m = makeCrewMember(team[idx % team.length]);
+      m.position.set(px + tx * lon + lnx * lat, carGroup.position.y, pz + tz * lon + lnz * lat);
+      m.rotation.y = Math.atan2(tx, tz);
+      pitScene.add(m);
+      pitCrew.push({ mesh: m, baseY: carGroup.position.y, phase: idx * 4 + wi });
+    });
+  });
+  scene.add(pitScene);
+}
+
+function updatePitScene(dt) {
+  pitClock += dt;
+  for (const c of pitCrew) {
+    // leichtes Auf-/Ab + „Schrauben" am Reifen
+    c.mesh.position.y = c.baseY + Math.abs(Math.sin(pitClock * 5 + c.phase)) * 0.14;
+    const arm = c.mesh.userData.arm;
+    if (arm) arm.rotation.z = Math.sin(pitClock * 18 + c.phase) * 0.5;
+  }
+}
+
 // ---------- Resize & Render-Loop ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -1877,6 +1953,10 @@ const prevCarPos = new THREE.Vector3();
 
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
+
+  // Boxengasse einmal aufbauen, sobald Auto + Strecke geladen sind; Crew animieren
+  if (!pitScene && currentCar && centerline && carForward) buildPitScene();
+  if (pitScene) updatePitScene(dt);
 
   // Rennablauf (Ampel/Strafe) + Bots, vor dem Auto, damit die Kollision aktuelle Positionen nutzt
   if (gameStarted && raceMode && !gamePaused()) { updateRace(dt); updateBots(dt); }
