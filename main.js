@@ -2057,9 +2057,21 @@ function _nearestTrackPoint(px, pz) {
   return bi;
 }
 
+function _carNearPitLane(px, pz) {
+  if (!curbData || !curbData.pitPts) return false;
+  const hw = (curbData.pitHalfWidth || 3.5) + 1; // +1 m Puffer
+  const lim = hw * hw;
+  for (const p of curbData.pitPts) {
+    const dx = px - p.x, dz = pz - p.z;
+    if (dx * dx + dz * dz < lim) return true;
+  }
+  return false;
+}
+
 function carOnGrass() {
   if (!curbData) return false;
   const px = carGroup.position.x, pz = carGroup.position.z;
+  if (_carNearPitLane(px, pz)) return false;
   const bi = _nearestTrackPoint(px, pz);
   const nv = curbData.nrm[bi];
   const lat = (px - curbData.pts[bi].x) * nv.x + (pz - curbData.pts[bi].z) * nv.z;
@@ -2071,6 +2083,7 @@ function carOnGrass() {
 function carOnGravel() {
   if (!curbData) return false;
   const px = carGroup.position.x, pz = carGroup.position.z;
+  if (_carNearPitLane(px, pz)) return false;
   const bi = _nearestTrackPoint(px, pz);
   const nv = curbData.nrm[bi];
   const lat = (px - curbData.pts[bi].x) * nv.x + (pz - curbData.pts[bi].z) * nv.z;

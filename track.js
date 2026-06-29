@@ -350,12 +350,14 @@ export async function createSpaTrack() {
   const curbData = {
     width: CURB_WIDTH,
     grassWidth: GRASS_WIDTH,
+    pitHalfWidth: PIT_HALF_WIDTH,
     gravelL: gravelL ? gravelL.slice() : null,
     gravelR: gravelR ? gravelR.slice() : null,
     pts: pts.map((p) => ({ x: p.x - spawn.x, z: p.z - spawn.z })),
     nrm: leftNs.map((nv) => ({ x: nv.x, z: nv.z })),
     wl: wLeft.slice(),
     wr: wRight.slice(),
+    pitPts: pitCenter.map((p) => ({ x: p.x - spawn.x, z: p.z - spawn.z })),
   };
 
   return { group, pitDirection, colliders, curbData };
