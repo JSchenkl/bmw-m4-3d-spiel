@@ -1658,7 +1658,7 @@ btnHome.addEventListener('click', () => {
 // Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
 const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
-const BOT_SPEED = 28;           // m/s (~100 km/h) Reisetempo der Bots
+const BOT_SPEED = 45;           // m/s (~162 km/h) Reisetempo der Bots
 const BOT_ACCEL = 15;           // m/s² Beschleunigung am Start
 const bots = [];                // { group, s, offset }
 const _botFwd = new THREE.Vector3();
