@@ -833,6 +833,9 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
     // Zeitfahren ab der ersten Runde scharf schalten
     gameStarted = true;
     armLap();
+
+    // Rennmodus: erst Qualifikation; Training: kein Rennablauf
+    if (raceMode) startRaceQuali(); else raceReset();
   }
 
   document.getElementById('btn-training').addEventListener('click', () => startGame(false));
@@ -1522,6 +1525,13 @@ function updateTimeAttack(dt) {
         buildGhostMesh();
       }
       showRaceMsg(`Runde: ${fmtTime(ghost.lapElapsed)}`, '#69f0ae');
+      // Rennmodus: erste gültige Runde ist die Quali-Zeit → „Rennen starten" anbieten
+      if (raceMode && race.phase === 'quali') {
+        race.qualiTime = ghost.lapElapsed;
+        race.phase = 'qualiDone';
+        raceStartBtn.classList.add('visible');
+        setRaceInfo(`Quali: ${fmtTime(race.qualiTime)} — bereit? „Rennen starten" drücken`);
+      }
     } else {
       // Erste Linienüberfahrt: Aus-Runde beendet, ab jetzt wird die Zeit gemessen
       showRaceMsg('Zeitmessung gestartet!', '#69f0ae');
@@ -1606,6 +1616,7 @@ btnHome.addEventListener('click', () => {
   gameStarted = false;
   raceMode = false;
   removeBots();
+  raceReset();
 
   // Auto an den Startplatz, Tempo/Gang zurück
   carGroup.position.set(0, 0.05, 0);
@@ -1644,7 +1655,7 @@ btnHome.addEventListener('click', () => {
 // ---------- Gegner-Bots ----------
 // Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
-const BOT_COUNT = 3;
+const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
 const BOT_SPEED = 28;           // m/s (~100 km/h) konstantes Reisetempo der Bots
 const bots = [];                // { group, s, offset }
 const _botFwd = new THREE.Vector3();
@@ -1672,28 +1683,28 @@ function createBots() {
     const group = new THREE.Group();
     group.add(clone);
     scene.add(group);
-    bots.push({
-      group,
-      s: 20 + k * 16,                          // direkt vor dem Startplatz (20/36/52 m voraus)
-      offset: (k - (BOT_COUNT - 1) / 2) * 3,   // seitlich versetzt (-3/0/+3 m)
-    });
+    bots.push({ group, s: 0, offset: 0 });
   }
 }
 
+// Setzt einen Bot an seine aktuelle Bogenlänge/seitl. Versatz; gibt Welt-Pos + Tangente zurück
+function positionBot(bot) {
+  const c = centerlineAt(bot.s);
+  const nx = -c.tz, nz = c.tx; // Quernormale für den seitlichen Versatz
+  const x = c.x + nx * bot.offset, z = c.z + nz * bot.offset;
+  bot.group.position.set(x, carGroup.position.y, z);
+  _botFwd.set(c.tx, 0, c.tz);
+  bot.group.quaternion.setFromUnitVectors(carForward, _botFwd); // Front entlang der Strecke
+  return { x, z, tx: c.tx, tz: c.tz };
+}
+
 function updateBots(dt) {
-  if (!centerline || !currentCar || !carForward) return;
-  if (!bots.length) createBots();
+  if (!centerline || !currentCar || !carForward || !bots.length) return;
   botColliders = [];
   for (const bot of bots) {
-    bot.s = (bot.s + BOT_SPEED * dt) % centerline.total;
-    const c = centerlineAt(bot.s);
-    const nx = -c.tz, nz = c.tx; // Quernormale für den seitlichen Versatz
-    const x = c.x + nx * bot.offset;
-    const z = c.z + nz * bot.offset;
-    bot.group.position.set(x, carGroup.position.y, z);
-    _botFwd.set(c.tx, 0, c.tz);
-    bot.group.quaternion.setFromUnitVectors(carForward, _botFwd); // Front entlang der Strecke
-    botColliders.push({ cx: x, cz: z, ax: c.tx, az: c.tz, halfLen: carHalf.len, halfWid: carHalf.wid });
+    if (race.phase === 'go') bot.s = (bot.s + BOT_SPEED * dt) % centerline.total; // fahren erst nach dem Start
+    const p = positionBot(bot);
+    botColliders.push({ cx: p.x, cz: p.z, ax: p.tx, az: p.tz, halfLen: carHalf.len, halfWid: carHalf.wid });
   }
 }
 
@@ -1702,6 +1713,148 @@ function removeBots() {
   bots.length = 0;
   botColliders = [];
 }
+
+// ---------- Rennmodus: Quali → Startaufstellung → F1-Ampel → Frühstart-Strafe ----------
+const BOT_QUALI_FACTOR = [0.94, 0.98, 1.03, 1.08, 1.13]; // Bot-Quali-Zeiten relativ zur Spielerzeit
+const race = {
+  phase: 'off',     // 'off' | 'quali' | 'qualiDone' | 'lights' | 'go'
+  qualiTime: null,
+  playerGrid: 0,
+  lightT: 0,
+  litCount: -1,
+  holdAfter: 2,
+  jumpStart: false,
+  penalty: 0,       // verbleibende Strafzeit (Sek), >0 = noch abzusitzen
+};
+const lightsEl = document.getElementById('start-lights');
+const raceStartBtn = document.getElementById('race-start-btn');
+const raceInfoEl = document.getElementById('race-info');
+const _hd = new THREE.Vector3();
+
+function setRaceInfo(text) {
+  if (!text) { raceInfoEl.classList.remove('visible'); return; }
+  raceInfoEl.textContent = text;
+  raceInfoEl.classList.add('visible');
+}
+function renderLights(n) {
+  const els = lightsEl.children;
+  for (let i = 0; i < els.length; i++) els[i].classList.toggle('on', i < n);
+}
+
+// Beginn des Rennmodus: erst Qualifikation (eine schnelle Runde)
+function startRaceQuali() {
+  race.phase = 'quali';
+  race.qualiTime = null;
+  race.jumpStart = false;
+  race.penalty = 0;
+  race.litCount = -1;
+  raceStartBtn.classList.remove('visible');
+  lightsEl.classList.remove('visible');
+  renderLights(0);
+  setRaceInfo('QUALIFIKATION — fahre eine schnelle Runde');
+}
+
+function raceReset() {
+  race.phase = 'off';
+  race.qualiTime = null;
+  race.jumpStart = false;
+  race.penalty = 0;
+  raceStartBtn.classList.remove('visible');
+  lightsEl.classList.remove('visible');
+  renderLights(0);
+  setRaceInfo('');
+}
+
+const gridArc = (i) => centerline.total - 10 - i * 7;       // Startplätze hinter der Linie
+const gridOffset = (i) => (i % 2 === 0 ? 3 : -3);           // gestaffelt links/rechts
+
+function setupGrid() {
+  if (!centerline || race.qualiTime == null) return;
+  // Reihenfolge aus Quali-Zeiten (Spieler + Bots), schnellste Zeit = Pole
+  const entries = [{ who: 'player', time: race.qualiTime }];
+  for (let k = 0; k < BOT_COUNT; k++) entries.push({ who: k, time: race.qualiTime * BOT_QUALI_FACTOR[k] });
+  entries.sort((a, b) => a.time - b.time);
+
+  if (!bots.length) createBots();
+  const total = centerline.total;
+  entries.forEach((e, i) => {
+    const arc = ((gridArc(i) % total) + total) % total;
+    if (e.who === 'player') {
+      race.playerGrid = i;
+      const c = centerlineAt(arc);
+      const nx = -c.tz, nz = c.tx;
+      carGroup.position.set(c.x + nx * gridOffset(i), carGroup.position.y, c.z + nz * gridOffset(i));
+      _hd.set(c.tx, 0, c.tz);
+      setHeading(_hd);
+      prevCarPos.copy(carGroup.position);
+      speed = 0; gear = 1; prevGearSound = 1;
+    } else {
+      const bot = bots[e.who];
+      bot.s = arc; bot.offset = gridOffset(i);
+      positionBot(bot);
+    }
+  });
+
+  armLap(); // Rundenmessung sauber zurücksetzen (kein Fehl-Lap durch das Umsetzen)
+
+  // F1-Ampelsequenz starten
+  race.phase = 'lights';
+  race.lightT = 0;
+  race.litCount = -1;
+  race.holdAfter = 1 + Math.random() * 2;
+  renderLights(0);
+  lightsEl.classList.add('visible');
+  raceStartBtn.classList.remove('visible');
+  setRaceInfo(`Startplatz ${race.playerGrid + 1} von ${BOT_COUNT + 1} — warte auf die Ampel`);
+}
+
+// Grobe Erkennung „in der Boxengasse" (zum Absitzen der Strafe): nahe Start, ~15 m seitlich neben der Ideallinie
+function inPitZone() {
+  if (!centerline) return false;
+  const px = carGroup.position.x, pz = carGroup.position.z;
+  const P = centerline.P, n = centerline.n;
+  let bi = 0, bd = Infinity;
+  for (let i = 0; i < n; i++) { const dx = px - P[i].x, dz = pz - P[i].z, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = i; } }
+  const prog = centerline.s[bi];
+  const c = centerlineAt(prog);
+  const lat = (px - c.x) * c.tz + (pz - c.z) * (-c.tx); // Abstand in der Boxengassen-Querachse
+  const nearStart = prog < 380 || prog > centerline.total - 380;
+  return nearStart && Math.abs(Math.abs(lat) - 15) < 7;
+}
+
+function updateRace(dt) {
+  if (!raceMode) return;
+  if (race.phase === 'lights') {
+    race.lightT += dt;
+    const lit = Math.min(5, Math.floor(race.lightT)); // je Sekunde eine Ampel an
+    if (lit !== race.litCount) { race.litCount = lit; renderLights(lit); }
+    // Frühstart: Bewegung vor „Lichter aus"
+    if (!race.jumpStart && Math.abs(speed) > 0.8) {
+      race.jumpStart = true;
+      race.penalty = 15;
+      showRaceMsg('Frühstart! 15 Sek Strafe', '#ff5252');
+    }
+    if (race.lightT >= 5 + race.holdAfter) {
+      race.phase = 'go';
+      renderLights(0);
+      lightsEl.classList.remove('visible');
+      showRaceMsg('LOS!', '#69f0ae');
+    }
+  } else if (race.phase === 'go') {
+    if (race.penalty > 0) {
+      if (inPitZone() && Math.abs(speed) < 2) race.penalty = Math.max(0, race.penalty - dt);
+      setRaceInfo(`STRAFE: ${Math.ceil(race.penalty)}s — in die Boxengasse fahren und anhalten`);
+    } else if (race.jumpStart) {
+      race.jumpStart = false;
+      showRaceMsg('Strafe abgesessen – freie Fahrt', '#69f0ae');
+      setRaceInfo('');
+    } else {
+      setRaceInfo('');
+    }
+  }
+}
+
+raceStartBtn.addEventListener('click', setupGrid);
 
 // ---------- Resize & Render-Loop ----------
 window.addEventListener('resize', () => {
@@ -1716,8 +1869,8 @@ const prevCarPos = new THREE.Vector3();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  // Bots nur im Rennmodus; vor dem Auto aktualisieren, damit die Kollision aktuelle Positionen nutzt
-  if (gameStarted && raceMode && !gamePaused()) updateBots(dt);
+  // Rennablauf (Ampel/Strafe) + Bots, vor dem Auto, damit die Kollision aktuelle Positionen nutzt
+  if (gameStarted && raceMode && !gamePaused()) { updateRace(dt); updateBots(dt); }
 
   updateCar(dt);
   updateLightsFollow();
