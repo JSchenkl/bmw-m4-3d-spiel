@@ -1755,8 +1755,13 @@ function updateBots(dt) {
       bot.launchTimer += dt;
       if (bot.launchTimer >= bot.reaction) {        // erst nach eigener Reaktionszeit losfahren
         const target = botTargetSpeed(bot.s + 14);  // etwas vorausschauen → rechtzeitig bremsen
-        if (bot.v < target) bot.v = Math.min(target, bot.v + BOT_ACCEL * dt); // Gas
-        else bot.v = Math.max(target, bot.v - BOT_BRAKE * dt);                // Bremse vor Kurven
+        if (bot.v < target) {
+          // wie ein echtes Auto: bei hohem Tempo zieht es schwächer (sonst beschleunigen die Bots viel stärker als der Spieler)
+          const a = BOT_ACCEL * Math.max(0.12, 1 - bot.v / BOT_MAX_SPEED);
+          bot.v = Math.min(target, bot.v + a * dt);  // Gas
+        } else {
+          bot.v = Math.max(target, bot.v - BOT_BRAKE * dt); // Bremse vor Kurven
+        }
         bot.s = (bot.s + bot.v * dt) % centerline.total;
         for (const w of bot.wheels) w.spin.rotateOnAxis(w.axisLocal, (bot.v / w.radius) * dt); // Räder passend drehen
       }
