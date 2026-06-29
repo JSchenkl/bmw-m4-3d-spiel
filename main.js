@@ -2040,6 +2040,58 @@ function updatePitScene(dt) {
   }
 }
 
+// ---------- Kiesbett: Erkennung, Staub-Partikel, Bremswirkung ----------
+function carOnGravel() {
+  if (!curbData) return false;
+  const px = carGroup.position.x, pz = carGroup.position.z;
+  const P = curbData.pts;
+  let bi = 0, bd = Infinity;
+  for (let i = 0; i < P.length; i++) { const dx = px - P[i].x, dz = pz - P[i].z, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = i; } }
+  const nv = curbData.nrm[bi];
+  const lat = (px - P[bi].x) * nv.x + (pz - P[bi].z) * nv.z; // links +, rechts −
+  const g = curbData.gravel || 6, w = curbData.width;
+  const gl = curbData.wl[bi] + w, gr = curbData.wr[bi] + w;
+  return (lat > gl && lat < gl + g) || (lat < -gr && lat > -(gr + g)); // im Kiesstreifen?
+}
+
+const DUST_N = 140;
+let dustPoints = null, dustPos = null;
+const dustVel = [], dustLife = [];
+let dustNext = 0;
+function initDust() {
+  dustPos = new Float32Array(DUST_N * 3);
+  for (let i = 0; i < DUST_N; i++) { dustPos[i * 3 + 1] = -9999; dustVel.push(new THREE.Vector3()); dustLife.push(0); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xcdbb95, size: 0.8, transparent: true, opacity: 0.55, depthWrite: false });
+  dustPoints = new THREE.Points(geo, mat);
+  dustPoints.frustumCulled = false;
+  scene.add(dustPoints);
+}
+function spawnDust(x, z) {
+  const i = dustNext; dustNext = (dustNext + 1) % DUST_N;
+  dustPos[i * 3] = x; dustPos[i * 3 + 1] = 0.2; dustPos[i * 3 + 2] = z;
+  dustVel[i].set((Math.random() - 0.5) * 2, 1.2 + Math.random() * 1.8, (Math.random() - 0.5) * 2);
+  dustLife[i] = 0.8 + Math.random() * 0.7;
+}
+function updateDust(dt) {
+  if (!dustPoints) initDust();
+  if (carOnGravel() && Math.abs(speed) > 4) {
+    for (let k = 0; k < 3; k++) spawnDust(carGroup.position.x + (Math.random() - 0.5) * 1.6, carGroup.position.z + (Math.random() - 0.5) * 1.6);
+    speed -= Math.sign(speed) * Math.min(Math.abs(speed), 12 * dt); // Kies bremst
+  }
+  for (let i = 0; i < DUST_N; i++) {
+    if (dustLife[i] <= 0) continue;
+    dustLife[i] -= dt;
+    if (dustLife[i] <= 0) { dustPos[i * 3 + 1] = -9999; continue; }
+    dustPos[i * 3] += dustVel[i].x * dt;
+    dustPos[i * 3 + 1] += dustVel[i].y * dt;
+    dustPos[i * 3 + 2] += dustVel[i].z * dt;
+    dustVel[i].y -= 1.6 * dt;
+  }
+  dustPoints.geometry.attributes.position.needsUpdate = true;
+}
+
 // ---------- Resize & Render-Loop ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -2061,6 +2113,7 @@ renderer.setAnimationLoop(() => {
   if (gameStarted && raceMode && !gamePaused()) { updateRace(dt); updateBots(dt); }
 
   updateCar(dt);
+  if (!gamePaused()) updateDust(dt);
   updateLightsFollow();
 
   // Bei offenem Menü pausiert nur die Fahrphysik & die Rundenuhr (das Auto behält sein Tempo).
