@@ -220,52 +220,70 @@ export async function createSpaTrack() {
   const STRIPE = 6;            // Streifenlänge der rot/weißen Leitplanke (Meter)
   const SAFE = 1.5;            // Sicherheitsabstand zu anderen Streckenteilen
   const pitSet = new Set(seq); // Boxengassen-Bereich (Pit-Seite dort aussparen)
-  let gravelL = null, gravelR = null; // Kiesbett-Breite je Punkt (für Staub-Erkennung)
+  let gravelL = null, gravelR = null;
+  let grassL = null, grassR = null;
   const grassMat = new THREE.MeshStandardMaterial({ color: 0x3a7d2c, roughness: 1, side: THREE.DoubleSide });
   const gravelMat = new THREE.MeshStandardMaterial({ color: 0xc9b489, roughness: 1, side: THREE.DoubleSide });
   const railRedMat = new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.55, metalness: 0.3, side: THREE.DoubleSide });
   const railWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.55, metalness: 0.3, side: THREE.DoubleSide });
   const railTopMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.6, metalness: 0.5, side: THREE.DoubleSide });
 
-  // Begrenzt die Kiesbett-Breite je Punkt so, dass die Bande keinen anderen
-  // Streckenabschnitt berührt (löst Überschneidungen in engen/verschachtelten
-  // Streckenpassagen wie der Buschtus-Schikane). Quadratische Strahl-Kreis-
-  // Prüfung gegen alle weit entfernten Mittellinienpunkte.
-  function gravelWidths(w) {
-    const gw = new Array(n).fill(GRAVEL_MAX);
+  // Berechnet für jeden Streckenpunkt den sicheren Auslaufraum ab Curb-Außenkante.
+  // Strahl startet am Curb-Rand in Richtung side*leftNs[i] und wird gestoppt,
+  // bevor er einen anderen Streckenabschnitt (inkl. Curb + SAFE-Puffer) berührt.
+  // Rückgabe: { grassW, gravelW } — beide Arrays, bereits geglättet.
+  function computeRunoff(side, w) {
+    const maxTotal = GRASS_WIDTH + GRAVEL_MAX;
+    const raw = new Array(n);
+
     for (let i = 0; i < n; i++) {
-      const base = pts[i].clone().addScaledVector(leftNs[i], (w[i] + CURB_WIDTH + GRASS_WIDTH));
-      const dir = leftNs[i]; // Einheitsvektor nach außen (side wird über w abgebildet)
-      let lim = GRAVEL_MAX;
+      // Strahlursprung = Curb-Außenkante auf der gewählten Seite
+      const origin = pts[i].clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH));
+      const dir = { x: side * leftNs[i].x, z: side * leftNs[i].z }; // nach außen
+
+      let lim = maxTotal;
       for (let j = 0; j < n; j++) {
+        // Nur Punkte überspringen, die auf derselben Geraden liegen (sehr nahe Nachbarn).
+        // Punkte, die sich geometrisch nähern (z. B. Haarnadelkurven), werden NICHT übersprungen.
         let ad = Math.abs(s[i] - s[j]); ad = Math.min(ad, total - ad);
-        if (ad < 30) continue; // direkte Nachbarn überspringen
+        if (ad < 15) continue;
+
+        // Ausschlussradius: Streckenmitte ± Fahrbahnbreite + Curb + Sicherheitsabstand
         const R = Math.max(wLeft[j], wRight[j]) + CURB_WIDTH + SAFE;
-        const rx = base.x - pts[j].x, rz = base.z - pts[j].z;
+        const rx = origin.x - pts[j].x, rz = origin.z - pts[j].z;
+
+        // Schnelles Vorausfilter: zu weit weg, keine Überschneidung möglich
+        if (rx * rx + rz * rz > (R + maxTotal) * (R + maxTotal)) continue;
+
         const b = dir.x * rx + dir.z * rz;
         const c = rx * rx + rz * rz - R * R;
-        if (c < 0) { lim = 0; break; }        // Bandenfuß liegt schon zu nah
+        if (c < 0) { lim = 0; break; }   // Ursprung liegt schon im Sperrkreis → kein Auslauf
         const disc = b * b - c;
         if (disc <= 0) continue;
-        const g1 = -b - Math.sqrt(disc);       // erster Eintritt in den Sperrkreis
+        const g1 = -b - Math.sqrt(disc);  // erster Eintritt in den Sperrkreis
         if (g1 >= 0 && g1 < lim) lim = g1;
       }
-      gw[i] = Math.max(0, lim);
+      raw[i] = Math.max(0, lim);
     }
-    // Glätten (gleitendes Minimum, dann Mittelwert) für eine saubere Kante
-    const mn = gw.slice();
+
+    // Glätten: gleitendes Minimum (konservativ), dann Mittelwert (weiche Kante)
+    const mn = raw.slice();
     for (let i = 0; i < n; i++) {
-      let m = gw[i];
-      for (let k = -2; k <= 2; k++) m = Math.min(m, gw[(i + k + n) % n]);
+      let m = raw[i];
+      for (let k = -3; k <= 3; k++) m = Math.min(m, raw[(i + k + n) % n]);
       mn[i] = m;
     }
     const sm = mn.slice();
     for (let i = 0; i < n; i++) {
       let a = 0;
-      for (let k = -2; k <= 2; k++) a += mn[(i + k + n) % n];
-      sm[i] = a / 5;
+      for (let k = -3; k <= 3; k++) a += mn[(i + k + n) % n];
+      sm[i] = a / 7;
     }
-    return sm;
+
+    // Aufteilen in Gras (bis GRASS_WIDTH) und Kies (Rest, max GRAVEL_MAX)
+    const grassW = sm.map(t => Math.min(GRASS_WIDTH, t));
+    const gravelW = sm.map(t => Math.max(0, Math.min(GRAVEL_MAX, t - GRASS_WIDTH)));
+    return { grassW, gravelW };
   }
 
   const mkGeo = (b) => {
@@ -276,12 +294,13 @@ export async function createSpaTrack() {
 
   for (const side of [1, -1]) {                // 1 = links, -1 = rechts (Boxengassenseite)
     const w = side === 1 ? wLeft : wRight;
-    const gw = gravelWidths(w);
+    const { grassW, gravelW } = computeRunoff(side, w);
     const grassInner = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH)));
-    const grassOuter = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH + GRASS_WIDTH)));
+    const grassOuter = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH + grassW[i])));
     const inner = grassOuter; // Kiesbett beginnt an der Gras-Außenkante
-    const outer = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH + GRASS_WIDTH + gw[i])));
-    if (side === 1) gravelL = gw; else gravelR = gw;
+    const outer = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH + grassW[i] + gravelW[i])));
+    if (side === 1) { gravelL = gravelW; grassL = grassW; }
+    else            { gravelR = gravelW; grassR = grassW; }
 
     // Segmentweise aufbauen, damit auf der Boxengassenseite der Pit-Bereich
     // ausgespart wird (sonst überschneiden Kies/Bande die Boxengasse & den Start).
@@ -349,7 +368,7 @@ export async function createSpaTrack() {
   // und Fahrbahnbreiten je Punkt. main.js prüft damit, ob ein Rad auf einem Curb steht.
   const curbData = {
     width: CURB_WIDTH,
-    grassWidth: GRASS_WIDTH,
+    grassMaxWidth: GRASS_WIDTH,
     pitHalfWidth: PIT_HALF_WIDTH,
     gravelL: gravelL ? gravelL.slice() : null,
     gravelR: gravelR ? gravelR.slice() : null,
@@ -357,6 +376,8 @@ export async function createSpaTrack() {
     nrm: leftNs.map((nv) => ({ x: nv.x, z: nv.z })),
     wl: wLeft.slice(),
     wr: wRight.slice(),
+    grassL: grassL ? grassL.slice() : null,
+    grassR: grassR ? grassR.slice() : null,
     pitPts: pitCenter.map((p) => ({ x: p.x - spawn.x, z: p.z - spawn.z })),
   };
 

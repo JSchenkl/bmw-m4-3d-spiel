@@ -2075,9 +2075,11 @@ function carOnGrass() {
   const bi = _nearestTrackPoint(px, pz);
   const nv = curbData.nrm[bi];
   const lat = (px - curbData.pts[bi].x) * nv.x + (pz - curbData.pts[bi].z) * nv.z;
-  const w = curbData.width, gw = curbData.grassWidth || 5;
+  const w = curbData.width;
+  const gwL = curbData.grassL ? (curbData.grassL[bi] || 0) : 50;
+  const gwR = curbData.grassR ? (curbData.grassR[bi] || 0) : 50;
   const gl = curbData.wl[bi] + w, gr = curbData.wr[bi] + w;
-  return (lat > gl && lat < gl + gw) || (lat < -gr && lat > -(gr + gw));
+  return (lat > gl && lat < gl + gwL) || (lat < -gr && lat > -(gr + gwR));
 }
 
 function carOnGravel() {
@@ -2087,10 +2089,12 @@ function carOnGravel() {
   const bi = _nearestTrackPoint(px, pz);
   const nv = curbData.nrm[bi];
   const lat = (px - curbData.pts[bi].x) * nv.x + (pz - curbData.pts[bi].z) * nv.z;
-  const w = curbData.width, gw = curbData.grassWidth || 5;
-  const gL = curbData.gravelL ? (curbData.gravelL[bi] || 0) : 6;
-  const gR = curbData.gravelR ? (curbData.gravelR[bi] || 0) : 6;
-  const gl = curbData.wl[bi] + w + gw, gr = curbData.wr[bi] + w + gw;
+  const w = curbData.width;
+  const gwL = curbData.grassL ? (curbData.grassL[bi] || 0) : 50;
+  const gwR = curbData.grassR ? (curbData.grassR[bi] || 0) : 50;
+  const gL = curbData.gravelL ? (curbData.gravelL[bi] || 0) : 0;
+  const gR = curbData.gravelR ? (curbData.gravelR[bi] || 0) : 0;
+  const gl = curbData.wl[bi] + w + gwL, gr = curbData.wr[bi] + w + gwR;
   return (lat > gl && lat < gl + gL) || (lat < -gr && lat > -(gr + gR));
 }
 
