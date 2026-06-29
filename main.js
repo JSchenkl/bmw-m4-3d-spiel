@@ -1761,6 +1761,7 @@ const race = {
 };
 const lightsEl = document.getElementById('start-lights');
 const raceStartBtn = document.getElementById('race-start-btn');
+const raceSkipBtn = document.getElementById('race-skip-btn');
 const raceInfoEl = document.getElementById('race-info');
 const penaltyEl = document.getElementById('penalty-msg');
 const _hd = new THREE.Vector3();
@@ -1792,9 +1793,10 @@ function startRaceQuali() {
   race.penalty = 0;
   race.litCount = -1;
   raceStartBtn.classList.remove('visible');
+  raceSkipBtn.classList.add('visible');
   lightsEl.classList.remove('visible');
   renderLights(0);
-  setRaceInfo('QUALIFIKATION — fahre eine schnelle Runde');
+  setRaceInfo('QUALIFIKATION — fahre eine schnelle Runde (oder „Sofort starten")');
 }
 
 function raceReset() {
@@ -1803,6 +1805,7 @@ function raceReset() {
   race.jumpStart = false;
   race.penalty = 0;
   raceStartBtn.classList.remove('visible');
+  raceSkipBtn.classList.remove('visible');
   lightsEl.classList.remove('visible');
   penaltyEl.classList.remove('visible');
   renderLights(0);
@@ -1849,6 +1852,7 @@ function setupGrid() {
   renderLights(0);
   lightsEl.classList.add('visible');
   raceStartBtn.classList.remove('visible');
+  raceSkipBtn.classList.remove('visible');
   setRaceInfo(`Startplatz ${race.playerGrid + 1} von ${BOT_COUNT + 1} — warte auf die Ampel`);
 }
 
@@ -1896,6 +1900,10 @@ function updateRace(dt) {
 }
 
 raceStartBtn.addEventListener('click', setupGrid);
+raceSkipBtn.addEventListener('click', () => {
+  if (race.qualiTime == null) race.qualiTime = 90; // Platzhalter ⇒ mittlerer Startplatz
+  setupGrid();
+});
 
 // ---------- Boxengasse: geparkte Autos + animierte Boxencrew (Reifenwechsel) ----------
 let pitScene = null;
