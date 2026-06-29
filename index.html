@@ -39,6 +39,41 @@
       opacity: 0; transition: opacity 0.3s;
     }
     #race-msg.visible { opacity: 1; }
+    /* F1-Startampel */
+    #start-lights {
+      position: absolute; top: 13%; left: 50%; transform: translateX(-50%);
+      z-index: 40; display: none; gap: 16px;
+    }
+    #start-lights.visible { display: flex; }
+    #start-lights .light {
+      width: 46px; height: 46px; border-radius: 50%;
+      background: #2a0000; border: 3px solid #0a0a0a;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.85);
+    }
+    #start-lights .light.on {
+      background: #ff2020;
+      box-shadow: 0 0 26px #ff2020, 0 0 10px #ff5050, inset 0 0 8px #ff7070;
+    }
+    /* Renn-Info (Quali/Strafe) */
+    #race-info {
+      position: absolute; top: 132px; left: 50%; transform: translateX(-50%);
+      z-index: 30; display: none; text-align: center;
+      font-family: 'Segoe UI', Arial, sans-serif; font-size: 16px; font-weight: 600;
+      color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+    }
+    #race-info.visible { display: block; }
+    /* „Rennen starten"-Knopf */
+    #race-start-btn {
+      position: absolute; bottom: 12%; left: 50%; transform: translateX(-50%);
+      z-index: 45; display: none; cursor: pointer;
+      padding: 18px 50px; font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #fff;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(115deg, #0653a0, #2aa6e0 50%, #e2001a);
+      border: none; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      transition: transform 0.12s, filter 0.12s;
+    }
+    #race-start-btn.visible { display: block; }
+    #race-start-btn:hover { transform: translateX(-50%) scale(1.05); filter: brightness(1.1); }
 
     /* Im Startmodus ist das Menü nur Deko – nicht bedienbar */
     #ui.start-mode { pointer-events: none; }
@@ -325,6 +360,13 @@
   </div>
 
   <div id="race-msg"></div>
+
+  <!-- F1-Startampel, Renn-Info und „Rennen starten"-Knopf -->
+  <div id="start-lights">
+    <i class="light"></i><i class="light"></i><i class="light"></i><i class="light"></i><i class="light"></i>
+  </div>
+  <div id="race-info"></div>
+  <button id="race-start-btn">RENNEN STARTEN</button>
   <div id="credit">
     Modell: „BMW M4 Competition M Package" von SRT Performance ·
     <a href="https://sketchfab.com/3d-models/bmw-m4-competition-m-package-5c0a2dafb1ad408d9fc9eeef9aee531b" target="_blank">Sketchfab</a> · Lizenz CC-BY 4.0<br>
