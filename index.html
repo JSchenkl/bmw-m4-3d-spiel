@@ -62,6 +62,17 @@
       color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.9);
     }
     #race-info.visible { display: block; }
+    /* Zeitstrafe – roter Rahmen, unten, nur kurz sichtbar */
+    #penalty-msg {
+      position: absolute; bottom: 9%; left: 50%; transform: translateX(-50%);
+      z-index: 46; display: none; pointer-events: none; text-align: center;
+      padding: 14px 30px; border: 3px solid #ff2020; border-radius: 14px;
+      background: rgba(45,0,0,0.55);
+      color: #ff5a5a; font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 20px; font-weight: 800; letter-spacing: 1px;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.85); box-shadow: 0 0 22px rgba(255,32,32,0.4);
+    }
+    #penalty-msg.visible { display: block; }
     /* „Rennen starten"-Knopf */
     #race-start-btn {
       position: absolute; bottom: 12%; left: 50%; transform: translateX(-50%);
@@ -366,6 +377,7 @@
     <i class="light"></i><i class="light"></i><i class="light"></i><i class="light"></i><i class="light"></i>
   </div>
   <div id="race-info"></div>
+  <div id="penalty-msg"></div>
   <button id="race-start-btn">RENNEN STARTEN</button>
   <div id="credit">
     Modell: „BMW M4 Competition M Package" von SRT Performance ·
