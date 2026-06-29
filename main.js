@@ -174,8 +174,7 @@ const STEER_WHEEL = {
 
 let carYaw = 0; // aktueller Drehwinkel des Autos um die Hochachse
 let carRoll = 0; // aktuelle Seitenneigung (Roll) – z. B. wenn ein Rad auf dem Curb steht
-let rearSlip = 0;    // geglätteter Heck-Schlupf (0 = Grip, >0 = Räder drehen durch → Heck bricht aus)
-let lateralVel = 0; // Seitengeschwindigkeit (m/s) für Gras-Sliding; positiv = nach rechts vom Auto
+let rearSlip = 0; // geglätteter Heck-Schlupf (0 = Grip, >0 = Räder drehen durch → Heck bricht aus)
 const UP = new THREE.Vector3(0, 1, 0);
 const CURB_TILT = 0.056; // max. Neigung auf dem Randstein (rad, ~3,2°; 20 % flacher)
 const _yawQ = new THREE.Quaternion();
@@ -1268,9 +1267,6 @@ function updateCar(dt) {
 
     const aLat = Math.abs(speed * omega);
     if (aLat > latMax) {
-      // Überschuss-Zentripetalkraft → baut Seitengeschwindigkeit auf (Wegrutschen)
-      const excessAcc = aLat - latMax;
-      lateralVel += -Math.sign(omega) * excessAcc * dt; // Slide nach außen aus der Kurve
       omega *= latMax / aLat;
       speed -= Math.sign(speed) * Math.min(2 * dt, Math.abs(speed));
     }
@@ -1278,21 +1274,13 @@ function updateCar(dt) {
     carYaw += omega * dt;
   }
 
-  // Seitengeschwindigkeit: Reibung bremst sie ab (auf Gras viel schwächer → längeres Rutschen)
-  const latFriction = MAX_LAT_ACC * surfaceGrip * 0.8;
-  const latDecay = Math.min(Math.abs(lateralVel), latFriction * dt);
-  lateralVel -= Math.sign(lateralVel) * latDecay;
-  lateralVel = Math.max(-25, Math.min(25, lateralVel)); // physikalische Obergrenze
-
   // Heck-Schlupf glätten
   rearSlip += (slipTarget - rearSlip) * Math.min(1, dt * 8);
 
-  // Bewegung: Fahrtrichtung + seitliches Rutschen
-  if ((speed !== 0 || lateralVel !== 0) && carForward) {
+  // Bewegung in Blickrichtung der Fahrzeugfront
+  if (speed !== 0 && carForward) {
     const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
-    const right = new THREE.Vector3(-fwd.z, 0, fwd.x); // rechts vom Auto (senkrecht zu fwd, Y-oben)
     carGroup.position.addScaledVector(fwd, speed * dt);
-    carGroup.position.addScaledVector(right, lateralVel * dt);
   }
 
   // Kollisionen mit Mauern und Gebäuden auflösen
@@ -1625,8 +1613,7 @@ btnPit.addEventListener('click', () => {
   carRoll = 0;
   gear = 1;
   prevGearSound = 1;
-  lateralVel = 0;
-  alignCarToPitlane();                 // in Fahrtrichtung der Boxengasse ausrichten
+   alignCarToPitlane();                 // in Fahrtrichtung der Boxengasse ausrichten
   prevCarPos.copy(carGroup.position);  // keinen Kamerasprung erzeugen
   armLap();                            // frische, gemessene Runde ab der Box
   updateLapHud();
@@ -1642,8 +1629,7 @@ btnHome.addEventListener('click', () => {
 
   // Auto an den Startplatz, Tempo/Gang zurück
   carGroup.position.set(0, 0.05, 0);
-  speed = 0; steerAngle = 0; carRoll = 0; gear = 1; prevGearSound = 1; lateralVel = 0;
-  alignCarToPitlane();
+  speed = 0; steerAngle = 0; carRoll = 0; gear = 1; prevGearSound = 1;  alignCarToPitlane();
   prevCarPos.copy(carGroup.position);
 
   // Ton stumm – beim nächsten Start wieder ab erstem Knopfdruck
