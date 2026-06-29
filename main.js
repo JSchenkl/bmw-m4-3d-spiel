@@ -864,7 +864,8 @@ btnMenu.addEventListener('click', () => toggleMenu());
 // ---------- Menü-Navigation per Controller (D-Pad hoch/runter, A wählt aus) ----------
 let menuIndex = 0;
 function getMenuItems() {
-  return Array.from(uiPanel.querySelectorAll('.btn'));
+  // nur sichtbare Buttons (ausgeblendete Renn-Knöpfe nicht per D-Pad ansteuern)
+  return Array.from(uiPanel.querySelectorAll('.btn')).filter((b) => b.offsetParent !== null);
 }
 function highlightMenuItem() {
   const items = getMenuItems();
@@ -1530,7 +1531,7 @@ function updateTimeAttack(dt) {
       if (raceMode && race.phase === 'quali') {
         race.qualiTime = ghost.lapElapsed;
         race.phase = 'qualiDone';
-        raceStartBtn.classList.add('visible');
+        setRaceStartVisible(true);
         setRaceInfo(`Quali: ${fmtTime(race.qualiTime)} — bereit? „Rennen starten" drücken`);
       }
     } else {
@@ -1763,7 +1764,19 @@ const race = {
 const lightsEl = document.getElementById('start-lights');
 const raceStartBtn = document.getElementById('race-start-btn');
 const raceSkipBtn = document.getElementById('race-skip-btn');
+const btnRaceStartMenu = document.getElementById('btn-race-start');
+const btnRaceSkipMenu = document.getElementById('btn-race-skip');
 const raceInfoEl = document.getElementById('race-info');
+
+// „Rennen starten"/„Quali überspringen" gibt es als Bildschirm-Einblendung UND im ☰-Menü
+function setRaceStartVisible(v) {
+  raceStartBtn.classList.toggle('visible', v);
+  btnRaceStartMenu.style.display = v ? '' : 'none';
+}
+function setRaceSkipVisible(v) {
+  raceSkipBtn.classList.toggle('visible', v);
+  btnRaceSkipMenu.style.display = v ? '' : 'none';
+}
 const penaltyEl = document.getElementById('penalty-msg');
 const _hd = new THREE.Vector3();
 
@@ -1794,8 +1807,8 @@ function startRaceQuali() {
   race.jumpStart = false;
   race.penalty = 0;
   race.litCount = -1;
-  raceStartBtn.classList.remove('visible');
-  raceSkipBtn.classList.add('visible');
+  setRaceStartVisible(false);
+  setRaceSkipVisible(true);
   lightsEl.classList.remove('visible');
   renderLights(0);
   setRaceInfo('QUALIFIKATION — fahre eine schnelle Runde (oder „Sofort starten")');
@@ -1807,8 +1820,8 @@ function raceReset() {
   race.skipped = false;
   race.jumpStart = false;
   race.penalty = 0;
-  raceStartBtn.classList.remove('visible');
-  raceSkipBtn.classList.remove('visible');
+  setRaceStartVisible(false);
+  setRaceSkipVisible(false);
   lightsEl.classList.remove('visible');
   penaltyEl.classList.remove('visible');
   renderLights(0);
@@ -1857,8 +1870,8 @@ function setupGrid() {
   race.holdAfter = 1 + Math.random() * 2;
   renderLights(0);
   lightsEl.classList.add('visible');
-  raceStartBtn.classList.remove('visible');
-  raceSkipBtn.classList.remove('visible');
+  setRaceStartVisible(false);
+  setRaceSkipVisible(false);
   setRaceInfo(`Startplatz ${race.playerGrid + 1} von ${BOT_COUNT + 1} — warte auf die Ampel`);
 }
 
@@ -1910,6 +1923,9 @@ raceSkipBtn.addEventListener('click', () => {
   race.skipped = true; // Quali übersprungen ⇒ Start ganz hinten
   setupGrid();
 });
+// gleiche Aktionen auch über das ☰-Menü; Menü dabei schließen, damit es weitergeht
+btnRaceStartMenu.addEventListener('click', () => { setupGrid(); toggleMenu(false); });
+btnRaceSkipMenu.addEventListener('click', () => { race.skipped = true; setupGrid(); toggleMenu(false); });
 
 // ---------- Boxengasse: geparkte Autos + animierte Boxencrew (Reifenwechsel) ----------
 let pitScene = null;
