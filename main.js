@@ -1600,6 +1600,47 @@ btnPit.addEventListener('click', () => {
   updateLapHud();
 });
 
+// Zurück zum Start: laufendes Spiel beenden und den Startbildschirm wieder zeigen
+const btnHome = document.getElementById('btn-home');
+btnHome.addEventListener('click', () => {
+  gameStarted = false;
+  raceMode = false;
+  removeBots();
+
+  // Auto an den Startplatz, Tempo/Gang zurück
+  carGroup.position.set(0, 0.05, 0);
+  speed = 0; steerAngle = 0; carRoll = 0; gear = 1; prevGearSound = 1;
+  alignCarToPitlane();
+  prevCarPos.copy(carGroup.position);
+
+  // Ton stumm – beim nächsten Start wieder ab erstem Knopfdruck
+  engineAudio.setEnabled(false);
+  audioUnlocked = false;
+
+  // HUD/Pause aus, Menü zurück in den (nicht bedienbaren) Startmodus-Deko-Zustand
+  uiPanel.classList.remove('hidden');
+  uiPanel.classList.add('start-mode');
+  btnMenu.classList.remove('active');
+  pauseLabel.classList.remove('visible');
+  document.getElementById('hud-top').style.display = 'none';
+  document.getElementById('laptimer').style.display = 'none';
+  document.getElementById('title').style.display = 'none';
+
+  // Startbildschirm-Optik: Verfolgerkamera mit Auto-Rotation, Nachtmodus + Lichter
+  cameraMode = 0;
+  applyCameraMode();
+  controls.autoRotate = true;
+  btnRotate.textContent = '🔄 Auto-Rotation: AN';
+  isNight = true; headlightsOn = true; taillightsOn = true;
+  applyMode();
+
+  // Modus-Screen sicher aus, Startbildschirm wieder einblenden
+  document.getElementById('mode-screen').classList.remove('visible');
+  const ss = document.getElementById('start-screen');
+  ss.style.display = '';
+  requestAnimationFrame(() => ss.classList.add('visible'));
+});
+
 // ---------- Gegner-Bots ----------
 // Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
@@ -1654,6 +1695,12 @@ function updateBots(dt) {
     bot.group.quaternion.setFromUnitVectors(carForward, _botFwd); // Front entlang der Strecke
     botColliders.push({ cx: x, cz: z, ax: c.tx, az: c.tz, halfLen: carHalf.len, halfWid: carHalf.wid });
   }
+}
+
+function removeBots() {
+  for (const bot of bots) scene.remove(bot.group);
+  bots.length = 0;
+  botColliders = [];
 }
 
 // ---------- Resize & Render-Loop ----------
