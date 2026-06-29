@@ -834,6 +834,9 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
     gameStarted = true;
     armLap();
 
+    // Ghost-Car nur im Training anzeigen
+    document.getElementById('btn-ghost').style.display = isRace ? 'none' : '';
+
     // Rennmodus: erst Qualifikation; Training: kein Rennablauf
     if (raceMode) startRaceQuali(); else raceReset();
   }
@@ -1631,6 +1634,7 @@ btnHome.addEventListener('click', () => {
   audioUnlocked = false;
 
   // HUD/Pause aus, Menü zurück in den (nicht bedienbaren) Startmodus-Deko-Zustand
+  document.getElementById('btn-ghost').style.display = '';
   uiPanel.classList.remove('hidden');
   uiPanel.classList.add('start-mode');
   btnMenu.classList.remove('active');

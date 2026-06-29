@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BMW M4 Viewer</title>
+  <title>BMW M4 Rennspiel</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dseg@0.46.0/css/dseg.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -349,6 +349,7 @@
   <button class="btn" id="menu-toggle">☰ Menü <span class="key">M</span></button>
   <div id="ui" class="start-mode">
     <div id="commit-id">Build __COMMIT_ID__</div>
+    <script>{ const el = document.getElementById('commit-id'); if (el.textContent.includes('__COMMIT_ID__')) el.textContent = 'Build lokal'; }</script>
     <button class="btn" id="btn-race-start" style="display:none">🏁 Rennen starten</button>
     <button class="btn" id="btn-race-skip" style="display:none">⏩ Quali überspringen</button>
     <button class="btn" id="btn-daynight">🌙 Nachtmodus</button>
@@ -366,7 +367,7 @@
 
   <div id="title" style="display:none">
     <h1>BMW M4 COMPETITION</h1>
-    <p>M Package &middot; 3D Viewer</p>
+    <p>M Package &middot; 3D Rennspiel</p>
   </div>
 
   <div id="hint" style="display:none">
