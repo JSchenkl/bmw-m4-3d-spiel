@@ -213,13 +213,15 @@ export async function createSpaTrack() {
     });
   }
 
-  // --- Auslaufzone: Kiesbett + Bande (außerhalb der Curbs; überschneidet die Strecke nicht) ---
+  // --- Auslaufzone: Gras + Kiesbett + Bande (außerhalb der Curbs; überschneidet die Strecke nicht) ---
+  const GRASS_WIDTH = 5;       // Grasstreifen zwischen Curb-Außenkante und Kiesbett
   const GRAVEL_MAX = 6;        // maximale Kiesbett-Breite (offene Auslaufzonen)
   const BARRIER_H = 1.0;
   const STRIPE = 6;            // Streifenlänge der rot/weißen Leitplanke (Meter)
   const SAFE = 1.5;            // Sicherheitsabstand zu anderen Streckenteilen
   const pitSet = new Set(seq); // Boxengassen-Bereich (Pit-Seite dort aussparen)
   let gravelL = null, gravelR = null; // Kiesbett-Breite je Punkt (für Staub-Erkennung)
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x3a7d2c, roughness: 1, side: THREE.DoubleSide });
   const gravelMat = new THREE.MeshStandardMaterial({ color: 0xc9b489, roughness: 1, side: THREE.DoubleSide });
   const railRedMat = new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.55, metalness: 0.3, side: THREE.DoubleSide });
   const railWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.55, metalness: 0.3, side: THREE.DoubleSide });
@@ -232,7 +234,7 @@ export async function createSpaTrack() {
   function gravelWidths(w) {
     const gw = new Array(n).fill(GRAVEL_MAX);
     for (let i = 0; i < n; i++) {
-      const base = pts[i].clone().addScaledVector(leftNs[i], (w[i] + CURB_WIDTH));
+      const base = pts[i].clone().addScaledVector(leftNs[i], (w[i] + CURB_WIDTH + GRASS_WIDTH));
       const dir = leftNs[i]; // Einheitsvektor nach außen (side wird über w abgebildet)
       let lim = GRAVEL_MAX;
       for (let j = 0; j < n; j++) {
@@ -275,21 +277,31 @@ export async function createSpaTrack() {
   for (const side of [1, -1]) {                // 1 = links, -1 = rechts (Boxengassenseite)
     const w = side === 1 ? wLeft : wRight;
     const gw = gravelWidths(w);
-    const inner = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH)));
-    const outer = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH + gw[i])));
+    const grassInner = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH)));
+    const grassOuter = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH + GRASS_WIDTH)));
+    const inner = grassOuter; // Kiesbett beginnt an der Gras-Außenkante
+    const outer = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH + GRASS_WIDTH + gw[i])));
     if (side === 1) gravelL = gw; else gravelR = gw;
 
     // Segmentweise aufbauen, damit auf der Boxengassenseite der Pit-Bereich
     // ausgespart wird (sonst überschneiden Kies/Bande die Boxengasse & den Start).
+    const grass = { pos: [], idx: [] };
     const gravel = { pos: [], idx: [] };
     const red = { pos: [], idx: [] }, white = { pos: [], idx: [] }, top = { pos: [], idx: [] };
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
       if (side === -1 && (pitSet.has(i) || pitSet.has(j))) continue; // Pit-Bereich frei lassen
+      const gi = grassInner[i], gj = grassInner[j], goi = grassOuter[i], goj = grassOuter[j];
       const ai = inner[i], aj = inner[j], oi = outer[i], oj = outer[j];
-      // Kiesbett-Fläche (zwei Dreiecke), Winding so, dass sie nach oben zeigt
-      const gy = ASPHALT_Y + 0.005, go = gravel.pos.length / 3;
-      gravel.pos.push(ai.x, gy, ai.z, oi.x, gy, oi.z, aj.x, gy, aj.z, oj.x, gy, oj.z);
+      const gy = ASPHALT_Y + 0.003;
+      // Gras-Fläche
+      const ggo = grass.pos.length / 3;
+      grass.pos.push(gi.x, gy, gi.z, goi.x, gy, goi.z, gj.x, gy, gj.z, goj.x, gy, goj.z);
+      if (side === 1) grass.idx.push(ggo, ggo + 2, ggo + 1, ggo + 1, ggo + 2, ggo + 3);
+      else grass.idx.push(ggo, ggo + 1, ggo + 2, ggo + 1, ggo + 3, ggo + 2);
+      // Kiesbett-Fläche
+      const go = gravel.pos.length / 3;
+      gravel.pos.push(ai.x, gy + 0.002, ai.z, oi.x, gy + 0.002, oi.z, aj.x, gy + 0.002, aj.z, oj.x, gy + 0.002, oj.z);
       if (side === 1) gravel.idx.push(go, go + 2, go + 1, go + 1, go + 2, go + 3);
       else gravel.idx.push(go, go + 1, go + 2, go + 1, go + 3, go + 2);
       // rot/weiße Leitplanke an der Kies-Außenkante
@@ -301,7 +313,6 @@ export async function createSpaTrack() {
       const to = top.pos.length / 3;
       top.pos.push(oi.x, BARRIER_H, oi.z, oi.x, BARRIER_H + 0.12, oi.z, oj.x, BARRIER_H, oj.z, oj.x, BARRIER_H + 0.12, oj.z);
       top.idx.push(to, to + 2, to + 1, to + 1, to + 2, to + 3);
-
     }
     // Kollisionssegmente (dezimiert, je 3 Punkte); Pit-Bereich auslassen
     for (let i = 0; i < n; i += 3) {
@@ -312,6 +323,7 @@ export async function createSpaTrack() {
       const mid = a.clone().add(b).multiplyScalar(0.5);
       colliders.push({ cx: mid.x, cz: mid.z, ax: (b.x - a.x) / len, az: (b.z - a.z) / len, halfLen: len / 2 + 0.1, halfWid: 0.25 });
     }
+    const grassMesh = new THREE.Mesh(mkGeo(grass), grassMat); grassMesh.receiveShadow = true; group.add(grassMesh);
     const gMesh = new THREE.Mesh(mkGeo(gravel), gravelMat); gMesh.receiveShadow = true; group.add(gMesh);
     for (const part of [[red, railRedMat], [white, railWhiteMat], [top, railTopMat]]) {
       const mesh = new THREE.Mesh(mkGeo(part[0]), part[1]);
@@ -337,6 +349,7 @@ export async function createSpaTrack() {
   // und Fahrbahnbreiten je Punkt. main.js prüft damit, ob ein Rad auf einem Curb steht.
   const curbData = {
     width: CURB_WIDTH,
+    grassWidth: GRASS_WIDTH,
     gravelL: gravelL ? gravelL.slice() : null,
     gravelR: gravelR ? gravelR.slice() : null,
     pts: pts.map((p) => ({ x: p.x - spawn.x, z: p.z - spawn.z })),

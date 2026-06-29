@@ -1201,6 +1201,9 @@ function updateCar(dt) {
     applyTaillights();
   }
 
+  // Untergrund-Grip: Gras = 10 % Haftung
+  const surfaceGrip = carOnGrass() ? 0.1 : 1.0;
+
   // Längsdynamik: Kräftebilanz aus Antrieb, Luft- und Rollwiderstand
   const v = Math.abs(speed);
   const fDrag = 0.5 * RHO_AIR * CD_AREA * v * v;          // Luftwiderstand
@@ -1215,7 +1218,7 @@ function updateCar(dt) {
   const reverseInput = gear === 0 ? Math.max(throttle, reverse) : reverse;
 
   if (braking) {
-    accel = -Math.sign(speed) * (BRAKE_DECEL * brakeInput + (fDrag + fRoll) / MASS);
+    accel = -Math.sign(speed) * (BRAKE_DECEL * brakeInput * surfaceGrip + (fDrag + fRoll) / MASS);
     // nicht über den Nullpunkt hinaus bremsen
     if (Math.abs(accel * dt) >= v) { speed = 0; accel = 0; }
   } else if (gear >= 1 && throttle) {
@@ -1258,8 +1261,9 @@ function updateCar(dt) {
     let omega = (speed / WHEELBASE) * Math.tan(steerAngle);
 
     // Kammscher Kreis: wer stark bremst oder beschleunigt, hat weniger Seitengrip
-    const usedLong = Math.min(Math.abs(accel) / MAX_LAT_ACC, 0.9);
-    const latMax = Math.max(0.3 * MAX_LAT_ACC, MAX_LAT_ACC * Math.sqrt(1 - usedLong * usedLong));
+    const latAcc = MAX_LAT_ACC * surfaceGrip;
+    const usedLong = Math.min(Math.abs(accel) / latAcc, 0.9);
+    const latMax = Math.max(0.3 * latAcc, latAcc * Math.sqrt(1 - usedLong * usedLong));
 
     const aLat = Math.abs(speed * omega);
     if (aLat > latMax) {
@@ -2044,20 +2048,37 @@ function updatePitScene(dt) {
   }
 }
 
-// ---------- Kiesbett: Erkennung, Staub-Partikel, Bremswirkung ----------
-function carOnGravel() {
-  if (!curbData) return false;
-  const px = carGroup.position.x, pz = carGroup.position.z;
+// ---------- Untergrund-Erkennung: Gras + Kiesbett ----------
+function _nearestTrackPoint(px, pz) {
+  if (!curbData) return -1;
   const P = curbData.pts;
   let bi = 0, bd = Infinity;
   for (let i = 0; i < P.length; i++) { const dx = px - P[i].x, dz = pz - P[i].z, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = i; } }
+  return bi;
+}
+
+function carOnGrass() {
+  if (!curbData) return false;
+  const px = carGroup.position.x, pz = carGroup.position.z;
+  const bi = _nearestTrackPoint(px, pz);
   const nv = curbData.nrm[bi];
-  const lat = (px - P[bi].x) * nv.x + (pz - P[bi].z) * nv.z; // links +, rechts −
-  const w = curbData.width;
+  const lat = (px - curbData.pts[bi].x) * nv.x + (pz - curbData.pts[bi].z) * nv.z;
+  const w = curbData.width, gw = curbData.grassWidth || 5;
+  const gl = curbData.wl[bi] + w, gr = curbData.wr[bi] + w;
+  return (lat > gl && lat < gl + gw) || (lat < -gr && lat > -(gr + gw));
+}
+
+function carOnGravel() {
+  if (!curbData) return false;
+  const px = carGroup.position.x, pz = carGroup.position.z;
+  const bi = _nearestTrackPoint(px, pz);
+  const nv = curbData.nrm[bi];
+  const lat = (px - curbData.pts[bi].x) * nv.x + (pz - curbData.pts[bi].z) * nv.z;
+  const w = curbData.width, gw = curbData.grassWidth || 5;
   const gL = curbData.gravelL ? (curbData.gravelL[bi] || 0) : 6;
   const gR = curbData.gravelR ? (curbData.gravelR[bi] || 0) : 6;
-  const gl = curbData.wl[bi] + w, gr = curbData.wr[bi] + w;
-  return (lat > gl && lat < gl + gL) || (lat < -gr && lat > -(gr + gR)); // im Kiesstreifen?
+  const gl = curbData.wl[bi] + w + gw, gr = curbData.wr[bi] + w + gw;
+  return (lat > gl && lat < gl + gL) || (lat < -gr && lat > -(gr + gR));
 }
 
 const DUST_N = 140;
