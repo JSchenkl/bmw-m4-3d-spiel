@@ -1730,7 +1730,17 @@ const race = {
 const lightsEl = document.getElementById('start-lights');
 const raceStartBtn = document.getElementById('race-start-btn');
 const raceInfoEl = document.getElementById('race-info');
+const penaltyEl = document.getElementById('penalty-msg');
 const _hd = new THREE.Vector3();
+
+// Strafmeldung im roten Rahmen unten – nur ~10 Sek sichtbar
+let penaltyMsgTimer = null;
+function showPenaltyMsg(text) {
+  penaltyEl.textContent = text;
+  penaltyEl.classList.add('visible');
+  clearTimeout(penaltyMsgTimer);
+  penaltyMsgTimer = setTimeout(() => penaltyEl.classList.remove('visible'), 10000);
+}
 
 function setRaceInfo(text) {
   if (!text) { raceInfoEl.classList.remove('visible'); return; }
@@ -1762,6 +1772,7 @@ function raceReset() {
   race.penalty = 0;
   raceStartBtn.classList.remove('visible');
   lightsEl.classList.remove('visible');
+  penaltyEl.classList.remove('visible');
   renderLights(0);
   setRaceInfo('');
 }
@@ -1833,24 +1844,21 @@ function updateRace(dt) {
     if (!race.jumpStart && Math.abs(speed) > 0.8) {
       race.jumpStart = true;
       race.penalty = 15;
-      showRaceMsg('Frühstart! 15 Sek Strafe', '#ff5252');
+      showPenaltyMsg('⚠ FRÜHSTART — 15 Sek Zeitstrafe in der Boxengasse absitzen');
     }
     if (race.lightT >= 5 + race.holdAfter) {
       race.phase = 'go';
       renderLights(0);
       lightsEl.classList.remove('visible');
+      setRaceInfo('');
       showRaceMsg('LOS!', '#69f0ae');
     }
   } else if (race.phase === 'go') {
     if (race.penalty > 0) {
       if (inPitZone() && Math.abs(speed) < 2) race.penalty = Math.max(0, race.penalty - dt);
-      setRaceInfo(`STRAFE: ${Math.ceil(race.penalty)}s — in die Boxengasse fahren und anhalten`);
     } else if (race.jumpStart) {
       race.jumpStart = false;
       showRaceMsg('Strafe abgesessen – freie Fahrt', '#69f0ae');
-      setRaceInfo('');
-    } else {
-      setRaceInfo('');
     }
   }
 }
