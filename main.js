@@ -1867,7 +1867,7 @@ function setupGrid() {
   race.phase = 'lights';
   race.lightT = 0;
   race.litCount = -1;
-  race.holdAfter = 1 + Math.random() * 2;
+  race.holdAfter = 2 + Math.random() * 6; // Gesamtdauer der Ampel = 5 s + 2…8 s = 7…13 s
   renderLights(0);
   lightsEl.classList.add('visible');
   setRaceStartVisible(false);
