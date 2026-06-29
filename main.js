@@ -1658,8 +1658,11 @@ btnHome.addEventListener('click', () => {
 // Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
 const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
-const BOT_SPEED = 45;           // m/s (~162 km/h) Reisetempo der Bots
-const BOT_ACCEL = 15;           // m/s² Beschleunigung am Start
+const BOT_MAX_SPEED = 78;       // m/s (~280 km/h) Höchsttempo auf Geraden
+const BOT_MIN_SPEED = 22;       // m/s Mindesttempo in engen Kurven
+const BOT_LAT_ACC = 26;         // seitliche Beschleunigung → bestimmt das Kurventempo
+const BOT_ACCEL = 15;           // m/s² Längsbeschleunigung
+const BOT_BRAKE = 24;           // m/s² Bremsverzögerung vor Kurven
 const bots = [];                // { group, s, offset }
 const _botFwd = new THREE.Vector3();
 
@@ -1678,6 +1681,20 @@ function centerlineAt(arc) {
   let tx = P[j].x - P[i].x, tz = P[j].z - P[i].z;
   const tl = Math.hypot(tx, tz) || 1;
   return { x, z, tx: tx / tl, tz: tz / tl };
+}
+
+// Empfohlenes Bot-Tempo an Bogenlänge `s`: hoch auf Geraden, in Kurven nach dem
+// Kurvenradius begrenzt (v = sqrt(seitl.Beschl. · Radius)).
+function botTargetSpeed(s) {
+  const L = 28;
+  const p0 = centerlineAt(s), p1 = centerlineAt(s + L), p2 = centerlineAt(s + 2 * L);
+  let d1x = p1.x - p0.x, d1z = p1.z - p0.z; const l1 = Math.hypot(d1x, d1z) || 1; d1x /= l1; d1z /= l1;
+  let d2x = p2.x - p1.x, d2z = p2.z - p1.z; const l2 = Math.hypot(d2x, d2z) || 1; d2x /= l2; d2z /= l2;
+  let cosA = d1x * d2x + d1z * d2z; cosA = Math.max(-1, Math.min(1, cosA));
+  const kappa = Math.acos(cosA) / L; // Krümmung (Richtungsänderung pro Meter)
+  if (kappa < 1e-4) return BOT_MAX_SPEED;
+  const v = Math.sqrt(BOT_LAT_ACC / kappa); // = sqrt(aLat · Radius)
+  return Math.max(BOT_MIN_SPEED, Math.min(BOT_MAX_SPEED, v));
 }
 
 // Kind-Index-Pfad von root zu target (für das Wiederfinden der Rad-Pivots in Klonen)
@@ -1737,7 +1754,9 @@ function updateBots(dt) {
     if (race.phase === 'go') {
       bot.launchTimer += dt;
       if (bot.launchTimer >= bot.reaction) {        // erst nach eigener Reaktionszeit losfahren
-        bot.v = Math.min(BOT_SPEED, bot.v + BOT_ACCEL * dt); // aus dem Stand hochbeschleunigen
+        const target = botTargetSpeed(bot.s + 14);  // etwas vorausschauen → rechtzeitig bremsen
+        if (bot.v < target) bot.v = Math.min(target, bot.v + BOT_ACCEL * dt); // Gas
+        else bot.v = Math.max(target, bot.v - BOT_BRAKE * dt);                // Bremse vor Kurven
         bot.s = (bot.s + bot.v * dt) % centerline.total;
         for (const w of bot.wheels) w.spin.rotateOnAxis(w.axisLocal, (bot.v / w.radius) * dt); // Räder passend drehen
       }
