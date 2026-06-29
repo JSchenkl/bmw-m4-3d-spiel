@@ -1678,32 +1678,64 @@ function centerlineAt(arc) {
   return { x, z, tx: tx / tl, tz: tz / tl };
 }
 
+// Kind-Index-Pfad von root zu target (für das Wiederfinden der Rad-Pivots in Klonen)
+function nodeIndexPath(root, target) {
+  const path = [];
+  let found = false;
+  (function dfs(node) {
+    if (found) return;
+    if (node === target) { found = true; return; }
+    for (let i = 0; i < node.children.length && !found; i++) { path.push(i); dfs(node.children[i]); if (!found) path.pop(); }
+  })(root);
+  return found ? path.slice() : null;
+}
+function resolveNodePath(root, path) {
+  let n = root;
+  for (const i of path) { n = n && n.children[i]; }
+  return n || null;
+}
+
 function createBots() {
+  // Pfade zu den Rad-Drehpivots im Spielermodell ermitteln, um sie in den Klonen mitzudrehen
+  const wheelPaths = wheels
+    .map((w) => ({ path: nodeIndexPath(currentCar, w.spin), axisLocal: w.axisLocal, radius: w.radius }))
+    .filter((w) => w.path);
   for (let k = 0; k < BOT_COUNT; k++) {
     const clone = currentCar.clone(true); // gleiches Auto-Modell wie der Spieler
     const group = new THREE.Group();
     group.add(clone);
     scene.add(group);
-    bots.push({ group, s: 0, offset: 0 });
+    const wheelsClone = wheelPaths
+      .map((w) => ({ spin: resolveNodePath(clone, w.path), axisLocal: w.axisLocal, radius: w.radius }))
+      .filter((w) => w.spin);
+    bots.push({ group, s: 0, offset: 0, wheels: wheelsClone });
   }
 }
 
-// Setzt einen Bot an seine aktuelle Bogenlänge/seitl. Versatz; gibt Welt-Pos + Tangente zurück
+// Setzt einen Bot an seine aktuelle Bogenlänge/seitl. Versatz; gibt Welt-Pos + Tangente zurück.
+// Die Ausrichtung kommt aus einer Vorausschau (~6 m), damit die Front nicht an jeder
+// Segmentgrenze springt (kein Ruckeln).
 function positionBot(bot) {
   const c = centerlineAt(bot.s);
-  const nx = -c.tz, nz = c.tx; // Quernormale für den seitlichen Versatz
+  const a = centerlineAt(bot.s + 6);
+  let dx = a.x - c.x, dz = a.z - c.z;
+  const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+  const nx = -dz, nz = dx; // Quernormale für den seitlichen Versatz
   const x = c.x + nx * bot.offset, z = c.z + nz * bot.offset;
   bot.group.position.set(x, carGroup.position.y, z);
-  _botFwd.set(c.tx, 0, c.tz);
+  _botFwd.set(dx, 0, dz);
   bot.group.quaternion.setFromUnitVectors(carForward, _botFwd); // Front entlang der Strecke
-  return { x, z, tx: c.tx, tz: c.tz };
+  return { x, z, tx: dx, tz: dz };
 }
 
 function updateBots(dt) {
   if (!centerline || !currentCar || !carForward || !bots.length) return;
   botColliders = [];
   for (const bot of bots) {
-    if (race.phase === 'go') bot.s = (bot.s + BOT_SPEED * dt) % centerline.total; // fahren erst nach dem Start
+    if (race.phase === 'go') {
+      bot.s = (bot.s + BOT_SPEED * dt) % centerline.total; // fahren erst nach dem Start
+      for (const w of bot.wheels) w.spin.rotateOnAxis(w.axisLocal, (BOT_SPEED / w.radius) * dt); // Räder drehen
+    }
     const p = positionBot(bot);
     botColliders.push({ cx: p.x, cz: p.z, ax: p.tx, az: p.tz, halfLen: carHalf.len, halfWid: carHalf.wid });
   }
