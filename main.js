@@ -1003,8 +1003,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') e.preventDefault(); // Seite soll nicht scrollen
   if (e.repeat) return;
   keys.add(e.code);
-  if (e.code === 'KeyE') shiftUp();   // hochschalten
-  if (e.code === 'KeyQ') shiftDown(); // runterschalten
+  if (e.code === 'KeyJ') shiftUp();   // hochschalten
+  if (e.code === 'KeyL') shiftDown(); // runterschalten
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
     // Beim Losfahren die automatische Drehung beenden
     if (controls.autoRotate) {

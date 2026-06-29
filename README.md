@@ -19,7 +19,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 | **S** / Pfeil runter | Rückwärts |
 | **A** / **D** | Lenken |
 | **Leertaste** | Bremsen |
-| **E** / **Q** | Hoch-/Runterschalten |
+| **J** / **L** | Hochschalten / Runterschalten |
 | **T** | Kamera wechseln (Verfolger / Cockpit) |
 | **M** | Menü öffnen/schließen |
 | 🎮 **Xbox-Controller** | wird automatisch erkannt (RT Gas, LT Bremse, L-Stick Lenken) |
