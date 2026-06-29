@@ -1658,7 +1658,8 @@ btnHome.addEventListener('click', () => {
 // Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
 const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
-const BOT_SPEED = 28;           // m/s (~100 km/h) konstantes Reisetempo der Bots
+const BOT_SPEED = 28;           // m/s (~100 km/h) Reisetempo der Bots
+const BOT_ACCEL = 8;            // m/s² Beschleunigung am Start (ähnlich dem Spielerauto)
 const bots = [];                // { group, s, offset }
 const _botFwd = new THREE.Vector3();
 
@@ -1734,8 +1735,12 @@ function updateBots(dt) {
   botColliders = [];
   for (const bot of bots) {
     if (race.phase === 'go') {
-      bot.s = (bot.s + BOT_SPEED * dt) % centerline.total; // fahren erst nach dem Start
-      for (const w of bot.wheels) w.spin.rotateOnAxis(w.axisLocal, (BOT_SPEED / w.radius) * dt); // Räder drehen
+      bot.launchTimer += dt;
+      if (bot.launchTimer >= bot.reaction) {        // erst nach eigener Reaktionszeit losfahren
+        bot.v = Math.min(BOT_SPEED, bot.v + BOT_ACCEL * dt); // aus dem Stand hochbeschleunigen
+        bot.s = (bot.s + bot.v * dt) % centerline.total;
+        for (const w of bot.wheels) w.spin.rotateOnAxis(w.axisLocal, (bot.v / w.radius) * dt); // Räder passend drehen
+      }
     }
     const p = positionBot(bot);
     botColliders.push({ cx: p.x, cz: p.z, ax: p.tx, az: p.tz, halfLen: carHalf.len, halfWid: carHalf.wid });
@@ -1857,6 +1862,9 @@ function setupGrid() {
     } else {
       const bot = bots[e.who];
       bot.s = arc; bot.offset = gridOffset(i);
+      bot.v = 0;                                  // startet aus dem Stand
+      bot.launchTimer = 0;
+      bot.reaction = 0.340 + Math.random() * 0.310; // eigene Reaktionszeit 0,340…0,650 s
       positionBot(bot);
     }
   });
