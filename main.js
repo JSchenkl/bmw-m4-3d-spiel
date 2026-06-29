@@ -1658,10 +1658,10 @@ btnHome.addEventListener('click', () => {
 // Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
 const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
-const BOT_MAX_SPEED = 78;       // m/s (~280 km/h) Höchsttempo auf Geraden
+const BOT_MAX_SPEED = 80.5;     // m/s (~290 km/h) – wie der Spieler-Topspeed
 const BOT_MIN_SPEED = 22;       // m/s Mindesttempo in engen Kurven
 const BOT_LAT_ACC = 26;         // seitliche Beschleunigung → bestimmt das Kurventempo
-const BOT_ACCEL = 12.5;         // m/s² Längsbeschleunigung
+const BOT_ACCEL = 15;           // m/s² Längsbeschleunigung – wie die Spieler-Startbeschleunigung
 const BOT_BRAKE = 24;           // m/s² Bremsverzögerung vor Kurven
 const bots = [];                // { group, s, offset }
 const _botFwd = new THREE.Vector3();
