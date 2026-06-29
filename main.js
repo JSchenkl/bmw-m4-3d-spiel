@@ -2049,9 +2049,11 @@ function carOnGravel() {
   for (let i = 0; i < P.length; i++) { const dx = px - P[i].x, dz = pz - P[i].z, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = i; } }
   const nv = curbData.nrm[bi];
   const lat = (px - P[bi].x) * nv.x + (pz - P[bi].z) * nv.z; // links +, rechts −
-  const g = curbData.gravel || 6, w = curbData.width;
+  const w = curbData.width;
+  const gL = curbData.gravelL ? (curbData.gravelL[bi] || 0) : 6;
+  const gR = curbData.gravelR ? (curbData.gravelR[bi] || 0) : 6;
   const gl = curbData.wl[bi] + w, gr = curbData.wr[bi] + w;
-  return (lat > gl && lat < gl + g) || (lat < -gr && lat > -(gr + g)); // im Kiesstreifen?
+  return (lat > gl && lat < gl + gL) || (lat < -gr && lat > -(gr + gR)); // im Kiesstreifen?
 }
 
 const DUST_N = 140;

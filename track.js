@@ -213,38 +213,97 @@ export async function createSpaTrack() {
     });
   }
 
-  // --- Auslaufzone: Kiesbett + Bande (außerhalb der Curbs; blockiert die Strecke nicht) ---
-  const GRAVEL_W = 6, BARRIER_H = 0.95;
-  const pitSet = new Set(seq);                 // Boxengassen-Bereich (Pit-Seite dort aussparen)
+  // --- Auslaufzone: Kiesbett + Bande (außerhalb der Curbs; überschneidet die Strecke nicht) ---
+  const GRAVEL_MAX = 6;        // maximale Kiesbett-Breite (offene Auslaufzonen)
+  const BARRIER_H = 1.0;
+  const STRIPE = 6;            // Streifenlänge der rot/weißen Leitplanke (Meter)
+  const SAFE = 1.5;            // Sicherheitsabstand zu anderen Streckenteilen
+  const pitSet = new Set(seq); // Boxengassen-Bereich (Pit-Seite dort aussparen)
+  let gravelL = null, gravelR = null; // Kiesbett-Breite je Punkt (für Staub-Erkennung)
   const gravelMat = new THREE.MeshStandardMaterial({ color: 0xc9b489, roughness: 1, side: THREE.DoubleSide });
-  const barrierMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.7, side: THREE.DoubleSide });
+  const railRedMat = new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.55, metalness: 0.3, side: THREE.DoubleSide });
+  const railWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.55, metalness: 0.3, side: THREE.DoubleSide });
+  const railTopMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.6, metalness: 0.5, side: THREE.DoubleSide });
 
-  // durchgehende, niedrige Bande entlang einer Punktreihe (eine zusammengefasste Wand)
-  function buildWall(line, h) {
-    const pos = [], idx = [], m = line.length;
-    for (let k = 0; k < m; k++) pos.push(line[k].x, ASPHALT_Y, line[k].z, line[k].x, h, line[k].z);
-    for (let k = 0; k < m; k++) {
-      const a = 2 * k, b = 2 * k + 1, c = 2 * ((k + 1) % m), d = 2 * ((k + 1) % m) + 1;
-      idx.push(a, c, b, b, c, d);
+  // Begrenzt die Kiesbett-Breite je Punkt so, dass die Bande keinen anderen
+  // Streckenabschnitt berührt (löst Überschneidungen in engen/verschachtelten
+  // Streckenpassagen wie der Buschtus-Schikane). Quadratische Strahl-Kreis-
+  // Prüfung gegen alle weit entfernten Mittellinienpunkte.
+  function gravelWidths(w) {
+    const gw = new Array(n).fill(GRAVEL_MAX);
+    for (let i = 0; i < n; i++) {
+      const base = pts[i].clone().addScaledVector(leftNs[i], (w[i] + CURB_WIDTH));
+      const dir = leftNs[i]; // Einheitsvektor nach außen (side wird über w abgebildet)
+      let lim = GRAVEL_MAX;
+      for (let j = 0; j < n; j++) {
+        let ad = Math.abs(s[i] - s[j]); ad = Math.min(ad, total - ad);
+        if (ad < 30) continue; // direkte Nachbarn überspringen
+        const R = Math.max(wLeft[j], wRight[j]) + CURB_WIDTH + SAFE;
+        const rx = base.x - pts[j].x, rz = base.z - pts[j].z;
+        const b = dir.x * rx + dir.z * rz;
+        const c = rx * rx + rz * rz - R * R;
+        if (c < 0) { lim = 0; break; }        // Bandenfuß liegt schon zu nah
+        const disc = b * b - c;
+        if (disc <= 0) continue;
+        const g1 = -b - Math.sqrt(disc);       // erster Eintritt in den Sperrkreis
+        if (g1 >= 0 && g1 < lim) lim = g1;
+      }
+      gw[i] = Math.max(0, lim);
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setIndex(idx); g.computeVertexNormals();
-    return g;
+    // Glätten (gleitendes Minimum, dann Mittelwert) für eine saubere Kante
+    const mn = gw.slice();
+    for (let i = 0; i < n; i++) {
+      let m = gw[i];
+      for (let k = -2; k <= 2; k++) m = Math.min(m, gw[(i + k + n) % n]);
+      mn[i] = m;
+    }
+    const sm = mn.slice();
+    for (let i = 0; i < n; i++) {
+      let a = 0;
+      for (let k = -2; k <= 2; k++) a += mn[(i + k + n) % n];
+      sm[i] = a / 5;
+    }
+    return sm;
   }
+
+  const mkGeo = (b) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
+    g.setIndex(b.idx); g.computeVertexNormals(); return g;
+  };
 
   for (const side of [1, -1]) {                // 1 = links, -1 = rechts (Boxengassenseite)
     const w = side === 1 ? wLeft : wRight;
+    const gw = gravelWidths(w);
     const inner = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH)));
-    const outer = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH + GRAVEL_W)));
-    // Kiesbett (eine Fläche zwischen Curb-Außenkante und Bande)
-    const gv = side === 1 ? buildStrip(inner, outer, ASPHALT_Y + 0.005, true)
-                          : buildStrip(outer, inner, ASPHALT_Y + 0.005, true);
-    const gMesh = new THREE.Mesh(gv, gravelMat); gMesh.receiveShadow = true; group.add(gMesh);
-    // Bande (zusammengefasste Wand an der Kies-Außenkante)
-    const wall = new THREE.Mesh(buildWall(outer, BARRIER_H), barrierMat);
-    wall.castShadow = true; wall.receiveShadow = true; group.add(wall);
-    // Kollisionssegmente (dezimiert); Pit-Seite im Boxengassen-Bereich auslassen
+    const outer = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH + gw[i])));
+    if (side === 1) gravelL = gw; else gravelR = gw;
+
+    // Segmentweise aufbauen, damit auf der Boxengassenseite der Pit-Bereich
+    // ausgespart wird (sonst überschneiden Kies/Bande die Boxengasse & den Start).
+    const gravel = { pos: [], idx: [] };
+    const red = { pos: [], idx: [] }, white = { pos: [], idx: [] }, top = { pos: [], idx: [] };
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      if (side === -1 && (pitSet.has(i) || pitSet.has(j))) continue; // Pit-Bereich frei lassen
+      const ai = inner[i], aj = inner[j], oi = outer[i], oj = outer[j];
+      // Kiesbett-Fläche (zwei Dreiecke), Winding so, dass sie nach oben zeigt
+      const gy = ASPHALT_Y + 0.005, go = gravel.pos.length / 3;
+      gravel.pos.push(ai.x, gy, ai.z, oi.x, gy, oi.z, aj.x, gy, aj.z, oj.x, gy, oj.z);
+      if (side === 1) gravel.idx.push(go, go + 2, go + 1, go + 1, go + 2, go + 3);
+      else gravel.idx.push(go, go + 1, go + 2, go + 1, go + 3, go + 2);
+      // rot/weiße Leitplanke an der Kies-Außenkante
+      const buf = (Math.floor(s[i] / STRIPE) % 2 === 0) ? red : white;
+      const o = buf.pos.length / 3;
+      buf.pos.push(oi.x, ASPHALT_Y, oi.z, oi.x, BARRIER_H, oi.z, oj.x, ASPHALT_Y, oj.z, oj.x, BARRIER_H, oj.z);
+      buf.idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3);
+      // dunkle Abschlusskante (Handlauf) oben
+      const to = top.pos.length / 3;
+      top.pos.push(oi.x, BARRIER_H, oi.z, oi.x, BARRIER_H + 0.12, oi.z, oj.x, BARRIER_H, oj.z, oj.x, BARRIER_H + 0.12, oj.z);
+      top.idx.push(to, to + 2, to + 1, to + 1, to + 2, to + 3);
+
+    }
+    // Kollisionssegmente (dezimiert, je 3 Punkte); Pit-Bereich auslassen
     for (let i = 0; i < n; i += 3) {
       const j = (i + 3) % n;
       if (side === -1 && (pitSet.has(i) || pitSet.has(j))) continue;
@@ -252,6 +311,11 @@ export async function createSpaTrack() {
       if (len < 0.01) continue;
       const mid = a.clone().add(b).multiplyScalar(0.5);
       colliders.push({ cx: mid.x, cz: mid.z, ax: (b.x - a.x) / len, az: (b.z - a.z) / len, halfLen: len / 2 + 0.1, halfWid: 0.25 });
+    }
+    const gMesh = new THREE.Mesh(mkGeo(gravel), gravelMat); gMesh.receiveShadow = true; group.add(gMesh);
+    for (const part of [[red, railRedMat], [white, railWhiteMat], [top, railTopMat]]) {
+      const mesh = new THREE.Mesh(mkGeo(part[0]), part[1]);
+      mesh.castShadow = true; mesh.receiveShadow = true; group.add(mesh);
     }
   }
 
@@ -273,7 +337,8 @@ export async function createSpaTrack() {
   // und Fahrbahnbreiten je Punkt. main.js prüft damit, ob ein Rad auf einem Curb steht.
   const curbData = {
     width: CURB_WIDTH,
-    gravel: GRAVEL_W,
+    gravelL: gravelL ? gravelL.slice() : null,
+    gravelR: gravelR ? gravelR.slice() : null,
     pts: pts.map((p) => ({ x: p.x - spawn.x, z: p.z - spawn.z })),
     nrm: leftNs.map((nv) => ({ x: nv.x, z: nv.z })),
     wl: wLeft.slice(),
