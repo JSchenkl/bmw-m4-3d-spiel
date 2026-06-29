@@ -1769,7 +1769,8 @@ function updateBots(dt) {
       }
     }
     const p = positionBot(bot);
-    botColliders.push({ cx: p.x, cz: p.z, ax: p.tx, az: p.tz, halfLen: carHalf.len, halfWid: carHalf.wid });
+    // Hitbox etwas großzügiger, damit auch Seiten-/Streifkontakt sicher zählt
+    botColliders.push({ cx: p.x, cz: p.z, ax: p.tx, az: p.tz, halfLen: carHalf.len + 0.2, halfWid: carHalf.wid + 0.45 });
   }
 }
 
