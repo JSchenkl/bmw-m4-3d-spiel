@@ -213,6 +213,48 @@ export async function createSpaTrack() {
     });
   }
 
+  // --- Auslaufzone: Kiesbett + Bande (außerhalb der Curbs; blockiert die Strecke nicht) ---
+  const GRAVEL_W = 6, BARRIER_H = 0.95;
+  const pitSet = new Set(seq);                 // Boxengassen-Bereich (Pit-Seite dort aussparen)
+  const gravelMat = new THREE.MeshStandardMaterial({ color: 0xc9b489, roughness: 1, side: THREE.DoubleSide });
+  const barrierMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.7, side: THREE.DoubleSide });
+
+  // durchgehende, niedrige Bande entlang einer Punktreihe (eine zusammengefasste Wand)
+  function buildWall(line, h) {
+    const pos = [], idx = [], m = line.length;
+    for (let k = 0; k < m; k++) pos.push(line[k].x, ASPHALT_Y, line[k].z, line[k].x, h, line[k].z);
+    for (let k = 0; k < m; k++) {
+      const a = 2 * k, b = 2 * k + 1, c = 2 * ((k + 1) % m), d = 2 * ((k + 1) % m) + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx); g.computeVertexNormals();
+    return g;
+  }
+
+  for (const side of [1, -1]) {                // 1 = links, -1 = rechts (Boxengassenseite)
+    const w = side === 1 ? wLeft : wRight;
+    const inner = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH)));
+    const outer = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], side * (w[i] + CURB_WIDTH + GRAVEL_W)));
+    // Kiesbett (eine Fläche zwischen Curb-Außenkante und Bande)
+    const gv = side === 1 ? buildStrip(inner, outer, ASPHALT_Y + 0.005, true)
+                          : buildStrip(outer, inner, ASPHALT_Y + 0.005, true);
+    const gMesh = new THREE.Mesh(gv, gravelMat); gMesh.receiveShadow = true; group.add(gMesh);
+    // Bande (zusammengefasste Wand an der Kies-Außenkante)
+    const wall = new THREE.Mesh(buildWall(outer, BARRIER_H), barrierMat);
+    wall.castShadow = true; wall.receiveShadow = true; group.add(wall);
+    // Kollisionssegmente (dezimiert); Pit-Seite im Boxengassen-Bereich auslassen
+    for (let i = 0; i < n; i += 3) {
+      const j = (i + 3) % n;
+      if (side === -1 && (pitSet.has(i) || pitSet.has(j))) continue;
+      const a = outer[i], b = outer[j], len = a.distanceTo(b);
+      if (len < 0.01) continue;
+      const mid = a.clone().add(b).multiplyScalar(0.5);
+      colliders.push({ cx: mid.x, cz: mid.z, ax: (b.x - a.x) / len, az: (b.z - a.z) / len, halfLen: len / 2 + 0.1, halfWid: 0.25 });
+    }
+  }
+
   // --- Startplatz: Punkt der Boxengasse auf Höhe der Start/Ziel-Linie ---
   spawnSeqIdx = Math.min(spawnSeqIdx, seq.length - 1);
   const spawn = pitCenter[spawnSeqIdx].clone();
@@ -231,6 +273,7 @@ export async function createSpaTrack() {
   // und Fahrbahnbreiten je Punkt. main.js prüft damit, ob ein Rad auf einem Curb steht.
   const curbData = {
     width: CURB_WIDTH,
+    gravel: GRAVEL_W,
     pts: pts.map((p) => ({ x: p.x - spawn.x, z: p.z - spawn.z })),
     nrm: leftNs.map((nv) => ({ x: nv.x, z: nv.z })),
     wl: wLeft.slice(),
