@@ -231,6 +231,34 @@
       font-size: 11px; color: rgba(255,255,255,0.25); letter-spacing: 1px;
       margin-top: 6px;
     }
+
+    /* ===== Modus-Auswahl (Training / Rennen) ===== */
+    #mode-screen {
+      position: absolute; inset: 0; z-index: 60;
+      display: none; gap: 50px; align-items: center; justify-content: center;
+      padding: 6vh 5vw; background: rgba(0,0,6,0.88);
+    }
+    #mode-screen.visible { display: flex; }
+    .mode-btn {
+      flex: 1; height: 74vh; max-width: 46vw;
+      border: none; cursor: pointer; overflow: hidden;
+      transform: skewX(-12deg);              /* Parallelogramm */
+      border-radius: 32px;                   /* abgerundete Ecken */
+      box-shadow: 0 14px 50px rgba(0,0,0,0.6);
+      transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+      /* BMW-M-Farben als diagonale Streifen */
+      background: linear-gradient(115deg,
+        #0653a0 0%, #0653a0 36%,
+        #2aa6e0 36%, #2aa6e0 60%,
+        #e2001a 60%, #e2001a 100%);
+    }
+    .mode-btn:hover { transform: skewX(-12deg) scale(1.03); filter: brightness(1.08); box-shadow: 0 18px 64px rgba(0,0,0,0.7); }
+    .mode-btn span {
+      display: block; transform: skewX(12deg);   /* Text wieder gerade stellen */
+      color: #fff; font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: clamp(34px, 6vw, 72px); font-weight: 800; letter-spacing: 5px;
+      text-shadow: 0 4px 16px rgba(0,0,0,0.7);
+    }
   </style>
 </head>
 <body>
@@ -250,6 +278,12 @@
       <button id="btn-start">SPIELEN</button>
       <div id="start-keys">W Gas &nbsp;&middot;&nbsp; A / D Lenken &nbsp;&middot;&nbsp; Leertaste Bremse &nbsp;&middot;&nbsp; T Kamera</div>
     </div>
+  </div>
+
+  <!-- Modus-Auswahl nach „SPIELEN" -->
+  <div id="mode-screen">
+    <button class="mode-btn" id="btn-training"><span>TRAINING</span></button>
+    <button class="mode-btn" id="btn-rennen"><span>RENNEN</span></button>
   </div>
 
   <div id="pause-label">Spiel pausiert</div>

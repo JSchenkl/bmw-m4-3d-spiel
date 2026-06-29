@@ -783,13 +783,23 @@ btnSound.addEventListener('click', () => {
   btnSound.classList.toggle('active', soundOn);
 });
 
-// ---------- Startbildschirm ----------
+// ---------- Startbildschirm & Modus-Auswahl ----------
+let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots)
 {
   const startScreen = document.getElementById('start-screen');
+  const modeScreen = document.getElementById('mode-screen');
+
+  // „SPIELEN" → Modus-Auswahl (Training / Rennen) zeigen
   document.getElementById('btn-start').addEventListener('click', () => {
-    // Startscreen ausblenden
     startScreen.classList.remove('visible');
     startScreen.addEventListener('transitionend', () => { startScreen.style.display = 'none'; }, { once: true });
+    modeScreen.classList.add('visible');
+  });
+
+  // Spiel im gewählten Modus starten
+  function startGame(isRace) {
+    raceMode = isRace;
+    modeScreen.classList.remove('visible');
 
     // Auf Tagmodus zurückschalten, Rotation stoppen
     isNight = false;
@@ -823,7 +833,10 @@ btnSound.addEventListener('click', () => {
     // Zeitfahren ab der ersten Runde scharf schalten
     gameStarted = true;
     armLap();
-  });
+  }
+
+  document.getElementById('btn-training').addEventListener('click', () => startGame(false));
+  document.getElementById('btn-rennen').addEventListener('click', () => startGame(true));
 }
 
 // ---------- Menü ein-/ausblenden (Taste M, Klick auf den Menü-Button, Esc schließt) ----------
@@ -1656,8 +1669,8 @@ const prevCarPos = new THREE.Vector3();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  // Bots vor dem Auto aktualisieren, damit die Kollision aktuelle Positionen nutzt
-  if (gameStarted && !gamePaused()) updateBots(dt);
+  // Bots nur im Rennmodus; vor dem Auto aktualisieren, damit die Kollision aktuelle Positionen nutzt
+  if (gameStarted && raceMode && !gamePaused()) updateBots(dt);
 
   updateCar(dt);
   updateLightsFollow();
