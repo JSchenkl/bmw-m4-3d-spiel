@@ -1758,6 +1758,7 @@ const race = {
   holdAfter: 2,
   jumpStart: false,
   penalty: 0,       // verbleibende Strafzeit (Sek), >0 = noch abzusitzen
+  skipped: false,   // Quali übersprungen → Start ganz hinten
 };
 const lightsEl = document.getElementById('start-lights');
 const raceStartBtn = document.getElementById('race-start-btn');
@@ -1789,6 +1790,7 @@ function renderLights(n) {
 function startRaceQuali() {
   race.phase = 'quali';
   race.qualiTime = null;
+  race.skipped = false;
   race.jumpStart = false;
   race.penalty = 0;
   race.litCount = -1;
@@ -1802,6 +1804,7 @@ function startRaceQuali() {
 function raceReset() {
   race.phase = 'off';
   race.qualiTime = null;
+  race.skipped = false;
   race.jumpStart = false;
   race.penalty = 0;
   raceStartBtn.classList.remove('visible');
@@ -1816,10 +1819,13 @@ const gridArc = (i) => centerline.total - 10 - i * 7;       // Startplätze hint
 const gridOffset = (i) => (i % 2 === 0 ? 3 : -3);           // gestaffelt links/rechts
 
 function setupGrid() {
-  if (!centerline || race.qualiTime == null) return;
-  // Reihenfolge aus Quali-Zeiten (Spieler + Bots), schnellste Zeit = Pole
-  const entries = [{ who: 'player', time: race.qualiTime }];
-  for (let k = 0; k < BOT_COUNT; k++) entries.push({ who: k, time: race.qualiTime * BOT_QUALI_FACTOR[k] });
+  if (!centerline || (race.qualiTime == null && !race.skipped)) return;
+  // Reihenfolge aus Quali-Zeiten (Spieler + Bots), schnellste Zeit = Pole.
+  // Quali übersprungen → Spieler startet ganz hinten (Zeit = Unendlich).
+  const baseRef = (race.qualiTime != null && isFinite(race.qualiTime)) ? race.qualiTime : 90;
+  const playerTime = race.skipped ? Infinity : race.qualiTime;
+  const entries = [{ who: 'player', time: playerTime }];
+  for (let k = 0; k < BOT_COUNT; k++) entries.push({ who: k, time: baseRef * BOT_QUALI_FACTOR[k] });
   entries.sort((a, b) => a.time - b.time);
 
   if (!bots.length) createBots();
@@ -1901,7 +1907,7 @@ function updateRace(dt) {
 
 raceStartBtn.addEventListener('click', setupGrid);
 raceSkipBtn.addEventListener('click', () => {
-  if (race.qualiTime == null) race.qualiTime = 90; // Platzhalter ⇒ mittlerer Startplatz
+  race.skipped = true; // Quali übersprungen ⇒ Start ganz hinten
   setupGrid();
 });
 
