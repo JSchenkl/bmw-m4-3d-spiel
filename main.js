@@ -1473,7 +1473,8 @@ function buildGhostMesh() {
 function updateGhost() {
   const g = ghost.mesh;
   if (!g) return;
-  if (!ghost.enabled || !ghost.best || !ghost.timing) { g.visible = false; return; }
+  // Im Rennmodus kein Ghost-Car (nur im Training/Zeitfahren)
+  if (raceMode || !ghost.enabled || !ghost.best || !ghost.timing) { g.visible = false; return; }
   const t = ghost.lapElapsed;
   const rec = ghost.best;
   if (t > ghost.bestDur || rec.length < 2) { g.visible = false; return; } // Ghost ist im Ziel
