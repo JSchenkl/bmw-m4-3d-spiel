@@ -934,7 +934,7 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 const MASS = 1775;                 // kg Leergewicht
 const POWER_WHEEL = 375000 * 0.85 * 1.05 * 1.1; // W an den Rädern (~15 % Verlust, +5 % Tuning, +10 % Durchzug)
 const F_TRACTION = 17800 * 1.05;          // N Traktionsgrenze beim Start (+5 % Tuning)
-const ACCEL_BOOST = 1.32;                  // +32 % Beschleunigung (1,1 × 1,2: zusätzlich +20 % aus Kurven und im Fahren)
+const ACCEL_BOOST = 1.45;                  // +45 % Beschleunigung – damit der Spieler mit den KIs mithält
 // Power-Oversteer (xDrive AWD, 10 % vorne / 90 % hinten, 650 Nm @ 2750 min⁻¹):
 // Übersteigt der Heck-Anteil (90 %) die Längs-Haftung am Heck, drehen die
 // Hinterräder durch und das Heck bricht aus. Eckdaten: automobile-catalog / auto-data.net
@@ -967,7 +967,7 @@ const gearEl = document.getElementById('gear');
 // Zugkraft-Faktor. Niedriger Gang = viel Zugkraft, wenig Topspeed; hoher Gang
 // umgekehrt. Man muss mit RB/E hochschalten, um schneller als das Gang-Limit zu fahren.
 const GEAR_MAX_SPEED = [0, 55, 95, 140, 190, 240, 290].map((v) => v / 3.6); // km/h → m/s
-const GEAR_PULL = [0, 1.0, 0.72, 0.52, 0.4, 0.31, 0.25]; // Zugkraft-Faktor je Gang
+const GEAR_PULL = [0, 1.0, 0.74, 0.56, 0.46, 0.38, 0.32]; // Zugkraft-Faktor je Gang (höhere Gänge kräftiger → mehr Topspeed-Durchzug)
 let gear = 1; // 0 = Rückwärtsgang (R), 1…6 = Vorwärtsgänge
 let prevGearSound = 1; // letzter Gang – für den Schaltsound (Hoch-/Runterschalten)
 let autoGearbox = false; // false = Handschaltung, true = Automatikgetriebe
@@ -1661,7 +1661,7 @@ const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
 const BOT_MAX_SPEED = 78;       // m/s (~280 km/h) Höchsttempo auf Geraden
 const BOT_MIN_SPEED = 22;       // m/s Mindesttempo in engen Kurven
 const BOT_LAT_ACC = 26;         // seitliche Beschleunigung → bestimmt das Kurventempo
-const BOT_ACCEL = 15;           // m/s² Längsbeschleunigung
+const BOT_ACCEL = 12.5;         // m/s² Längsbeschleunigung
 const BOT_BRAKE = 24;           // m/s² Bremsverzögerung vor Kurven
 const bots = [];                // { group, s, offset }
 const _botFwd = new THREE.Vector3();
