@@ -1661,7 +1661,7 @@ const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
 const BOT_MAX_SPEED = 80.5;     // m/s (~290 km/h) – wie der Spieler-Topspeed
 const BOT_MIN_SPEED = 22;       // m/s Mindesttempo in engen Kurven
 const BOT_LAT_ACC = 26;         // seitliche Beschleunigung → bestimmt das Kurventempo
-const BOT_ACCEL = 15;           // m/s² Längsbeschleunigung – wie die Spieler-Startbeschleunigung
+const BOT_ACCEL = 9;            // m/s² Längsbeschleunigung am Start (nicht stärker als der Spieler)
 const BOT_BRAKE = 24;           // m/s² Bremsverzögerung vor Kurven
 const bots = [];                // { group, s, offset }
 const _botFwd = new THREE.Vector3();
@@ -1763,6 +1763,8 @@ function updateBots(dt) {
           bot.v = Math.max(target, bot.v - BOT_BRAKE * dt); // Bremse vor Kurven
         }
         bot.s = (bot.s + bot.v * dt) % centerline.total;
+        // sanft von der Startaufstellung auf die eigene Ideallinie ziehen
+        if (bot.lineOffset !== undefined) bot.offset += (bot.lineOffset - bot.offset) * Math.min(1, dt * 0.6);
         for (const w of bot.wheels) w.spin.rotateOnAxis(w.axisLocal, (bot.v / w.radius) * dt); // Räder passend drehen
       }
     }
@@ -1885,10 +1887,12 @@ function setupGrid() {
       speed = 0; gear = 1; prevGearSound = 1;
     } else {
       const bot = bots[e.who];
-      bot.s = arc; bot.offset = gridOffset(i);
+      bot.s = arc; bot.offset = gridOffset(i);    // Startaufstellung gestaffelt
       bot.v = 0;                                  // startet aus dem Stand
       bot.launchTimer = 0;
       bot.reaction = 0.340 + Math.random() * 0.310; // eigene Reaktionszeit 0,340…0,650 s
+      // eigene Ideallinie (seitlicher Versatz, je Bot unterschiedlich)
+      bot.lineOffset = (e.who - (BOT_COUNT - 1) / 2) * 1.7 + (Math.random() - 0.5) * 1.2;
       positionBot(bot);
     }
   });
