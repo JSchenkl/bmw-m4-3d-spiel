@@ -1079,8 +1079,10 @@ function obbPushOut(a, b) {
   return { x: nx * minOverlap, z: nz * minOverlap, nx, nz };
 }
 
+let botColliders = []; // bewegliche Hitboxen der Gegner-Bots (jede Frame aktualisiert)
+
 function resolveCollisions() {
-  if (!carForward || !trackColliders.length) return;
+  if (!carForward) return;
   const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
   const car = {
     cx: carGroup.position.x, cz: carGroup.position.z,
@@ -1088,7 +1090,7 @@ function resolveCollisions() {
     halfLen: carHalf.len, halfWid: carHalf.wid,
   };
 
-  for (const w of trackColliders) {
+  for (const w of trackColliders.concat(botColliders)) {
     // Grober Abstandstest, bevor das genaue SAT rechnet
     const ddx = w.cx - car.cx, ddz = w.cz - car.cz;
     const reach = car.halfLen + Math.max(w.halfLen, w.halfWid) + 0.5;
@@ -1585,6 +1587,62 @@ btnPit.addEventListener('click', () => {
   updateLapHud();
 });
 
+// ---------- Gegner-Bots ----------
+// Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
+// Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
+const BOT_COUNT = 3;
+const BOT_SPEED = 38;           // m/s (~137 km/h) konstantes Reisetempo der Bots
+const bots = [];                // { group, s, offset }
+const _botFwd = new THREE.Vector3();
+
+// Position + (normierte) Tangente an einer Bogenlänge der Mittellinie
+function centerlineAt(arc) {
+  const { P, s, total, n } = centerline;
+  const a = ((arc % total) + total) % total;
+  // Segment per Binärsuche in der kumulierten Bogenlänge finden
+  let lo = 0, hi = n - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (s[mid] <= a) lo = mid; else hi = mid - 1; }
+  const i = lo, j = (i + 1) % n;
+  const sj = j === 0 ? total : s[j];
+  const f = (a - s[i]) / ((sj - s[i]) || 1);
+  const x = P[i].x + (P[j].x - P[i].x) * f;
+  const z = P[i].z + (P[j].z - P[i].z) * f;
+  let tx = P[j].x - P[i].x, tz = P[j].z - P[i].z;
+  const tl = Math.hypot(tx, tz) || 1;
+  return { x, z, tx: tx / tl, tz: tz / tl };
+}
+
+function createBots() {
+  for (let k = 0; k < BOT_COUNT; k++) {
+    const clone = currentCar.clone(true); // gleiches Auto-Modell wie der Spieler
+    const group = new THREE.Group();
+    group.add(clone);
+    scene.add(group);
+    bots.push({
+      group,
+      s: centerline.total * (k + 1) / (BOT_COUNT + 2), // über die Strecke verteilt
+      offset: (k - (BOT_COUNT - 1) / 2) * 2.4,          // seitlich versetzt (nebeneinander)
+    });
+  }
+}
+
+function updateBots(dt) {
+  if (!centerline || !currentCar || !carForward) return;
+  if (!bots.length) createBots();
+  botColliders = [];
+  for (const bot of bots) {
+    bot.s = (bot.s + BOT_SPEED * dt) % centerline.total;
+    const c = centerlineAt(bot.s);
+    const nx = -c.tz, nz = c.tx; // Quernormale für den seitlichen Versatz
+    const x = c.x + nx * bot.offset;
+    const z = c.z + nz * bot.offset;
+    bot.group.position.set(x, carGroup.position.y, z);
+    _botFwd.set(c.tx, 0, c.tz);
+    bot.group.quaternion.setFromUnitVectors(carForward, _botFwd); // Front entlang der Strecke
+    botColliders.push({ cx: x, cz: z, ax: c.tx, az: c.tz, halfLen: carHalf.len, halfWid: carHalf.wid });
+  }
+}
+
 // ---------- Resize & Render-Loop ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -1597,6 +1655,9 @@ const prevCarPos = new THREE.Vector3();
 
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
+
+  // Bots vor dem Auto aktualisieren, damit die Kollision aktuelle Positionen nutzt
+  if (gameStarted && !gamePaused()) updateBots(dt);
 
   updateCar(dt);
   updateLightsFollow();
