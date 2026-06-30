@@ -215,7 +215,7 @@ export async function createSpaTrack() {
 
   // --- Auslaufzone: Gras + Kiesbett + Bande (außerhalb der Curbs; überschneidet die Strecke nicht) ---
   const GRASS_WIDTH = 50;      // Grasstreifen zwischen Curb-Außenkante und Kiesbett
-  const GRAVEL_MAX = 6;        // maximale Kiesbett-Breite (offene Auslaufzonen)
+  const GRAVEL_MAX = 15;       // maximale Kiesbett-Breite (offene Auslaufzonen, 2,5× vergrößert)
   const BARRIER_H = 1.0;
   const STRIPE = 6;            // Streifenlänge der rot/weißen Leitplanke (Meter)
   const SAFE = 1.5;            // Sicherheitsabstand zu anderen Streckenteilen
