@@ -1854,6 +1854,23 @@ function botTargetSpeed(s) {
   return Math.max(BOT_MIN_SPEED, Math.min(BOT_MAX_SPEED, v));
 }
 
+// Längsbeschleunigung bei Vollgas (Automatik) – dasselbe Kraftmodell wie beim
+// Spieler, damit die Bots GENAU die gleiche Beschleunigung haben wie der Spieler.
+function engineAccel(v) {
+  let g = 1;
+  while (g < 6 && v >= 0.93 * GEAR_MAX_SPEED[g]) g++;
+  const vmax = GEAR_MAX_SPEED[g];
+  const fDrag = 0.5 * RHO_AIR * CD_AREA * v * v;
+  const fRoll = v > 0.1 ? MASS * 9.81 * ROLL_RES : 0;
+  if (v >= vmax) return -(fDrag + fRoll) / MASS; // im Gang abgeregelt
+  const pull = F_TRACTION * GEAR_PULL[g];
+  const fade = Math.max(0, 1 - Math.pow(v / vmax, 2.2));
+  const fDrive = Math.min(pull, POWER_WHEEL / Math.max(v, 3)) * fade * ACCEL_BOOST;
+  const slip = Math.max(0, (fDrive * DRIVE_REAR - REAR_GRIP) / REAR_GRIP);
+  const grip = 1 - 0.12 * Math.min(1, slip);
+  return (fDrive * grip - fDrag - fRoll) / MASS;
+}
+
 // Kind-Index-Pfad von root zu target (für das Wiederfinden der Rad-Pivots in Klonen)
 function nodeIndexPath(root, target) {
   const path = [];
@@ -1876,15 +1893,29 @@ function createBots() {
   const wheelPaths = wheels
     .map((w) => ({ path: nodeIndexPath(currentCar, w.spin), axisLocal: w.axisLocal, radius: w.radius }))
     .filter((w) => w.path);
+  const tailSet = new Set(taillightMats); // Rücklicht-Materialien des Spielers
   for (let k = 0; k < BOT_COUNT; k++) {
     const clone = currentCar.clone(true); // gleiches Auto-Modell wie der Spieler
+    // WICHTIG: clone(true) teilt die Materialien mit dem Spieler. Eigene Materialien
+    // klonen, sonst leuchten beim Bremsen des Spielers auch die Bot-Lichter mit.
+    const tailMats = [];
+    clone.traverse((node) => {
+      if (!node.isMesh || !node.material) return;
+      const mats = Array.isArray(node.material) ? node.material : [node.material];
+      const cloned = mats.map((m) => {
+        const c = m.clone();
+        if (tailSet.has(m)) { c.emissive = new THREE.Color(0x000000); c.emissiveIntensity = 1; tailMats.push(c); }
+        return c;
+      });
+      node.material = Array.isArray(node.material) ? cloned : cloned[0];
+    });
     const group = new THREE.Group();
     group.add(clone);
     scene.add(group);
     const wheelsClone = wheelPaths
       .map((w) => ({ spin: resolveNodePath(clone, w.path), axisLocal: w.axisLocal, radius: w.radius }))
       .filter((w) => w.spin);
-    bots.push({ group, s: 0, offset: 0, wheels: wheelsClone });
+    bots.push({ group, s: 0, offset: 0, wheels: wheelsClone, tailMats });
   }
 }
 
@@ -1907,23 +1938,48 @@ function positionBot(bot) {
 function updateBots(dt) {
   if (!centerline || !currentCar || !carForward || !bots.length) return;
   botColliders = [];
+  const total = centerline.total;
   for (const bot of bots) {
+    let braking = false;
     if (race.phase === 'go') {
       bot.launchTimer += dt;
       if (bot.launchTimer >= bot.reaction) {        // erst nach eigener Reaktionszeit losfahren
-        const target = botTargetSpeed(bot.s + 14);  // etwas vorausschauen → rechtzeitig bremsen
+        // Jeder Bot fährt für sich: eigenes Kurventempo (cornerF = später/früher bremsen)
+        // und eigene Beschleunigung (accelF). cornerF>1 = mutiger, bremst später.
+        const look = 14 * (bot.cornerF || 1);       // mutigere Bots schauen kürzer voraus → bremsen später
+        const target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + look) * (bot.cornerF || 1));
         if (bot.v < target) {
-          // wie ein echtes Auto: bei hohem Tempo zieht es schwächer (sonst beschleunigen die Bots viel stärker als der Spieler)
-          const a = BOT_ACCEL * Math.max(0.12, 1 - bot.v / BOT_MAX_SPEED);
+          // exakt das Beschleunigungsmodell des Spielers, leicht je Bot variiert
+          const a = Math.max(0, engineAccel(bot.v)) * (bot.accelF || 1);
           bot.v = Math.min(target, bot.v + a * dt);  // Gas
         } else {
           bot.v = Math.max(target, bot.v - BOT_BRAKE * dt); // Bremse vor Kurven
+          braking = true;
         }
-        bot.s = (bot.s + bot.v * dt) % centerline.total;
-        // sanft von der Startaufstellung auf die eigene Ideallinie ziehen
-        if (bot.lineOffset !== undefined) bot.offset += (bot.lineOffset - bot.offset) * Math.min(1, dt * 0.6);
-        for (const w of bot.wheels) w.spin.rotateOnAxis(w.axisLocal, (bot.v / w.radius) * dt); // Räder passend drehen
+        bot.s = (bot.s + bot.v * dt) % total;
+
+        // Überholen: dicht hinter einem langsameren Bot seitlich ausweichen,
+        // sonst zur eigenen Ideallinie zurückkehren (kein starres Folgen einer Linie).
+        let desired = (bot.lineOffset || 0);
+        for (const o of bots) {
+          if (o === bot) continue;
+          let ds = ((o.s - bot.s) % total + total) % total;
+          if (ds > 0 && ds < 14 && o.v < bot.v - 0.5) {     // langsamerer Gegner direkt voraus
+            const side = (bot.lineOffset >= (o.offset || 0)) ? 1 : -1;
+            desired = (bot.lineOffset || 0) + side * 2.4;     // zum Überholen versetzen
+            break;
+          }
+        }
+        desired = Math.max(-5, Math.min(5, desired));         // auf der Strecke bleiben
+        bot.offset += (desired - bot.offset) * Math.min(1, dt * 1.4);
+
+        for (const w of bot.wheels) w.spin.rotateOnAxis(w.axisLocal, (bot.v / w.radius) * dt); // Räder drehen
       }
+    }
+    // Eigene Bremslichter des Bots (unabhängig vom Spieler)
+    if (bot.tailMats) for (const m of bot.tailMats) {
+      m.emissive.setHex(braking ? 0xff0000 : 0x000000);
+      m.emissiveIntensity = braking ? 3 : 1;
     }
     const p = positionBot(bot);
     // Hitbox etwas großzügiger, damit auch Seiten-/Streifkontakt sicher zählt
@@ -2051,6 +2107,9 @@ function setupGrid() {
       bot.reaction = 0.340 + Math.random() * 0.310; // eigene Reaktionszeit 0,340…0,650 s
       // eigene Ideallinie (seitlicher Versatz, je Bot unterschiedlich)
       bot.lineOffset = (e.who - (BOT_COUNT - 1) / 2) * 1.7 + (Math.random() - 0.5) * 1.2;
+      // eigene Fahr-Charakteristik: Kurvenmut (später/früher bremsen) + Beschleunigung
+      bot.cornerF = 0.97 + Math.random() * 0.12;   // 0,97…1,09 → unterschiedliches Kurventempo
+      bot.accelF = 0.96 + Math.random() * 0.1;     // 0,96…1,06 → früher/später am Gas
       positionBot(bot);
     }
   });
