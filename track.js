@@ -205,9 +205,13 @@ export async function createTrack(file) {
     addBox(0, D_back - WALL - 0.04, GA_H / 2, houseW - 2 * WALL, 0.06, GA_H, garageWhiteMat);   // Rückwand innen
     for (const u of [-houseW / 2 + WALL + 0.04, houseW / 2 - WALL - 0.04]) addBox(u, D_mid, GA_H / 2, 0.06, GA_D - 0.1, GA_H, garageWhiteMat); // Seiten innen
     addBox(0, D_mid, GA_H / 2, WALL, GA_D, GA_H, garageWhiteMat);                               // Mitteltrennwand (weiß)
-    // Kollision nur an der Rückwand (offene Front bleibt befahrbar)
+    // Kollision: Rückwand + beide Seitenwände + Mitteltrennwand (nur die offene Front bleibt befahrbar)
     const bw = P(0, D_back - 0.25);
     colliders.push({ cx: bw.x, cz: bw.z, ax: t.x, az: t.z, halfLen: houseW / 2, halfWid: 0.5 });
+    for (const u of [-houseW / 2 + WALL / 2, 0, houseW / 2 - WALL / 2]) {
+      const wc = P(u, D_mid); // Wand läuft entlang der Tiefe (Quernormale nrm)
+      colliders.push({ cx: wc.x, cz: wc.z, ax: nrm.x, az: nrm.z, halfLen: GA_D / 2, halfWid: WALL / 2 + 0.1 });
+    }
 
     // zwei Stellplätze: BMW M4 hineinstellen (Front zur Gasse) – außer im Spieler-Stellplatz
     for (const [bi, u] of [[0, -BAY], [1, BAY]]) {
