@@ -26,8 +26,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 
 ## Features
 
-- **Garagen-Menü** nach der Modus-Wahl: 5 europäische Marken (alphabetisch) mit je 2 Sportwagen, technische Daten und drehbares 3D-Modell; links die Auto-Auswahl, oben rechts „Zurück", unten rechts „Auto auswählen". Im Rennmodus fahren die KIs zufällige Autos (nie das des Spielers).
-- 10 prozedural aus 3D-Grundkörpern gebaute Sportwagen (Alfa Romeo, Aston Martin, BMW, Ferrari, Porsche)
+- **BMW M4 Competition** und **Mercedes 300SL Gullwing** als 3D-Modelle (GLB)
 - **Spa-Francorchamps** aus echten Vermessungsdaten (TUM racetrack-database)
 - Scheinwerfer & Rücklichter mit Lichtkegeln
 - Tag-/Nachtmodus
