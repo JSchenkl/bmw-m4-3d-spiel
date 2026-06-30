@@ -2058,7 +2058,7 @@ function updateBots(dt) {
         }
         // Totband um die Zieldrehzahl: kein Hin-und-Her zwischen Gas und Bremse (kein Rucken/Flackern)
         if (bot.v < target - 0.4) {
-          const a = Math.max(0, engineAccel(bot.v)) * (bot.accelF || 1) * BOT_GRIP; // 10 % weniger Traktion
+          const a = Math.max(0, engineAccel(bot.v)); // exakt dieselbe Beschleunigung wie der Spieler
           bot.v = Math.min(target, bot.v + a * dt);
         } else if (bot.v > target + 0.4) {
           bot.v = Math.max(target, bot.v - BOT_BRAKE * BOT_GRIP * dt);   // Bremse vor Kurven (10 % schwächer)
