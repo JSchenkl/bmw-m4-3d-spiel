@@ -332,15 +332,14 @@ export async function createSpaTrack() {
       const to = top.pos.length / 3;
       top.pos.push(oi.x, BARRIER_H, oi.z, oi.x, BARRIER_H + 0.12, oi.z, oj.x, BARRIER_H, oj.z, oj.x, BARRIER_H + 0.12, oj.z);
       top.idx.push(to, to + 2, to + 1, to + 1, to + 2, to + 3);
-    }
-    // Kollisionssegmente (dezimiert, je 3 Punkte); Pit-Bereich auslassen
-    for (let i = 0; i < n; i += 3) {
-      const j = (i + 3) % n;
-      if (side === -1 && (pitSet.has(i) || pitSet.has(j))) continue;
-      const a = outer[i], b = outer[j], len = a.distanceTo(b);
-      if (len < 0.01) continue;
-      const mid = a.clone().add(b).multiplyScalar(0.5);
-      colliders.push({ cx: mid.x, cz: mid.z, ax: (b.x - a.x) / len, az: (b.z - a.z) / len, halfLen: len / 2 + 0.1, halfWid: 0.25 });
+
+      // Kollisionssegment exakt auf der Leitplanke (je Segment, dünn) – folgt
+      // der Kurve, statt mit langen Sehnen nach innen in die Strecke zu ragen.
+      const clen = oi.distanceTo(oj);
+      if (clen >= 0.01) {
+        const cmid = oi.clone().add(oj).multiplyScalar(0.5);
+        colliders.push({ cx: cmid.x, cz: cmid.z, ax: (oj.x - oi.x) / clen, az: (oj.z - oi.z) / clen, halfLen: clen / 2 + 0.05, halfWid: 0.12 });
+      }
     }
     const grassMesh = new THREE.Mesh(mkGeo(grass), grassMat); grassMesh.receiveShadow = true; group.add(grassMesh);
     const gMesh = new THREE.Mesh(mkGeo(gravel), gravelMat); gMesh.receiveShadow = true; group.add(gMesh);
