@@ -170,6 +170,7 @@ const STEER_WHEEL = {
   depth: 0.18,   // halbe Box-Tiefe in Längsrichtung (Meter, dünn → Armaturen dahinter bleiben verschont)
   tilt: 0.40,    // Neigung der Lenksäule (rad, ~23°)
   sign: 1,       // Drehrichtung des Lenkrads (umdrehen, falls verkehrt herum)
+  ratio: 5,      // Lenkrad dreht stärker als die Räder (Volleinschlag ≈ 160°)
 };
 
 let carYaw = 0; // aktueller Drehwinkel des Autos um die Hochachse
@@ -1237,7 +1238,8 @@ function updateCar(dt) {
       // Überschreitet der Heck-Anteil (90 %) die Heck-Haftung, drehen die Räder durch
       slipTarget = Math.max(0, (fDrive * DRIVE_REAR - REAR_GRIP) / REAR_GRIP);
       const grip = 1 - 0.12 * Math.min(1, slipTarget); // durchdrehende Reifen ziehen etwas schlechter
-      accel = (fDrive * grip - fDrag - fRoll) / MASS;
+      // Untergrund: auf Gras/Kies greift der Antrieb nur anteilig (Gras = 30 %)
+      accel = (fDrive * grip * surfaceGrip - fDrag - fRoll) / MASS;
     } else {
       accel = -(fDrag + fRoll) / MASS; // Drehzahlbegrenzer: nur noch Fahrwiderstände
     }
@@ -1305,6 +1307,10 @@ function updateCar(dt) {
   for (const w of wheels) {
     if (speed !== 0) w.spin.rotateOnAxis(w.axisLocal, (speed / w.radius) * dt);
     if (w.steer) w.steer.quaternion.setFromAxisAngle(w.upLocal, steerAngle);
+  }
+  // Lenkrad im Cockpit mitdrehen (stärker als die Räder)
+  for (const sp of steeringParts) {
+    sp.pivot.quaternion.setFromAxisAngle(sp.axisLocal, STEER_WHEEL.sign * steerAngle * STEER_WHEEL.ratio);
   }
 
 
