@@ -1213,8 +1213,9 @@ function updateCar(dt) {
   const onGrass = carOnGrass();
   const onGravelSurf = !onGrass && carOnGravel();
   const surfaceGrip = onGrass ? 0.3 : (onGravelSurf ? 0.55 : 1.0);
-  // Automatisches Ausbrechen nur auf Gras/Kies – auf der Strecke greift es normal (kein Übersteuer-Zusatz)
-  const overMul = onGrass ? 1.0 : (onGravelSurf ? 0.7 : 0);
+  // Automatisches Ausbrechen nur auf Gras/Kies – auf der Strecke greift es normal (kein Übersteuer-Zusatz).
+  // Auf Gras bewusst dezent, damit es einen nicht zu stark herumdreht.
+  const overMul = onGrass ? 0.4 : (onGravelSurf ? 0.3 : 0);
 
   // Längsdynamik: Kräftebilanz aus Antrieb, Luft- und Rollwiderstand
   const v = Math.abs(speed);
