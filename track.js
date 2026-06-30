@@ -213,7 +213,8 @@ export async function createTrack(file) {
       const p = P(u, D);
       const m = new THREE.Mesh(new THREE.BoxGeometry(sd, h, sa), mat); // x=quer, z=entlang
       m.position.set(p.x, y, p.z); m.rotation.y = angle;
-      m.castShadow = true; m.receiveShadow = true; group.add(m);
+      // Garagenstruktur wirft keinen Schatten → Innenraum (Spielerstart) bleibt hell
+      m.castShadow = false; m.receiveShadow = true; group.add(m);
     };
     // weißer Boden, Rückwand, Seitenwände + Mitteltrennwand (innen weiß), dunkles Dach
     addBox(0, D_mid, 0.07, houseW, GA_D, 0.12, garageWhiteMat);
