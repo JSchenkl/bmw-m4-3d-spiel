@@ -216,7 +216,8 @@ export async function createSpaTrack() {
   // --- Auslaufzone: Gras + Kiesbett + Bande (außerhalb der Curbs; überschneidet die Strecke nicht) ---
   const GRASS_WIDTH = 50;      // Grasstreifen zwischen Curb-Außenkante und Kiesbett
   const GRAVEL_MAX = 15;       // maximale Kiesbett-Breite (offene Auslaufzonen, 2,5× vergrößert)
-  const BARRIER_H = 1.1;       // Höhe der dunklen Rückwand hinter der Reifenwand
+  const BARRIER_H = 1.1;       // Höhe der rot-weißen Rückwand hinter der Reifenwand
+  const STRIPE = 6;            // Blocklänge des klassischen rot-weißen Musters (Meter)
   const SAFE = 1.5;            // Sicherheitsabstand zu anderen Streckenteilen
   // Reifenwand (gestapelte Reifen als 3D-Bande)
   const TIRE_R = 0.26, TIRE_TUBE = 0.12;          // Reifenradius + Wulststärke
@@ -228,7 +229,8 @@ export async function createSpaTrack() {
   let grassL = null, grassR = null;
   const grassMat = new THREE.MeshStandardMaterial({ color: 0x3a7d2c, roughness: 1, side: THREE.DoubleSide });
   const gravelMat = new THREE.MeshStandardMaterial({ color: 0xc9b489, roughness: 1, side: THREE.DoubleSide });
-  const barrierBackMat = new THREE.MeshStandardMaterial({ color: 0x202024, roughness: 0.9, side: THREE.DoubleSide });
+  const backRedMat = new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.7, side: THREE.DoubleSide });
+  const backWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.7, side: THREE.DoubleSide });
   const tireMat = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.95 });
   const tireGeo = new THREE.TorusGeometry(TIRE_R, TIRE_TUBE, 6, 8);
   const tireMatrices = [];   // sammelt alle Reifen-Instanzen → eine InstancedMesh am Ende
@@ -313,7 +315,7 @@ export async function createSpaTrack() {
     // ausgespart wird (sonst überschneiden Kies/Bande die Boxengasse & den Start).
     const grass = { pos: [], idx: [] };
     const gravel = { pos: [], idx: [] };
-    const backing = { pos: [], idx: [] };
+    const backRed = { pos: [], idx: [] }, backWhite = { pos: [], idx: [] };
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
       if (side === -1 && (pitSet.has(i) || pitSet.has(j))) continue; // Pit-Bereich frei lassen
@@ -330,10 +332,11 @@ export async function createSpaTrack() {
       gravel.pos.push(ai.x, gy + 0.002, ai.z, oi.x, gy + 0.002, oi.z, aj.x, gy + 0.002, aj.z, oj.x, gy + 0.002, oj.z);
       if (side === 1) gravel.idx.push(go, go + 2, go + 1, go + 1, go + 2, go + 3);
       else gravel.idx.push(go, go + 1, go + 2, go + 1, go + 3, go + 2);
-      // dunkle Rückwand an der Kies-Außenkante (füllt die Lücken hinter den Reifen)
-      const bo = backing.pos.length / 3;
-      backing.pos.push(oi.x, ASPHALT_Y, oi.z, oi.x, BARRIER_H, oi.z, oj.x, ASPHALT_Y, oj.z, oj.x, BARRIER_H, oj.z);
-      backing.idx.push(bo, bo + 2, bo + 1, bo + 1, bo + 2, bo + 3);
+      // rot-weiße Rückwand an der Kies-Außenkante (klassisches Muster, hinter den Reifen)
+      const back = (Math.floor(s[i] / STRIPE) % 2 === 0) ? backRed : backWhite;
+      const bo = back.pos.length / 3;
+      back.pos.push(oi.x, ASPHALT_Y, oi.z, oi.x, BARRIER_H, oi.z, oj.x, ASPHALT_Y, oj.z, oj.x, BARRIER_H, oj.z);
+      back.idx.push(bo, bo + 2, bo + 1, bo + 1, bo + 2, bo + 3);
 
       // Kollisionssegment exakt auf der Bande (je Segment, dünn) – folgt der Kurve.
       const clen = oi.distanceTo(oj);
@@ -357,8 +360,10 @@ export async function createSpaTrack() {
     }
     const grassMesh = new THREE.Mesh(mkGeo(grass), grassMat); grassMesh.receiveShadow = true; group.add(grassMesh);
     const gMesh = new THREE.Mesh(mkGeo(gravel), gravelMat); gMesh.receiveShadow = true; group.add(gMesh);
-    const backMesh = new THREE.Mesh(mkGeo(backing), barrierBackMat);
-    backMesh.castShadow = true; backMesh.receiveShadow = true; group.add(backMesh);
+    for (const part of [[backRed, backRedMat], [backWhite, backWhiteMat]]) {
+      const backMesh = new THREE.Mesh(mkGeo(part[0]), part[1]);
+      backMesh.castShadow = true; backMesh.receiveShadow = true; group.add(backMesh);
+    }
   }
 
   // Reifenwand als eine InstancedMesh (ein Draw-Call für alle Reifen)
