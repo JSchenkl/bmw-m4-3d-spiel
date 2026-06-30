@@ -318,6 +318,12 @@
       text-shadow: 0 4px 16px rgba(0,0,0,0.7);
     }
 
+    /* Sonnen-Blendeffekt: weißer Glanz beim Blick in die Sonne */
+    #sun-glare {
+      position: fixed; inset: 0; z-index: 9; pointer-events: none;
+      opacity: 0; transition: opacity 0.12s linear; mix-blend-mode: screen;
+    }
+
     /* Rückspiegel-Rahmen (das Bild rendert die Engine direkt in diesen Bereich) */
     #rear-mirror {
       position: fixed; top: 92px; left: 50%; transform: translateX(-50%);
@@ -399,6 +405,9 @@
       <div id="start-keys">W Gas &nbsp;&middot;&nbsp; A / D Lenken &nbsp;&middot;&nbsp; Leertaste Bremse &nbsp;&middot;&nbsp; T Kamera</div>
     </div>
   </div>
+
+  <!-- Sonnen-Blendeffekt (weißer Glanz beim Blick in die Sonne) -->
+  <div id="sun-glare"></div>
 
   <!-- Rückspiegel-Rahmen (Cockpit-Sicht); Blick nach hinten wird hineingerendert -->
   <div id="rear-mirror"></div>

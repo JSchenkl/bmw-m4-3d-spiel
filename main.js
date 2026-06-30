@@ -81,6 +81,7 @@ function makeSkyGradient() {
 const skyTexture = makeSkyGradient();
 
 // sichtbare Sonne als weiches Leucht-Sprite hoch am Himmel
+const sunWorldDir = new THREE.Vector3(90, 150, 60).normalize();
 const sunSprite = (() => {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const g = c.getContext('2d');
@@ -92,13 +93,29 @@ const sunSprite = (() => {
   g.fillStyle = grd; g.beginPath(); g.arc(64, 64, 64, 0, Math.PI * 2); g.fill();
   const tex = new THREE.CanvasTexture(c);
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, fog: false }));
-  const dir = new THREE.Vector3(90, 150, 60).normalize();
-  s.position.copy(dir.multiplyScalar(5000));
+  s.position.copy(sunWorldDir.clone().multiplyScalar(5000));
   s.scale.set(700, 700, 1);
   s.renderOrder = -1;
   scene.add(s);
   return s;
 })();
+
+// Blend-Effekt: weißer Glanz, der einblendet, wenn man in die Sonne schaut
+const glareEl = document.getElementById('sun-glare');
+const _camDir = new THREE.Vector3(), _sunScreen = new THREE.Vector3();
+function updateSunGlare() {
+  if (!glareEl) return;
+  if (!sunSprite.visible) { glareEl.style.opacity = '0'; return; }
+  camera.getWorldDirection(_camDir);
+  const align = _camDir.dot(sunWorldDir);                 // 1 = direkt in die Sonne
+  const t = THREE.MathUtils.clamp((align - 0.9) / 0.1, 0, 1);
+  if (t <= 0) { glareEl.style.opacity = '0'; return; }
+  _sunScreen.copy(sunSprite.position).project(camera);     // Sonnenposition am Bildschirm
+  const sx = (_sunScreen.x * 0.5 + 0.5) * 100, sy = (-_sunScreen.y * 0.5 + 0.5) * 100;
+  glareEl.style.background =
+    `radial-gradient(circle at ${sx.toFixed(1)}% ${sy.toFixed(1)}%, rgba(255,255,250,0.95) 0%, rgba(255,255,245,0.5) 14%, rgba(255,255,245,0) 55%)`;
+  glareEl.style.opacity = (t * 0.7).toFixed(2);            // „leicht blenden"
+}
 
 // ---------- Rennstrecken (echte Vermessungsdaten, TUM racetrack-database) ----------
 const TRACKS = [
@@ -2595,6 +2612,7 @@ renderer.setAnimationLoop(() => {
     camera.lookAt(_lookAt);
   }
 
+  updateSunGlare(); // Blenden, wenn man in die Sonne schaut
   renderer.render(scene, camera);
 
   // Rückspiegel: Blick nach hinten, exakt in den sichtbaren Rahmen (#rear-mirror) gerendert
