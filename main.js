@@ -1919,20 +1919,27 @@ function createBots() {
   }
 }
 
-// Setzt einen Bot an seine aktuelle Bogenlänge/seitl. Versatz; gibt Welt-Pos + Tangente zurück.
-// Die Ausrichtung kommt aus einer Vorausschau (~6 m), damit die Front nicht an jeder
-// Segmentgrenze springt (kein Ruckeln).
-function positionBot(bot) {
+// Setzt einen Bot an seine Bogenlänge/seitl. Versatz; gibt Welt-Pos + Tangente zurück.
+// Die Blickrichtung kommt aus einer Vorausschau und wird zusätzlich weich nachgeführt,
+// damit die Front an den Segmentgrenzen der Mittellinie nicht springt (kein Rucken).
+// dt fehlt → sofort ausrichten (z. B. beim Setzen in die Startaufstellung).
+function positionBot(bot, dt) {
   const c = centerlineAt(bot.s);
-  const a = centerlineAt(bot.s + 6);
+  const a = centerlineAt(bot.s + 8);
   let dx = a.x - c.x, dz = a.z - c.z;
   const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
   const nx = -dz, nz = dx; // Quernormale für den seitlichen Versatz
   const x = c.x + nx * bot.offset, z = c.z + nz * bot.offset;
   bot.group.position.set(x, carGroup.position.y, z);
-  _botFwd.set(dx, 0, dz);
-  bot.group.quaternion.setFromUnitVectors(carForward, _botFwd); // Front entlang der Strecke
-  return { x, z, tx: dx, tz: dz };
+  // Blickrichtung exponentiell glätten (gegen Rucken)
+  const k = dt ? 1 - Math.exp(-9 * dt) : 1;
+  if (bot.fx === undefined) { bot.fx = dx; bot.fz = dz; }
+  else { bot.fx += (dx - bot.fx) * k; bot.fz += (dz - bot.fz) * k; }
+  const fl = Math.hypot(bot.fx, bot.fz) || 1;
+  const ftx = bot.fx / fl, ftz = bot.fz / fl;
+  _botFwd.set(ftx, 0, ftz);
+  bot.group.quaternion.setFromUnitVectors(carForward, _botFwd);
+  return { x, z, tx: ftx, tz: ftz };
 }
 
 function updateBots(dt) {
@@ -1948,28 +1955,30 @@ function updateBots(dt) {
         // und eigene Beschleunigung (accelF). cornerF>1 = mutiger, bremst später.
         const look = 14 * (bot.cornerF || 1);       // mutigere Bots schauen kürzer voraus → bremsen später
         const target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + look) * (bot.cornerF || 1));
-        if (bot.v < target) {
-          // exakt das Beschleunigungsmodell des Spielers, leicht je Bot variiert
-          const a = Math.max(0, engineAccel(bot.v)) * (bot.accelF || 1);
-          bot.v = Math.min(target, bot.v + a * dt);  // Gas
-        } else {
-          bot.v = Math.max(target, bot.v - BOT_BRAKE * dt); // Bremse vor Kurven
+        // Totband um die Zieldrehzahl: kein Hin-und-Her zwischen Gas und Bremse (kein Rucken/Flackern)
+        if (bot.v < target - 0.4) {
+          const a = Math.max(0, engineAccel(bot.v)) * (bot.accelF || 1); // Spieler-Beschleunigungsmodell
+          bot.v = Math.min(target, bot.v + a * dt);
+        } else if (bot.v > target + 0.4) {
+          bot.v = Math.max(target, bot.v - BOT_BRAKE * dt);              // Bremse vor Kurven
           braking = true;
         }
         bot.s = (bot.s + bot.v * dt) % total;
 
-        // Überholen: dicht hinter einem langsameren Bot seitlich ausweichen,
-        // sonst zur eigenen Ideallinie zurückkehren (kein starres Folgen einer Linie).
-        let desired = (bot.lineOffset || 0);
+        // Überholen mit Hysterese: dicht hinter einem langsameren Bot seitlich ausweichen.
+        // Die Seite bleibt während des Manövers fest (kein seitliches Zittern), erst wenn
+        // der Vordermann >20 m entfernt ist, kehrt der Bot zur eigenen Linie zurück.
+        let block = false;
         for (const o of bots) {
           if (o === bot) continue;
-          let ds = ((o.s - bot.s) % total + total) % total;
-          if (ds > 0 && ds < 14 && o.v < bot.v - 0.5) {     // langsamerer Gegner direkt voraus
-            const side = (bot.lineOffset >= (o.offset || 0)) ? 1 : -1;
-            desired = (bot.lineOffset || 0) + side * 2.4;     // zum Überholen versetzen
-            break;
+          const ds = ((o.s - bot.s) % total + total) % total;
+          if (ds > 0 && ds < 20 && o.v < bot.v - 0.5 && (ds < 14 || bot.ovSide)) {
+            if (!bot.ovSide) bot.ovSide = (bot.lineOffset >= (o.offset || 0)) ? 1 : -1;
+            block = true; break;
           }
         }
+        if (!block) bot.ovSide = 0;
+        let desired = (bot.lineOffset || 0) + (bot.ovSide || 0) * 2.4;
         desired = Math.max(-5, Math.min(5, desired));         // auf der Strecke bleiben
         bot.offset += (desired - bot.offset) * Math.min(1, dt * 1.4);
 
@@ -1981,7 +1990,7 @@ function updateBots(dt) {
       m.emissive.setHex(braking ? 0xff0000 : 0x000000);
       m.emissiveIntensity = braking ? 3 : 1;
     }
-    const p = positionBot(bot);
+    const p = positionBot(bot, dt);
     // Hitbox etwas großzügiger, damit auch Seiten-/Streifkontakt sicher zählt
     botColliders.push({ cx: p.x, cz: p.z, ax: p.tx, az: p.tz, halfLen: carHalf.len + 0.2, halfWid: carHalf.wid + 0.45 });
   }
@@ -2110,7 +2119,8 @@ function setupGrid() {
       // eigene Fahr-Charakteristik: Kurvenmut (später/früher bremsen) + Beschleunigung
       bot.cornerF = 0.97 + Math.random() * 0.12;   // 0,97…1,09 → unterschiedliches Kurventempo
       bot.accelF = 0.96 + Math.random() * 0.1;     // 0,96…1,06 → früher/später am Gas
-      positionBot(bot);
+      bot.ovSide = 0;                              // kein Überholmanöver aktiv
+      positionBot(bot);                            // sofort ausrichten (ohne dt)
     }
   });
 
