@@ -317,78 +317,6 @@
       font-size: clamp(34px, 6vw, 72px); font-weight: 800; letter-spacing: 5px;
       text-shadow: 0 4px 16px rgba(0,0,0,0.7);
     }
-
-    /* ---------- Garagen-Menü ---------- */
-    #garage {
-      position: absolute; inset: 0; z-index: 65; display: none;
-      font-family: 'Segoe UI', Arial, sans-serif; color: #fff;
-      pointer-events: none;                      /* Klicks gehen durch, außer auf Panels */
-      background: radial-gradient(120% 90% at 50% 40%, rgba(0,0,8,0.35) 0%, rgba(0,0,8,0.82) 100%);
-    }
-    #garage.visible { display: block; }
-    #garage > * { pointer-events: auto; }
-
-    /* Markenleiste oben mittig + Zurück-Knopf oben rechts */
-    .garage-top {
-      position: absolute; top: 0; left: 0; right: 0; padding: 22px 24px;
-      display: flex; align-items: center; gap: 14px; justify-content: center;
-      pointer-events: none;
-    }
-    #garage-brands { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; pointer-events: auto; }
-    .garage-brand {
-      pointer-events: auto; cursor: pointer; border: 1px solid rgba(255,255,255,0.22);
-      background: rgba(14,18,26,0.72); color: #cfd6e0; backdrop-filter: blur(6px);
-      padding: 12px 20px; border-radius: 12px; font-size: clamp(14px, 1.5vw, 19px);
-      font-weight: 700; letter-spacing: 1px; transition: all 0.15s;
-    }
-    .garage-brand:hover { color: #fff; border-color: rgba(255,255,255,0.5); }
-    .garage-brand.active { background: #2aa6e0; color: #fff; border-color: #2aa6e0; box-shadow: 0 6px 24px rgba(42,166,224,0.5); }
-
-    #garage-back {
-      position: absolute; top: 22px; right: 24px; pointer-events: auto; cursor: pointer;
-      border: 1px solid rgba(255,255,255,0.25); background: rgba(14,18,26,0.8);
-      color: #fff; padding: 12px 20px; border-radius: 12px; font-size: 17px; font-weight: 700;
-      transition: all 0.15s;
-    }
-    #garage-back:hover { background: rgba(226,0,26,0.85); border-color: #e2001a; }
-
-    /* Auto-Auswahl links */
-    #garage-cars {
-      position: absolute; left: 24px; top: 50%; transform: translateY(-50%);
-      display: flex; flex-direction: column; gap: 14px; width: clamp(230px, 24vw, 320px);
-    }
-    .garage-car {
-      pointer-events: auto; cursor: pointer; text-align: left;
-      border: 1px solid rgba(255,255,255,0.18); background: rgba(14,18,26,0.72);
-      color: #d4dae4; backdrop-filter: blur(6px);
-      padding: 18px 20px; border-radius: 14px; font-size: clamp(15px, 1.4vw, 19px);
-      font-weight: 700; transition: all 0.15s;
-    }
-    .garage-car:hover { color: #fff; border-color: rgba(255,255,255,0.45); transform: translateX(4px); }
-    .garage-car.active { background: linear-gradient(110deg, #0653a0, #2aa6e0); color: #fff; border-color: #2aa6e0; }
-
-    /* Technische Daten rechts */
-    #garage-specs {
-      position: absolute; right: 24px; top: 50%; transform: translateY(-50%);
-      width: clamp(260px, 26vw, 360px);
-      background: rgba(10,14,20,0.78); backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.16); border-radius: 16px; padding: 22px 24px;
-      box-shadow: 0 16px 50px rgba(0,0,0,0.55);
-    }
-    #garage-specs h2 { margin: 0 0 16px; font-size: clamp(18px, 1.9vw, 26px); font-weight: 800; letter-spacing: 0.5px; }
-    .spec-row { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; border-top: 1px solid rgba(255,255,255,0.08); }
-    .spec-row span { color: #9aa4b2; font-size: 14px; }
-    .spec-row b { font-size: clamp(15px, 1.5vw, 19px); font-weight: 700; }
-
-    /* „Auto auswählen" unten rechts */
-    #garage-select {
-      position: absolute; bottom: 28px; right: 24px; pointer-events: auto; cursor: pointer;
-      border: none; background: linear-gradient(110deg, #e2001a, #ff5a30); color: #fff;
-      padding: 18px 36px; border-radius: 14px; font-size: clamp(16px, 1.7vw, 22px);
-      font-weight: 800; letter-spacing: 1px; box-shadow: 0 10px 36px rgba(226,0,26,0.5);
-      transition: transform 0.15s, filter 0.15s;
-    }
-    #garage-select:hover { transform: scale(1.04); filter: brightness(1.08); }
   </style>
 </head>
 <body>
@@ -414,17 +342,6 @@
   <div id="mode-screen">
     <button class="mode-btn" id="btn-training"><span>TRAINING</span></button>
     <button class="mode-btn" id="btn-rennen"><span>RENNEN</span></button>
-  </div>
-
-  <!-- Garagen-Menü: öffnet sich nach Training/Rennen; Auto + technische Daten wählen -->
-  <div id="garage">
-    <div class="garage-top">
-      <div id="garage-brands"></div>
-    </div>
-    <button id="garage-back">↩ Zurück</button>
-    <div id="garage-cars"></div>
-    <div id="garage-specs"></div>
-    <button id="garage-select">Auto auswählen ▸</button>
   </div>
 
   <div id="pause-label">Spiel pausiert</div>
