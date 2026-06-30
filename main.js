@@ -2263,7 +2263,7 @@ function setupGrid() {
       bot._prevS = arc; bot.crossings = 0;        // Rundenzählung (Wrap der Bogenlänge)
       bot.v = 0;                                  // startet aus dem Stand
       bot.launchTimer = 0;
-      bot.reaction = 0.340 + Math.random() * 0.310; // eigene Reaktionszeit 0,340…0,650 s
+      bot.reaction = 0.200 + Math.random() * 0.150; // eigene Reaktionszeit 0,200…0,350 s
       // eigene Ideallinie (seitlicher Versatz, je Bot unterschiedlich)
       bot.lineOffset = (e.who - (BOT_COUNT - 1) / 2) * 1.7 + (Math.random() - 0.5) * 1.2;
       // eigene Fahr-Charakteristik: Kurvenmut (später/früher bremsen) + Beschleunigung
