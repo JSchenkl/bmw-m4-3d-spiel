@@ -1688,6 +1688,11 @@ function updateTimeAttack(dt) {
         race.phase = 'qualiDone';
         setRaceStartVisible(true);
         setRaceInfo(`Quali: ${fmtTime(race.qualiTime)} — bereit? „Rennen starten" drücken`);
+      } else if (raceMode && race.phase === 'go') {
+        // Rundenzählung: 1. Überfahrt = Startlinie (Runde 1), danach je Runde +1
+        race.crossings++;
+        if (race.crossings > RACE_LAPS) finishRace();        // 5 Runden absolviert
+        else setRaceInfo(`Runde ${race.crossings}/${RACE_LAPS}`);
       }
     } else {
       // Erste Linienüberfahrt: Aus-Runde beendet, ab jetzt wird die Zeit gemessen
@@ -1960,7 +1965,14 @@ function updateBots(dt) {
         // Jeder Bot fährt für sich: eigenes Kurventempo (cornerF = später/früher bremsen)
         // und eigene Beschleunigung (accelF). cornerF>1 = mutiger, bremst später.
         const look = 14 * (bot.cornerF || 1);       // mutigere Bots schauen kürzer voraus → bremsen später
-        const target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + look) * (bot.cornerF || 1));
+        let target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + look) * (bot.cornerF || 1));
+        // Auffahrschutz: dichter, gleichspuriger Gegner voraus → Tempo angleichen (nicht reinfahren)
+        for (const o of bots) {
+          if (o === bot) continue;
+          const ds = ((o.s - bot.s) % total + total) % total;
+          const dLat = Math.abs((bot.offset || 0) - (o.offset || 0));
+          if (ds > 0 && ds < 7 && dLat < 2.2) target = Math.min(target, Math.max(0, o.v - (7 - ds) * 1.2));
+        }
         // Totband um die Zieldrehzahl: kein Hin-und-Her zwischen Gas und Bremse (kein Rucken/Flackern)
         if (bot.v < target - 0.4) {
           const a = Math.max(0, engineAccel(bot.v)) * (bot.accelF || 1); // Spieler-Beschleunigungsmodell
@@ -1969,7 +1981,9 @@ function updateBots(dt) {
           bot.v = Math.max(target, bot.v - BOT_BRAKE * dt);              // Bremse vor Kurven
           braking = true;
         }
+        const ps = bot.s;
         bot.s = (bot.s + bot.v * dt) % total;
+        if (bot.s < ps - total * 0.5) bot.crossings = (bot.crossings || 0) + 1; // Start/Ziel überfahren
 
         // Überholen mit Hysterese: dicht hinter einem langsameren Bot seitlich ausweichen.
         // Die Seite bleibt während des Manövers fest (kein seitliches Zittern), erst wenn
@@ -1985,6 +1999,16 @@ function updateBots(dt) {
         }
         if (!block) bot.ovSide = 0;
         let desired = (bot.lineOffset || 0) + (bot.ovSide || 0) * 2.4;
+        // Seitlich auf Abstand bleiben: überlappt ein Gegner längs, zur Seite drücken
+        for (const o of bots) {
+          if (o === bot) continue;
+          let ds = ((o.s - bot.s) % total + total) % total; ds = Math.min(ds, total - ds);
+          if (ds < 4.6) {
+            const off = (bot.offset || 0) - (o.offset || 0);
+            const dir = off !== 0 ? Math.sign(off) : (bots.indexOf(bot) < bots.indexOf(o) ? 1 : -1);
+            if (Math.abs(off) < 2.2) desired += dir * 1.6; // auseinanderdrücken
+          }
+        }
         desired = Math.max(-5, Math.min(5, desired));         // auf der Strecke bleiben
         bot.offset += (desired - bot.offset) * Math.min(1, dt * 1.4);
 
@@ -2010,8 +2034,9 @@ function removeBots() {
 
 // ---------- Rennmodus: Quali → Startaufstellung → F1-Ampel → Frühstart-Strafe ----------
 const BOT_QUALI_FACTOR = [0.94, 0.98, 1.03, 1.08, 1.13]; // Bot-Quali-Zeiten relativ zur Spielerzeit
+const RACE_LAPS = 5;  // Renndistanz: 5 Runden
 const race = {
-  phase: 'off',     // 'off' | 'quali' | 'qualiDone' | 'lights' | 'go'
+  phase: 'off',     // 'off' | 'quali' | 'qualiDone' | 'lights' | 'go' | 'finished'
   qualiTime: null,
   playerGrid: 0,
   lightT: 0,
@@ -2020,6 +2045,7 @@ const race = {
   jumpStart: false,
   penalty: 0,       // verbleibende Strafzeit (Sek), >0 = noch abzusitzen
   skipped: false,   // Quali übersprungen → Start ganz hinten
+  crossings: 0,     // Start/Ziel-Überfahrten des Spielers (1. = Startlinie, dann je Runde +1)
 };
 const lightsEl = document.getElementById('start-lights');
 const raceStartBtn = document.getElementById('race-start-btn');
@@ -2053,6 +2079,19 @@ function setRaceInfo(text) {
   if (!text) { raceInfoEl.classList.remove('visible'); return; }
   raceInfoEl.textContent = text;
   raceInfoEl.classList.add('visible');
+}
+
+// Rennen beendet (Spieler hat RACE_LAPS Runden voll): Platzierung nach
+// zurückgelegter Gesamtstrecke (Überfahrten · Streckenlänge + aktuelle Bogenlänge).
+function finishRace() {
+  const total = centerline.total;
+  const playerDist = race.crossings * total + trackProgress(carGroup.position.x, carGroup.position.z);
+  let ahead = 0;
+  for (const b of bots) if ((b.crossings || 0) * total + b.s > playerDist) ahead++;
+  const pos = ahead + 1;
+  race.phase = 'finished';
+  setRaceInfo(`🏁 Rennen beendet — Platz ${pos} von ${BOT_COUNT + 1}`);
+  showRaceMsg(`🏁 Platz ${pos}/${BOT_COUNT + 1}`, '#69f0ae');
 }
 function renderLights(n) {
   const els = lightsEl.children;
@@ -2102,6 +2141,7 @@ function setupGrid() {
   entries.sort((a, b) => a.time - b.time);
 
   if (!bots.length) createBots();
+  race.crossings = 0;        // Rundenzähler des Spielers zurücksetzen
   const total = centerline.total;
   entries.forEach((e, i) => {
     const arc = ((gridArc(i) % total) + total) % total;
@@ -2117,6 +2157,7 @@ function setupGrid() {
     } else {
       const bot = bots[e.who];
       bot.s = arc; bot.offset = gridOffset(i);    // Startaufstellung gestaffelt
+      bot._prevS = arc; bot.crossings = 0;        // Rundenzählung (Wrap der Bogenlänge)
       bot.v = 0;                                  // startet aus dem Stand
       bot.launchTimer = 0;
       bot.reaction = 0.340 + Math.random() * 0.310; // eigene Reaktionszeit 0,340…0,650 s
@@ -2174,7 +2215,7 @@ function updateRace(dt) {
       race.phase = 'go';
       renderLights(0);
       lightsEl.classList.remove('visible');
-      setRaceInfo('');
+      setRaceInfo(`Runde 1/${RACE_LAPS}`);
       showRaceMsg('LOS!', '#69f0ae');
     }
   } else if (race.phase === 'go') {
