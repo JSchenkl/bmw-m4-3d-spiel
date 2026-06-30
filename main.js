@@ -710,7 +710,7 @@ function loadCar(index) {
   },
   (xhr) => {
     if (xhr.total > 0) {
-      const pct = Math.round((xhr.loaded / xhr.total) * 100);
+      const pct = Math.min(100, Math.round((xhr.loaded / xhr.total) * 100)); // nie über 100 %
       barEl.style.width = pct + '%';
       pctEl.textContent = `Lade Modell … ${pct}%`;
     }
