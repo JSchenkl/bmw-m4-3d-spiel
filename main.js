@@ -2368,7 +2368,7 @@ function buildGridBoxes() {
     const cx = c.x + nx * off, cz = c.z + nz * off;
     line(cx + nx * (W / 2), cz + nz * (W / 2), ang, L, th);          // rechte Längslinie
     line(cx - nx * (W / 2), cz - nz * (W / 2), ang, L, th);          // linke Längslinie
-    line(cx - c.tx * (L / 2), cz - c.tz * (L / 2), ang, th, W + th); // hintere Querlinie (Box vorne offen)
+    line(cx + c.tx * (L / 2), cz + c.tz * (L / 2), ang, th, W + th); // vordere Startlinie (Box hinten offen, wie in der F1)
   }
   scene.add(gridBoxes);
 }
