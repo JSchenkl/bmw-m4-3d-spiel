@@ -1233,8 +1233,11 @@ function resolveCollisions() {
     // entlang (frontal = harter Stopp, schräg = Schrammen mit Tempoverlust)
     const align = fwd.x * push.nx + fwd.z * push.nz;
     if (speed * align < 0) {
+      const before = speed;
       const slide = Math.sqrt(Math.max(0, 1 - align * align));
       speed *= slide * 0.9;
+      // Crash mit einem Auto (Bot): nicht auf 0, sondern auf das Tempo des anderen abbremsen
+      if (w.v !== undefined && before > 0) speed = Math.max(speed, Math.min(before, w.v));
     }
   }
 }
@@ -2023,7 +2026,7 @@ function updateBots(dt) {
     }
     const p = positionBot(bot, dt);
     // Hitbox etwas großzügiger, damit auch Seiten-/Streifkontakt sicher zählt
-    botColliders.push({ cx: p.x, cz: p.z, ax: p.tx, az: p.tz, halfLen: carHalf.len + 0.2, halfWid: carHalf.wid + 0.45 });
+    botColliders.push({ cx: p.x, cz: p.z, ax: p.tx, az: p.tz, halfLen: carHalf.len + 0.2, halfWid: carHalf.wid + 0.45, v: bot.v });
   }
 }
 
