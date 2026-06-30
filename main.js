@@ -1816,8 +1816,8 @@ btnHome.addEventListener('click', () => {
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
 const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
 const BOT_MAX_SPEED = 80.5;     // m/s (~290 km/h) – wie der Spieler-Topspeed
-const BOT_MIN_SPEED = 22;       // m/s Mindesttempo in engen Kurven
-const BOT_LAT_ACC = 26;         // seitliche Beschleunigung → bestimmt das Kurventempo
+const BOT_MIN_SPEED = 16;       // m/s Mindesttempo in engen Kurven (wie der Spieler dort)
+// (Kurven-Grip der Bots = Spieler-Querhaftung MAX_LAT_ACC, siehe botTargetSpeed)
 const BOT_ACCEL = 8;            // m/s² Längsbeschleunigung am Start
 const BOT_BRAKE = 24;           // m/s² Bremsverzögerung vor Kurven
 const bots = [];                // { group, s, offset }
@@ -1850,7 +1850,13 @@ function botTargetSpeed(s) {
   let cosA = d1x * d2x + d1z * d2z; cosA = Math.max(-1, Math.min(1, cosA));
   const kappa = Math.acos(cosA) / L; // Krümmung (Richtungsänderung pro Meter)
   if (kappa < 1e-4) return BOT_MAX_SPEED;
-  const v = Math.sqrt(BOT_LAT_ACC / kappa); // = sqrt(aLat · Radius)
+  // Gleiche Querhaftung wie der Spieler: 1,07 g, inkl. geschwindigkeitsabhängigem
+  // Grip-Abfall (schnelle Kurven = weniger Grip). v² = aLat(v)·Radius, iterativ gelöst.
+  let v = 45;
+  for (let it = 0; it < 6; it++) {
+    const sg = Math.max(0.4, Math.min(1, 1 - Math.max(0, v - 12) * 0.013)); // wie speedGrip beim Spieler
+    v = 0.5 * v + 0.5 * Math.sqrt((MAX_LAT_ACC * sg) / kappa);
+  }
   return Math.max(BOT_MIN_SPEED, Math.min(BOT_MAX_SPEED, v));
 }
 
@@ -2117,7 +2123,7 @@ function setupGrid() {
       // eigene Ideallinie (seitlicher Versatz, je Bot unterschiedlich)
       bot.lineOffset = (e.who - (BOT_COUNT - 1) / 2) * 1.7 + (Math.random() - 0.5) * 1.2;
       // eigene Fahr-Charakteristik: Kurvenmut (später/früher bremsen) + Beschleunigung
-      bot.cornerF = 0.97 + Math.random() * 0.12;   // 0,97…1,09 → unterschiedliches Kurventempo
+      bot.cornerF = 0.96 + Math.random() * 0.08;   // 0,96…1,04 → kleine Streuung um Spieler-Grip
       bot.accelF = 0.96 + Math.random() * 0.1;     // 0,96…1,06 → früher/später am Gas
       bot.ovSide = 0;                              // kein Überholmanöver aktiv
       positionBot(bot);                            // sofort ausrichten (ohne dt)
