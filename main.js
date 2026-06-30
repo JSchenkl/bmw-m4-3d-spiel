@@ -69,10 +69,10 @@ function makeSkyGradient() {
   const c = document.createElement('canvas'); c.width = 8; c.height = 256;
   const g = c.getContext('2d');
   const grd = g.createLinearGradient(0, 0, 0, 256);
-  grd.addColorStop(0.0, '#1565c0');   // Zenit: kräftiges Blau
-  grd.addColorStop(0.45, '#3d86d8');  // mittlerer Himmel
-  grd.addColorStop(0.8, '#9fc6ea');   // Richtung Horizont heller
-  grd.addColorStop(1.0, '#cfe2f3');   // Horizontdunst
+  grd.addColorStop(0.0, '#4aa6ef');   // Zenit: helles Himmelblau
+  grd.addColorStop(0.45, '#73bdf5');  // mittlerer Himmel
+  grd.addColorStop(0.8, '#a9d6f8');   // Richtung Horizont heller
+  grd.addColorStop(1.0, '#dcefff');   // Horizontdunst (fast weiß-blau)
   g.fillStyle = grd; g.fillRect(0, 0, 8, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -753,7 +753,7 @@ function applyMode() {
     baseExposure = 0.85; applyExposure();
   } else {
     scene.background = skyTexture;       // blauer Himmel-Verlauf
-    scene.fog = new THREE.Fog(0xcfe2f3, 800, 8500);
+    scene.fog = new THREE.Fog(0xdcefff, 800, 8500);
     scene.environmentIntensity = 1.0;
     sun.visible = true;
     moon.visible = false;
