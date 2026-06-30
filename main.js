@@ -432,7 +432,7 @@ function loadCar(index) {
       }
       if (cfg.windowRe.test(matName)) {
         node.material.transparent = true;
-        node.material.opacity = Math.min(node.material.opacity, 0.4);
+        node.material.opacity = Math.min(node.material.opacity, 0.1); // Scheiben nur ~10 % getönt → klare Sicht
       }
     });
 
