@@ -144,6 +144,7 @@ function loadTrack(file) {
       buildCenterline(cd);
       // Boxengassen-Szene gehört zur Strecke → beim Wechsel neu aufbauen
       if (pitScene) { scene.remove(pitScene); pitScene = null; pitCrew.length = 0; }
+      if (gridBoxes) { scene.remove(gridBoxes); gridBoxes = null; } // Startboxen neu aufbauen
       alignCarToPitlane();
       trackLoadedFile = file;
     })
@@ -2212,15 +2213,35 @@ function raceReset() {
 const gridArc = (i) => centerline.total - 10 - i * 7;       // Startplätze hinter der Linie
 const gridOffset = (i) => (i % 2 === 0 ? 3 : -3);           // gestaffelt links/rechts
 
-function setupGrid() {
-  if (!centerline || (race.qualiTime == null && !race.skipped)) return;
-  // Reihenfolge aus Quali-Zeiten (Spieler + Bots), schnellste Zeit = Pole.
-  // Quali übersprungen → Spieler startet ganz hinten (Zeit = Unendlich).
+// Startreihenfolge aus den Quali-Zeiten (Spieler + Bots), schnellste Zeit = Pole.
+// Quali übersprungen → Spieler startet ganz hinten (Zeit = Unendlich).
+function computeGridEntries() {
   const baseRef = (race.qualiTime != null && isFinite(race.qualiTime)) ? race.qualiTime : 90;
   const playerTime = race.skipped ? Infinity : race.qualiTime;
   const entries = [{ who: 'player', time: playerTime }];
   for (let k = 0; k < BOT_COUNT; k++) entries.push({ who: k, time: baseRef * BOT_QUALI_FACTOR[k] });
   entries.sort((a, b) => a.time - b.time);
+  return entries;
+}
+
+// Startaufstellung mit Quali-Zeiten anzeigen (nach „Rennen starten"), bevor die Ampel startet
+function showGridLineup() {
+  if (!centerline || (race.qualiTime == null && !race.skipped)) return;
+  const entries = computeGridEntries();
+  gridListEl.innerHTML = entries.map((e, i) => {
+    const me = e.who === 'player';
+    const name = me ? 'DU' : `GEGNER ${e.who + 1}`;
+    const t = isFinite(e.time) ? fmtTime(e.time) : '—';
+    return `<div class="grid-row${me ? ' me' : ''}"><span class="pos">P${i + 1}</span><span class="nm">${name}</span><span class="tm">${t}</span></div>`;
+  }).join('');
+  gridScreenEl.classList.add('visible');
+  setRaceStartVisible(false);
+  setRaceSkipVisible(false);
+}
+
+function setupGrid() {
+  if (!centerline || (race.qualiTime == null && !race.skipped)) return;
+  const entries = computeGridEntries();
 
   if (!bots.length) createBots();
   race.crossings = 0;        // Rundenzähler des Spielers zurücksetzen
@@ -2310,14 +2331,47 @@ function updateRace(dt) {
   }
 }
 
-raceStartBtn.addEventListener('click', setupGrid);
+// „Rennen starten" zeigt zuerst die Startaufstellung mit den Quali-Zeiten
+const gridScreenEl = document.getElementById('grid-screen');
+const gridListEl = document.getElementById('grid-list');
+raceStartBtn.addEventListener('click', showGridLineup);
 raceSkipBtn.addEventListener('click', () => {
   race.skipped = true; // Quali übersprungen ⇒ Start ganz hinten
-  setupGrid();
+  showGridLineup();
 });
 // gleiche Aktionen auch über das ☰-Menü; Menü dabei schließen, damit es weitergeht
-btnRaceStartMenu.addEventListener('click', () => { setupGrid(); toggleMenu(false); });
-btnRaceSkipMenu.addEventListener('click', () => { race.skipped = true; setupGrid(); toggleMenu(false); });
+btnRaceStartMenu.addEventListener('click', () => { showGridLineup(); toggleMenu(false); });
+btnRaceSkipMenu.addEventListener('click', () => { race.skipped = true; showGridLineup(); toggleMenu(false); });
+// aus der Startaufstellung ins Rennen (Autos setzen + Ampel)
+document.getElementById('grid-go').addEventListener('click', () => {
+  gridScreenEl.classList.remove('visible');
+  setupGrid();
+});
+
+// ---------- Startboxen: aufgemalte Grid-Markierungen an den Startplätzen ----------
+let gridBoxes = null;
+function buildGridBoxes() {
+  gridBoxes = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const y = carGroup.position.y + 0.03, L = 5, W = 2.6, th = 0.16;
+  const total = centerline.total;
+  // eine Linie (flaches weißes Band) bei (cx,cz), ausgerichtet nach ang; len=Länge entlang Strecke, wid=quer
+  const line = (cx, cz, ang, len, wid) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(wid, 0.04, len), mat);
+    m.position.set(cx, y, cz); m.rotation.y = ang; gridBoxes.add(m);
+  };
+  for (let i = 0; i <= BOT_COUNT; i++) {
+    const arc = ((gridArc(i) % total) + total) % total;
+    const c = centerlineAt(arc);
+    const ang = Math.atan2(c.tx, c.tz);
+    const nx = -c.tz, nz = c.tx, off = gridOffset(i);
+    const cx = c.x + nx * off, cz = c.z + nz * off;
+    line(cx + nx * (W / 2), cz + nz * (W / 2), ang, L, th);          // rechte Längslinie
+    line(cx - nx * (W / 2), cz - nz * (W / 2), ang, L, th);          // linke Längslinie
+    line(cx - c.tx * (L / 2), cz - c.tz * (L / 2), ang, th, W + th); // hintere Querlinie (Box vorne offen)
+  }
+  scene.add(gridBoxes);
+}
 
 // ---------- Boxengasse: geparkte Autos + animierte Boxencrew (Reifenwechsel) ----------
 let pitScene = null;
@@ -2475,6 +2529,7 @@ renderer.setAnimationLoop(() => {
 
   // Boxengasse einmal aufbauen, sobald Auto + Strecke geladen sind; Crew animieren
   if (!pitScene && currentCar && centerline && carForward) buildPitScene();
+  if (!gridBoxes && centerline) buildGridBoxes();
   if (pitScene) updatePitScene(dt);
 
   // Rennablauf (Ampel/Strafe) + Bots, vor dem Auto, damit die Kollision aktuelle Positionen nutzt
