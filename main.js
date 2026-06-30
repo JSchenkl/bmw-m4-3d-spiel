@@ -886,6 +886,32 @@ function moveMenuSelection(dir) {
   highlightMenuItem();
 }
 
+// ---------- Controller-Navigation im Startmenü (Kreuztasten wechseln, A bestätigt) ----------
+let startNavIndex = 0;
+function getStartItems() {
+  // Buttons des aktuell sichtbaren Vor-Spiel-Bildschirms
+  const mode = document.getElementById('mode-screen');
+  const start = document.getElementById('start-screen');
+  if (mode && mode.classList.contains('visible')) {
+    return [document.getElementById('btn-training'), document.getElementById('btn-rennen')];
+  }
+  if (start && start.classList.contains('visible')) {
+    return [document.getElementById('btn-start')];
+  }
+  return [];
+}
+function highlightStartItem() {
+  const items = getStartItems();
+  if (startNavIndex >= items.length) startNavIndex = 0;
+  items.forEach((b, i) => b && b.classList.toggle('cnav-selected', i === startNavIndex));
+}
+function moveStartSelection(dir) {
+  const items = getStartItems();
+  if (!items.length) return;
+  startNavIndex = (startNavIndex + dir + items.length) % items.length;
+  highlightStartItem();
+}
+
 // ---------- Kameraperspektive umschalten (Taste T, Klick auf den Ansicht-Button) ----------
 const btnView = document.getElementById('btn-view');
 function applyCameraMode() {
@@ -1184,6 +1210,17 @@ function updateCar(dt) {
       if (padPressedOnce(pad, 12)) moveMenuSelection(-1); // D-Pad hoch
       if (padPressedOnce(pad, 13)) moveMenuSelection(1);  // D-Pad runter
       if (padPressedOnce(pad, 0)) getMenuItems()[menuIndex]?.click(); // A = auswählen
+    }
+
+    // Startmenü (vor dem Spielstart): Kreuztasten wechseln den Slot, A bestätigt
+    if (!gameStarted) {
+      const startItems = getStartItems();
+      if (startItems.length) {
+        highlightStartItem(); // Auswahl sichtbar halten (auch ohne Eingabe)
+        if (padPressedOnce(pad, 14) || padPressedOnce(pad, 12)) moveStartSelection(-1); // links / hoch
+        if (padPressedOnce(pad, 15) || padPressedOnce(pad, 13)) moveStartSelection(1);  // rechts / runter
+        if (padPressedOnce(pad, 0)) startItems[startNavIndex]?.click();                 // A = bestätigen
+      }
     }
 
     if ((throttle > 0 || brakeInput > 0 || Math.abs(stickX) > dz) && controls.autoRotate) {
