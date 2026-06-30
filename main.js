@@ -71,11 +71,12 @@ sky.scale.setScalar(10000);
 scene.add(sky);
 {
   const u = sky.material.uniforms;
-  u['turbidity'].value = 6;
-  u['rayleigh'].value = 1.6;
-  u['mieCoefficient'].value = 0.005;
+  // klares, realistisches Tagesblau: wenig Trübung, mehr Blaustreuung, wenig Dunst
+  u['turbidity'].value = 2;
+  u['rayleigh'].value = 2.6;
+  u['mieCoefficient'].value = 0.004;
   u['mieDirectionalG'].value = 0.8;
-  u['sunPosition'].value.copy(new THREE.Vector3(90, 130, 60).normalize()); // Sonnenrichtung = Sonnenlicht
+  u['sunPosition'].value.copy(new THREE.Vector3(90, 150, 60).normalize()); // hohe Sonne → kräftiges Blau
 }
 
 // ---------- Rennstrecken (echte Vermessungsdaten, TUM racetrack-database) ----------
