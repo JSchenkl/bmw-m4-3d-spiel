@@ -35,8 +35,8 @@ function buildStrip(left, right, y, closed) {
   return geo;
 }
 
-export async function createSpaTrack() {
-  const text = await (await fetch('models/spa_track.csv')).text();
+export async function createTrack(file) {
+  const text = await (await fetch(file)).text();
   const rows = text.split('\n')
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith('#'))

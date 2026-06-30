@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createSpaTrack } from './track.js';
+import { createTrack } from './track.js';
 import * as engineAudio from './audio.js';
 
 // ---------- Renderer ----------
@@ -58,20 +58,38 @@ ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 
-// ---------- Rennstrecke: Spa-Francorchamps ----------
-let pitDirection = null; // Fahrtrichtung in der Boxengasse (für die Auto-Ausrichtung)
-let trackColliders = []; // Kollisionsboxen der Mauern und Gebäude
-let curbData = null;     // Mittellinie + Breiten für die Curb-Neigung
-createSpaTrack()
-  .then(({ group, pitDirection: dir, colliders, curbData: cd }) => {
-    scene.add(group);
-    pitDirection = dir;
-    trackColliders = colliders;
-    curbData = cd;
-    buildCenterline(cd);
-    alignCarToPitlane();
-  })
-  .catch((err) => console.error('Strecke konnte nicht geladen werden:', err));
+// ---------- Rennstrecken (echte Vermessungsdaten, TUM racetrack-database) ----------
+const TRACKS = [
+  { id: 'spa', name: 'Spa-Francorchamps', country: 'Belgien', length: '7,004 km', file: 'models/spa_track.csv' },
+  { id: 'hockenheim', name: 'Hockenheimring', country: 'Deutschland', length: '4,574 km', file: 'models/hockenheim_track.csv' },
+  { id: 'silverstone', name: 'Silverstone', country: 'Großbritannien', length: '5,891 km', file: 'models/silverstone_track.csv' },
+];
+let selectedTrackIndex = 0;
+let trackGroup = null;       // aktuelle Strecken-Gruppe (zum Entfernen beim Wechsel)
+let trackLoadedFile = null;  // zuletzt geladene CSV
+let pitDirection = null;     // Fahrtrichtung in der Boxengasse (für die Auto-Ausrichtung)
+let trackColliders = [];     // Kollisionsboxen der Mauern und Banden
+let curbData = null;         // Mittellinie + Breiten für die Curb-Neigung
+
+function loadTrack(file) {
+  return createTrack(file)
+    .then(({ group, pitDirection: dir, colliders, curbData: cd }) => {
+      if (trackGroup) scene.remove(trackGroup);
+      trackGroup = group;
+      scene.add(group);
+      pitDirection = dir;
+      trackColliders = colliders;
+      curbData = cd;
+      buildCenterline(cd);
+      // Boxengassen-Szene gehört zur Strecke → beim Wechsel neu aufbauen
+      if (pitScene) { scene.remove(pitScene); pitScene = null; pitCrew.length = 0; }
+      alignCarToPitlane();
+      trackLoadedFile = file;
+    })
+    .catch((err) => console.error('Strecke konnte nicht geladen werden:', err));
+}
+
+loadTrack(TRACKS[selectedTrackIndex].file);
 
 // ---------- Tageslicht ----------
 const sun = new THREE.DirectionalLight(0xfff2e0, 3.0);
@@ -790,11 +808,11 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
   const startScreen = document.getElementById('start-screen');
   const modeScreen = document.getElementById('mode-screen');
 
-  // „SPIELEN" → Modus-Auswahl (Training / Rennen) zeigen
+  // „SPIELEN" → zuerst Streckenauswahl (danach Modus-Auswahl)
   document.getElementById('btn-start').addEventListener('click', () => {
     startScreen.classList.remove('visible');
     startScreen.addEventListener('transitionend', () => { startScreen.style.display = 'none'; }, { once: true });
-    modeScreen.classList.add('visible');
+    showTrackScreen();
   });
 
   // Spiel im gewählten Modus starten
@@ -910,6 +928,63 @@ function moveStartSelection(dir) {
   if (!items.length) return;
   startNavIndex = (startNavIndex + dir + items.length) % items.length;
   highlightStartItem();
+}
+
+// ---------- Streckenauswahl (vor der Modus-Wahl) ----------
+const _trackMapCache = {};
+function setTrackMap(track) {
+  const pathEl = document.getElementById('track-map-path');
+  if (!pathEl) return;
+  if (_trackMapCache[track.id]) { pathEl.setAttribute('d', _trackMapCache[track.id]); return; }
+  pathEl.setAttribute('d', '');
+  fetch(track.file).then((r) => r.text()).then((text) => {
+    const rows = text.split('\n').map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#')).map((l) => l.split(',').map(Number));
+    const xs = rows.map((r) => r[0]), ys = rows.map((r) => r[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    const w = maxX - minX, h = maxY - minY, scale = 88 / Math.max(w, h);
+    const ox = (100 - w * scale) / 2, oy = (100 - h * scale) / 2;
+    let d = '';
+    for (let i = 0; i < rows.length; i++) {
+      // y spiegeln, damit Norden oben ist (SVG-y zeigt nach unten)
+      const px = ox + (xs[i] - minX) * scale, py = oy + (maxY - ys[i]) * scale;
+      d += (i ? 'L' : 'M') + px.toFixed(1) + ' ' + py.toFixed(1) + ' ';
+    }
+    d += 'Z';
+    _trackMapCache[track.id] = d;
+    if (TRACKS[selectedTrackIndex].id === track.id) pathEl.setAttribute('d', d);
+  }).catch(() => {});
+}
+function renderTrackScreen() {
+  const t = TRACKS[selectedTrackIndex];
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('track-name', t.name);
+  set('track-country', t.country);
+  set('track-length', t.length);
+  setTrackMap(t);
+}
+function cycleTrack(dir) {
+  selectedTrackIndex = (selectedTrackIndex + dir + TRACKS.length) % TRACKS.length;
+  renderTrackScreen();
+}
+function showTrackScreen() {
+  renderTrackScreen();
+  document.getElementById('track-screen').classList.add('visible');
+}
+function confirmTrackSelection() {
+  const t = TRACKS[selectedTrackIndex];
+  const proceed = () => {
+    document.getElementById('track-screen').classList.remove('visible');
+    document.getElementById('mode-screen').classList.add('visible');
+    startNavIndex = 0; // Modus-Navigation startet bei „Training"
+  };
+  if (t.file !== trackLoadedFile) loadTrack(t.file).then(proceed); else proceed();
+}
+{
+  const byId = (id) => document.getElementById(id);
+  byId('track-prev')?.addEventListener('click', () => cycleTrack(-1));
+  byId('track-next')?.addEventListener('click', () => cycleTrack(1));
+  byId('track-confirm')?.addEventListener('click', confirmTrackSelection);
 }
 
 // ---------- Kameraperspektive umschalten (Taste T, Klick auf den Ansicht-Button) ----------
@@ -1212,14 +1287,22 @@ function updateCar(dt) {
       if (padPressedOnce(pad, 0)) getMenuItems()[menuIndex]?.click(); // A = auswählen
     }
 
-    // Startmenü (vor dem Spielstart): Kreuztasten wechseln den Slot, A bestätigt
+    // Startmenü (vor dem Spielstart): Kreuztasten wechseln, A bestätigt
     if (!gameStarted) {
-      const startItems = getStartItems();
-      if (startItems.length) {
-        highlightStartItem(); // Auswahl sichtbar halten (auch ohne Eingabe)
-        if (padPressedOnce(pad, 14) || padPressedOnce(pad, 12)) moveStartSelection(-1); // links / hoch
-        if (padPressedOnce(pad, 15) || padPressedOnce(pad, 13)) moveStartSelection(1);  // rechts / runter
-        if (padPressedOnce(pad, 0)) startItems[startNavIndex]?.click();                 // A = bestätigen
+      const trackScr = document.getElementById('track-screen');
+      if (trackScr && trackScr.classList.contains('visible')) {
+        // Streckenauswahl: Kreuztasten wechseln die Strecke, A bestätigt
+        if (padPressedOnce(pad, 14) || padPressedOnce(pad, 12)) cycleTrack(-1);
+        if (padPressedOnce(pad, 15) || padPressedOnce(pad, 13)) cycleTrack(1);
+        if (padPressedOnce(pad, 0)) confirmTrackSelection();
+      } else {
+        const startItems = getStartItems();
+        if (startItems.length) {
+          highlightStartItem(); // Auswahl sichtbar halten (auch ohne Eingabe)
+          if (padPressedOnce(pad, 14) || padPressedOnce(pad, 12)) moveStartSelection(-1); // links / hoch
+          if (padPressedOnce(pad, 15) || padPressedOnce(pad, 13)) moveStartSelection(1);  // rechts / runter
+          if (padPressedOnce(pad, 0)) startItems[startNavIndex]?.click();                 // A = bestätigen
+        }
       }
     }
 
@@ -1719,8 +1802,9 @@ btnHome.addEventListener('click', () => {
   isNight = true; headlightsOn = true; taillightsOn = true;
   applyMode();
 
-  // Modus-Screen sicher aus, Startbildschirm wieder einblenden
+  // Modus- und Streckenauswahl sicher aus, Startbildschirm wieder einblenden
   document.getElementById('mode-screen').classList.remove('visible');
+  document.getElementById('track-screen').classList.remove('visible');
   const ss = document.getElementById('start-screen');
   ss.style.display = '';
   requestAnimationFrame(() => ss.classList.add('visible'));
