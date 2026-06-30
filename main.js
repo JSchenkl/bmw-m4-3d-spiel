@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { Sky } from 'three/addons/objects/Sky.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -65,19 +64,41 @@ ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 
-// ---------- Himmel mit Sonne (atmosphärischer Sky-Shader, nur tagsüber) ----------
-const sky = new Sky();
-sky.scale.setScalar(10000);
-scene.add(sky);
-{
-  const u = sky.material.uniforms;
-  // klares, realistisches Tagesblau: wenig Trübung, mehr Blaustreuung, wenig Dunst
-  u['turbidity'].value = 2;
-  u['rayleigh'].value = 2.6;
-  u['mieCoefficient'].value = 0.004;
-  u['mieDirectionalG'].value = 0.8;
-  u['sunPosition'].value.copy(new THREE.Vector3(90, 150, 60).normalize()); // hohe Sonne → kräftiges Blau
+// ---------- Himmel: blauer Verlauf (überstrahlt nicht zu Weiß) + sichtbare Sonne ----------
+function makeSkyGradient() {
+  const c = document.createElement('canvas'); c.width = 8; c.height = 256;
+  const g = c.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 0, 256);
+  grd.addColorStop(0.0, '#1565c0');   // Zenit: kräftiges Blau
+  grd.addColorStop(0.45, '#3d86d8');  // mittlerer Himmel
+  grd.addColorStop(0.8, '#9fc6ea');   // Richtung Horizont heller
+  grd.addColorStop(1.0, '#cfe2f3');   // Horizontdunst
+  g.fillStyle = grd; g.fillRect(0, 0, 8, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
+const skyTexture = makeSkyGradient();
+
+// sichtbare Sonne als weiches Leucht-Sprite hoch am Himmel
+const sunSprite = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0.0, 'rgba(255,255,245,1)');
+  grd.addColorStop(0.18, 'rgba(255,250,225,0.95)');
+  grd.addColorStop(0.5, 'rgba(255,238,180,0.35)');
+  grd.addColorStop(1.0, 'rgba(255,238,180,0)');
+  g.fillStyle = grd; g.beginPath(); g.arc(64, 64, 64, 0, Math.PI * 2); g.fill();
+  const tex = new THREE.CanvasTexture(c);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, fog: false }));
+  const dir = new THREE.Vector3(90, 150, 60).normalize();
+  s.position.copy(dir.multiplyScalar(5000));
+  s.scale.set(700, 700, 1);
+  s.renderOrder = -1;
+  scene.add(s);
+  return s;
+})();
 
 // ---------- Rennstrecken (echte Vermessungsdaten, TUM racetrack-database) ----------
 const TRACKS = [
@@ -727,12 +748,12 @@ function applyMode() {
     hemi.color.set(0x223355);
     ambient.intensity = 0.1;
     stars.visible = true;
-    sky.visible = false;                 // nachts kein Tageshimmel
+    sunSprite.visible = false;           // nachts keine Sonne
     ground.material.color.set(0x0e1810);
     baseExposure = 0.85; applyExposure();
   } else {
-    scene.background = null;             // der Sky-Shader liefert Himmel + Sonne
-    scene.fog = new THREE.Fog(0xbcd3e8, 800, 8500);
+    scene.background = skyTexture;       // blauer Himmel-Verlauf
+    scene.fog = new THREE.Fog(0xcfe2f3, 800, 8500);
     scene.environmentIntensity = 1.0;
     sun.visible = true;
     moon.visible = false;
@@ -740,7 +761,7 @@ function applyMode() {
     hemi.color.set(0xbfd9ff);
     ambient.intensity = 0.45;
     stars.visible = false;
-    sky.visible = true;
+    sunSprite.visible = true;
     ground.material.color.set(0x4e7a3a);
     baseExposure = 1.0; applyExposure();
   }
