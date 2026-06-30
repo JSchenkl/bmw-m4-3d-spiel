@@ -1825,6 +1825,7 @@ const BOT_MIN_SPEED = 16;       // m/s Mindesttempo in engen Kurven (wie der Spi
 // (Kurven-Grip der Bots = Spieler-Querhaftung MAX_LAT_ACC, siehe botTargetSpeed)
 const BOT_ACCEL = 8;            // m/s² Längsbeschleunigung am Start
 const BOT_BRAKE = 24;           // m/s² Bremsverzögerung vor Kurven
+const BOT_GRIP = 0.9;           // Bots haben in allen Bereichen 10 % weniger Grip als der Spieler
 const bots = [];                // { group, s, offset }
 const _botFwd = new THREE.Vector3();
 
@@ -1860,7 +1861,7 @@ function botTargetSpeed(s) {
   let v = 45;
   for (let it = 0; it < 6; it++) {
     const sg = Math.max(0.4, Math.min(1, 1 - Math.max(0, v - 12) * 0.013)); // wie speedGrip beim Spieler
-    v = 0.5 * v + 0.5 * Math.sqrt((MAX_LAT_ACC * sg) / kappa);
+    v = 0.5 * v + 0.5 * Math.sqrt((MAX_LAT_ACC * sg * BOT_GRIP) / kappa);
   }
   return Math.max(BOT_MIN_SPEED, Math.min(BOT_MAX_SPEED, v));
 }
@@ -1975,10 +1976,10 @@ function updateBots(dt) {
         }
         // Totband um die Zieldrehzahl: kein Hin-und-Her zwischen Gas und Bremse (kein Rucken/Flackern)
         if (bot.v < target - 0.4) {
-          const a = Math.max(0, engineAccel(bot.v)) * (bot.accelF || 1); // Spieler-Beschleunigungsmodell
+          const a = Math.max(0, engineAccel(bot.v)) * (bot.accelF || 1) * BOT_GRIP; // 10 % weniger Traktion
           bot.v = Math.min(target, bot.v + a * dt);
         } else if (bot.v > target + 0.4) {
-          bot.v = Math.max(target, bot.v - BOT_BRAKE * dt);              // Bremse vor Kurven
+          bot.v = Math.max(target, bot.v - BOT_BRAKE * BOT_GRIP * dt);   // Bremse vor Kurven (10 % schwächer)
           braking = true;
         }
         const ps = bot.s;
