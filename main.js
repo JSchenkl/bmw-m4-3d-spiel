@@ -2537,7 +2537,7 @@ renderer.setAnimationLoop(() => {
 
   // Rückspiegel: Blick nach hinten, exakt in den sichtbaren Rahmen (#rear-mirror) gerendert
   const mirrorOn = cameraMode === 1 && gameStarted && carForward && rearMirrorEl;
-  if (rearMirrorEl) rearMirrorEl.style.display = mirrorOn ? '' : 'none';
+  if (rearMirrorEl) rearMirrorEl.style.display = mirrorOn ? 'block' : 'none';
   if (mirrorOn) {
     const vw = window.innerWidth, vh = window.innerHeight;
     // Position/Größe direkt aus dem Rahmen lesen → Bild deckt sich immer mit dem Rahmen
