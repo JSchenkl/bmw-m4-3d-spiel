@@ -2358,14 +2358,8 @@ function buildPitScene() {
     const tx = c.tx, tz = c.tz;
     const lnx = tz, lnz = -tx;                 // Quernormale (Boxengassen-Seite)
     const px = c.x + lnx * -15, pz = c.z + lnz * -15;
-    const fwd = new THREE.Vector3(tx, 0, tz);
 
-    // geparktes Auto (gleiches Modell)
-    const carG = new THREE.Group();
-    carG.add(currentCar.clone(true));
-    carG.position.set(px, carGroup.position.y, pz);
-    carG.quaternion.setFromUnitVectors(carForward, fwd);
-    pitScene.add(carG);
+    // (Auto am Boxenstopp entfernt – nur noch Crew + Reifenstapel)
 
     // Reifenstapel neben der Box
     for (let t = 0; t < 3; t++) {
