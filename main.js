@@ -1201,8 +1201,12 @@ function updateCar(dt) {
     applyTaillights();
   }
 
-  // Untergrund-Grip: Gras = 30 % Haftung
-  const surfaceGrip = carOnGrass() ? 0.3 : 1.0;
+  // Untergrund-Grip: Gras am wenigsten Haftung, Kies dazwischen, Strecke voll.
+  // overMul steuert, wie leicht das Heck ausbricht (→ Drehen um die eigene Achse).
+  const onGrass = carOnGrass();
+  const onGravelSurf = !onGrass && carOnGravel();
+  const surfaceGrip = onGrass ? 0.3 : (onGravelSurf ? 0.55 : 1.0);
+  const overMul = onGrass ? 1.0 : (onGravelSurf ? 0.7 : 0.35);
 
   // Längsdynamik: Kräftebilanz aus Antrieb, Luft- und Rollwiderstand
   const v = Math.abs(speed);
@@ -1266,10 +1270,17 @@ function updateCar(dt) {
     const latMax = Math.max(0.3 * latAcc, latAcc * Math.sqrt(1 - usedLong * usedLong));
 
     const aLat = Math.abs(speed * omega);
+    let slide = rearSlip;                       // Antriebs-Schlupf (durchdrehendes Heck)
     if (aLat > latMax) {
+      slide += (aLat - latMax) / latMax;        // seitliches Wegrutschen am Grenzbereich
       omega *= latMax / aLat;
       speed -= Math.sign(speed) * Math.min(2 * dt, Math.abs(speed));
     }
+
+    // Übersteuern: das ausbrechende Heck dreht das Auto zusätzlich um die Hochachse.
+    // Auf Gras stark, auf Kies mittel, auf der Strecke nur leicht (mehr Grip).
+    const overshoot = OVERSTEER_GAIN * overMul * Math.min(slide, 2) * Math.min(1, Math.abs(speed) / 6);
+    omega += Math.sign(steerAngle) * Math.sign(speed) * overshoot;
 
     carYaw += omega * dt;
   }
