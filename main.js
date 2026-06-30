@@ -141,6 +141,171 @@ const CARS = [
     forward: null,          // Fahrtrichtung wird aus den Rücklichtern bestimmt
   },
 ];
+
+// ---------- Fahrzeug-Katalog: 5 europäische Marken (nach Namen sortiert), je 2 Sportwagen ----------
+// Hinweis: Echte 3D-Modelle aus dem Internet lassen sich hier nicht laden (kein Egress,
+// CORS/Hotlinking scheitert, 20+ MB pro Auto). Jedes Auto wird daher prozedural aus
+// 3D-Grundkörpern gebaut (siehe buildProceduralCar) – individuell in Maß, Form und Farbe.
+const CAR_CATALOG = [
+  { brand: 'Alfa Romeo', cars: [
+    { id: 'alfa-4c', name: 'Alfa Romeo 4C',
+      specs: { power: 240, accel: 4.5, vmax: 258, weight: 895, engine: '1.75 L4 Turbo', drive: 'Heckantrieb' },
+      model: { length: 4.0, width: 1.86, height: 1.18, color: 0x9c1b2a, accent: 0x14110f, wheelR: 0.32, type: 'supercar', spoiler: false } },
+    { id: 'alfa-8c', name: 'Alfa Romeo 8C Competizione',
+      specs: { power: 450, accel: 4.2, vmax: 292, weight: 1585, engine: '4.7 V8', drive: 'Heckantrieb' },
+      model: { length: 4.38, width: 1.89, height: 1.34, color: 0xb01421, accent: 0x161210, wheelR: 0.34, type: 'coupe', spoiler: false } },
+  ] },
+  { brand: 'Aston Martin', cars: [
+    { id: 'aston-vantage', name: 'Aston Martin Vantage',
+      specs: { power: 510, accel: 3.6, vmax: 314, weight: 1530, engine: '4.0 V8 Biturbo', drive: 'Heckantrieb' },
+      model: { length: 4.47, width: 1.94, height: 1.27, color: 0x1f5a3a, accent: 0x12120f, wheelR: 0.34, type: 'coupe', spoiler: true } },
+    { id: 'aston-dbs', name: 'Aston Martin DBS Superleggera',
+      specs: { power: 725, accel: 3.4, vmax: 340, weight: 1693, engine: '5.2 V12 Biturbo', drive: 'Heckantrieb' },
+      model: { length: 4.71, width: 1.97, height: 1.28, color: 0x0c3b6e, accent: 0x111114, wheelR: 0.35, type: 'coupe', spoiler: true } },
+  ] },
+  { brand: 'BMW', cars: [
+    { id: 'bmw-m4', name: 'BMW M4 Competition',
+      specs: { power: 510, accel: 3.9, vmax: 290, weight: 1725, engine: '3.0 R6 Biturbo', drive: 'Allradantrieb' },
+      model: { length: 4.79, width: 1.89, height: 1.39, color: 0x163a6b, accent: 0x14171c, wheelR: 0.35, type: 'coupe', spoiler: true } },
+    { id: 'bmw-m2', name: 'BMW M2',
+      specs: { power: 460, accel: 4.1, vmax: 285, weight: 1700, engine: '3.0 R6 Biturbo', drive: 'Heckantrieb' },
+      model: { length: 4.58, width: 1.89, height: 1.40, color: 0x6b6f76, accent: 0x14171c, wheelR: 0.34, type: 'coupe', spoiler: false } },
+  ] },
+  { brand: 'Ferrari', cars: [
+    { id: 'ferrari-f8', name: 'Ferrari F8 Tributo',
+      specs: { power: 720, accel: 2.9, vmax: 340, weight: 1435, engine: '3.9 V8 Biturbo', drive: 'Heckantrieb' },
+      model: { length: 4.61, width: 1.98, height: 1.21, color: 0xd00510, accent: 0x16100f, wheelR: 0.34, type: 'supercar', spoiler: true } },
+    { id: 'ferrari-roma', name: 'Ferrari Roma',
+      specs: { power: 620, accel: 3.4, vmax: 320, weight: 1570, engine: '3.9 V8 Biturbo', drive: 'Heckantrieb' },
+      model: { length: 4.66, width: 1.97, height: 1.30, color: 0x8a1f24, accent: 0x16100f, wheelR: 0.34, type: 'coupe', spoiler: false } },
+  ] },
+  { brand: 'Porsche', cars: [
+    { id: 'porsche-gt3', name: 'Porsche 911 GT3',
+      specs: { power: 510, accel: 3.4, vmax: 318, weight: 1418, engine: '4.0 B6 Saugmotor', drive: 'Heckantrieb' },
+      model: { length: 4.57, width: 1.85, height: 1.28, color: 0xd8d8db, accent: 0x161616, wheelR: 0.34, type: 'coupe', spoiler: true } },
+    { id: 'porsche-gt4', name: 'Porsche 718 Cayman GT4',
+      specs: { power: 420, accel: 4.4, vmax: 304, weight: 1420, engine: '4.0 B6 Saugmotor', drive: 'Heckantrieb' },
+      model: { length: 4.46, width: 1.80, height: 1.27, color: 0x2f6f78, accent: 0x161616, wheelR: 0.33, type: 'coupe', spoiler: true } },
+  ] },
+];
+let playerCarSpec = null; // im Garagen-Menü gewähltes Auto des Spielers
+
+// Baut einen Sportwagen aus 3D-Grundkörpern. p = Modellparameter (siehe Katalog).
+// Rückgabe enthält alles, was installCar/Bots brauchen: Gruppe, Räder, Leuchten.
+function buildProceduralCar(p) {
+  const group = new THREE.Group();
+  const L = p.length, W = p.width, H = p.height, r = p.wheelR;
+  const floor = r * 0.5;                 // Unterboden minimal über der Fahrbahn
+  const lowerH = H * 0.46;               // Höhe des unteren Karosseriekörpers
+  const cabinH = Math.max(0.25, H - lowerH - floor);
+  const accent = p.accent ?? 0x161616;
+
+  const paint = new THREE.MeshStandardMaterial({ color: p.color, metalness: 0.55, roughness: 0.35 });
+  const trim  = new THREE.MeshStandardMaterial({ color: accent, metalness: 0.4, roughness: 0.5 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x10141a, metalness: 0.2, roughness: 0.1, transparent: true, opacity: 0.55 });
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.9 });
+  const rimMat  = new THREE.MeshStandardMaterial({ color: 0xcaccd0, metalness: 0.9, roughness: 0.25 });
+
+  const addBox = (w, h, d, x, y, z, mat) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; group.add(m); return m;
+  };
+
+  // Unterkörper (zwei gestapelte Boxen: unten schmaler → sportlicher)
+  addBox(W * 0.92, lowerH * 0.55, L * 0.98, 0, floor + lowerH * 0.275, 0, paint);
+  addBox(W, lowerH * 0.55, L * 0.9, 0, floor + lowerH * 0.72, 0, paint);
+  addBox(W * 1.01, lowerH * 0.22, L * 0.8, 0, floor + lowerH * 0.28, 0, trim); // Seitenschweller
+
+  // Greenhouse / Kabine (Roadster flacher), leicht nach hinten versetzt
+  const cab = p.type === 'roadster' ? cabinH * 0.55 : cabinH;
+  const cabZ = -L * 0.04;
+  const cabLen = L * (p.type === 'supercar' ? 0.34 : 0.42);
+  addBox(W * 0.86, cab, cabLen, 0, floor + lowerH + cab / 2, cabZ, glass);
+  if (p.type !== 'roadster') addBox(W * 0.7, cab * 0.2, cabLen * 0.7, 0, floor + lowerH + cab * 0.92, cabZ, paint); // Dach
+
+  // Nase + Frontsplitter (Front = +Z)
+  addBox(W * 0.96, lowerH * 0.4, L * 0.06, 0, floor + lowerH * 0.3, L * 0.5 - 0.02, paint);
+  addBox(W * 0.9, lowerH * 0.12, 0.12, 0, floor + 0.05, L * 0.5 - 0.02, trim);
+
+  // Heckspoiler (optional)
+  if (p.spoiler) {
+    addBox(W * 0.86, 0.06, 0.4, 0, floor + lowerH + 0.2, -L * 0.5 + 0.2, trim);
+    for (const sx of [-1, 1]) addBox(0.06, 0.2, 0.16, sx * W * 0.32, floor + lowerH + 0.1, -L * 0.5 + 0.2, trim);
+  }
+
+  // --- Leuchten (emittierbare Materialien + Positionen für die Lichtkegel) ---
+  const headlightMats = [], taillightMats = [], headlightPos = [], taillightPos = [];
+  for (const sx of [-1, 1]) {
+    const hm = new THREE.MeshStandardMaterial({ color: 0xf5f7ff, emissive: 0x000000, metalness: 0.3, roughness: 0.4 });
+    addBox(W * 0.18, 0.1, 0.05, sx * W * 0.3, floor + lowerH * 0.62, L * 0.5 - 0.03, hm);
+    headlightMats.push(hm);
+    headlightPos.push(new THREE.Vector3(sx * W * 0.3, floor + lowerH * 0.62, L * 0.5));
+    const tm = new THREE.MeshStandardMaterial({ color: 0x3a0000, emissive: 0x000000, metalness: 0.3, roughness: 0.4 });
+    addBox(W * 0.2, 0.1, 0.05, sx * W * 0.3, floor + lowerH * 0.7, -L * 0.5 + 0.03, tm);
+    taillightMats.push(tm);
+    taillightPos.push(new THREE.Vector3(sx * W * 0.3, floor + lowerH * 0.7, -L * 0.5));
+  }
+
+  // --- Räder (vier drehbare Pivots; vorne zusätzlich lenkbar) ---
+  const wheels = [];
+  const tireW = Math.max(0.22, W * 0.13);
+  const wx = W * 0.5 - tireW * 0.4;
+  const wz = L * 0.5 - r * 1.35;
+  for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+    const steerPivot = new THREE.Object3D();
+    steerPivot.position.set(sx * wx, r, sz * wz);
+    const spinPivot = new THREE.Object3D();
+    const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, tireW, 20), tireMat);
+    tire.rotation.z = Math.PI / 2; tire.castShadow = true;       // Achse entlang X
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.55, tireW * 1.02, 12), rimMat);
+    rim.rotation.z = Math.PI / 2;
+    spinPivot.add(tire, rim);
+    steerPivot.add(spinPivot);
+    group.add(steerPivot);
+    wheels.push({ spin: spinPivot, steer: sz === 1 ? steerPivot : null, radius: r,
+      axisLocal: new THREE.Vector3(1, 0, 0), upLocal: new THREE.Vector3(0, 1, 0) });
+  }
+
+  return {
+    group, wheels, steeringParts: [], headlightMats, taillightMats, headlightPos, taillightPos,
+    forward: new THREE.Vector3(0, 0, 1), half: { len: L / 2, wid: (W / 2) * 0.92 },
+  };
+}
+
+// Installiert ein gebautes (prozedurales) Auto als Spielerfahrzeug – richtet Räder,
+// Leuchten-Materialien und Lichtkegel ein, analog zum Ende von loadCar.
+function installCar(built) {
+  if (currentCar) carGroup.remove(currentCar);
+  headlightSpots.clear(); taillightGlows.clear();
+  wheels.length = 0; steeringParts.length = 0; headlightMats.length = 0; taillightMats.length = 0;
+  built.wheels.forEach((w) => wheels.push(w));
+  built.headlightMats.forEach((m) => headlightMats.push(m));
+  built.taillightMats.forEach((m) => taillightMats.push(m));
+  carForward = built.forward.clone();
+  carHalf.len = built.half.len; carHalf.wid = built.half.wid;
+
+  [...headlightMats, ...taillightMats].forEach((m) => {
+    m.userData.baseEmissive = m.emissive.clone();
+    m.userData.baseIntensity = m.emissiveIntensity ?? 1;
+  });
+
+  for (const pos of built.headlightPos) {
+    const spot = new THREE.SpotLight(0xeaf4ff, 0, 30, Math.PI / 7, 0.45, 1.2);
+    spot.position.copy(pos).addScaledVector(carForward, 0.1);
+    spot.target.position.copy(pos).addScaledVector(carForward, 10).setY(0);
+    spot.castShadow = false;
+    headlightSpots.add(spot, spot.target);
+  }
+  for (const pos of built.taillightPos) {
+    const glow = new THREE.PointLight(0xff1a1a, 0, 4, 2);
+    glow.position.copy(pos);
+    taillightGlows.add(glow);
+  }
+
+  carGroup.add(built.group);
+  currentCar = built.group;
+}
+
 // Start-Auto per URL wählbar (?car=sls), Standard ist der M4
 const urlCar = new URLSearchParams(location.search).get('car');
 let currentCarIndex = Math.max(0, CARS.findIndex((c) => c.id === urlCar));
@@ -841,8 +1006,84 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
     if (raceMode) startRaceQuali(); else raceReset();
   }
 
-  document.getElementById('btn-training').addEventListener('click', () => startGame(false));
-  document.getElementById('btn-rennen').addEventListener('click', () => startGame(true));
+  // ---------- Garagen-Menü: öffnet sich nach der Modus-Wahl ----------
+  const garageEl = document.getElementById('garage');
+  const brandsEl = document.getElementById('garage-brands');
+  const carsEl = document.getElementById('garage-cars');
+  const specsEl = document.getElementById('garage-specs');
+  let garageBrand = 0, garageCar = 0, pendingRace = false;
+
+  function openGarage(isRace) {
+    pendingRace = isRace;
+    modeScreen.classList.remove('visible');
+    garageEl.classList.add('visible');
+    // Schaukasten: Auto mittig, Tag-Licht, langsame Auto-Rotation
+    cameraMode = 0;
+    isNight = false; headlightsOn = false; taillightsOn = false; applyMode();
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 1.6;
+    carGroup.position.set(0, 0.05, 0);
+    carYaw = 0;
+    camera.position.set(5.5, 2.2, 6.5);
+    controls.target.set(0, 0.6, 0);
+    renderBrands();
+    selectBrand(garageBrand);
+  }
+
+  function renderBrands() {
+    brandsEl.innerHTML = '';
+    CAR_CATALOG.forEach((b, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'garage-brand' + (i === garageBrand ? ' active' : '');
+      btn.textContent = b.brand;
+      btn.addEventListener('click', () => selectBrand(i));
+      brandsEl.appendChild(btn);
+    });
+  }
+  function renderCars() {
+    carsEl.innerHTML = '';
+    CAR_CATALOG[garageBrand].cars.forEach((c, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'garage-car' + (i === garageCar ? ' active' : '');
+      btn.textContent = c.name;
+      btn.addEventListener('click', () => selectCar(i));
+      carsEl.appendChild(btn);
+    });
+  }
+  function selectBrand(i) { garageBrand = i; garageCar = 0; renderBrands(); renderCars(); selectCar(0); }
+  function selectCar(i) {
+    garageCar = i;
+    renderCars();
+    const spec = CAR_CATALOG[garageBrand].cars[i];
+    installCar(buildProceduralCar(spec.model));
+    carGroup.position.set(0, 0.05, 0);
+    alignCarToPitlane();
+    document.querySelector('#title h1').textContent = spec.name;
+    document.querySelector('#title p').innerHTML = `${CAR_CATALOG[garageBrand].brand} · 3D Viewer`;
+    const s = spec.specs;
+    specsEl.innerHTML =
+      `<h2>${spec.name}</h2>` +
+      `<div class="spec-row"><span>Leistung</span><b>${s.power} PS</b></div>` +
+      `<div class="spec-row"><span>0–100 km/h</span><b>${s.accel} s</b></div>` +
+      `<div class="spec-row"><span>Höchstgeschwindigkeit</span><b>${s.vmax} km/h</b></div>` +
+      `<div class="spec-row"><span>Gewicht</span><b>${s.weight} kg</b></div>` +
+      `<div class="spec-row"><span>Motor</span><b>${s.engine}</b></div>` +
+      `<div class="spec-row"><span>Antrieb</span><b>${s.drive}</b></div>`;
+  }
+
+  document.getElementById('garage-back').addEventListener('click', () => {
+    garageEl.classList.remove('visible');
+    modeScreen.classList.add('visible');
+  });
+  document.getElementById('garage-select').addEventListener('click', () => {
+    playerCarSpec = CAR_CATALOG[garageBrand].cars[garageCar];
+    garageEl.classList.remove('visible');
+    controls.autoRotate = false;
+    startGame(pendingRace);
+  });
+
+  document.getElementById('btn-training').addEventListener('click', () => openGarage(false));
+  document.getElementById('btn-rennen').addEventListener('click', () => openGarage(true));
 }
 
 // ---------- Menü ein-/ausblenden (Taste M, Klick auf den Menü-Button, Esc schließt) ----------
@@ -1733,19 +1974,20 @@ function resolveNodePath(root, path) {
 }
 
 function createBots() {
-  // Pfade zu den Rad-Drehpivots im Spielermodell ermitteln, um sie in den Klonen mitzudrehen
-  const wheelPaths = wheels
-    .map((w) => ({ path: nodeIndexPath(currentCar, w.spin), axisLocal: w.axisLocal, radius: w.radius }))
-    .filter((w) => w.path);
+  // Jeder Bot fährt ein zufälliges Auto aus dem Katalog – aber nicht das des Spielers.
+  const pool = CAR_CATALOG.flatMap((b) => b.cars)
+    .filter((c) => !playerCarSpec || c.id !== playerCarSpec.id);
+  for (let i = pool.length - 1; i > 0; i--) {             // mischen (Fisher–Yates)
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
   for (let k = 0; k < BOT_COUNT; k++) {
-    const clone = currentCar.clone(true); // gleiches Auto-Modell wie der Spieler
+    const spec = pool[k % pool.length];
+    const built = buildProceduralCar(spec.model);
     const group = new THREE.Group();
-    group.add(clone);
+    group.add(built.group);
     scene.add(group);
-    const wheelsClone = wheelPaths
-      .map((w) => ({ spin: resolveNodePath(clone, w.path), axisLocal: w.axisLocal, radius: w.radius }))
-      .filter((w) => w.spin);
-    bots.push({ group, s: 0, offset: 0, wheels: wheelsClone });
+    bots.push({ group, s: 0, offset: 0, wheels: built.wheels, forward: built.forward.clone() });
   }
 }
 
@@ -1761,7 +2003,7 @@ function positionBot(bot) {
   const x = c.x + nx * bot.offset, z = c.z + nz * bot.offset;
   bot.group.position.set(x, carGroup.position.y, z);
   _botFwd.set(dx, 0, dz);
-  bot.group.quaternion.setFromUnitVectors(carForward, _botFwd); // Front entlang der Strecke
+  bot.group.quaternion.setFromUnitVectors(bot.forward || carForward, _botFwd); // Front entlang der Strecke
   return { x, z, tx: dx, tz: dz };
 }
 
