@@ -32,6 +32,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - **Streckenauswahl** vor der Modus-Wahl (Kreuztasten wechseln die Strecke, mit Streckenkarte von oben, Name, Länge und Land)
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
 - Scheinwerfer & Rücklichter mit Lichtkegeln
+- Rückspiegel (Cockpit), atmosphärischer Himmel mit Sonne & Wolken, prozedurale Grastextur
 - Tag-/Nachtmodus
 - Motorgeräusch (synthetisierter Reihensechszylinder)
 - Cockpit-Kamera mit Umsehen per Maus
