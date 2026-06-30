@@ -145,6 +145,10 @@ scene.add(sun);
 const hemi = new THREE.HemisphereLight(0xbfd9ff, 0x8a7a66, 1.2);
 scene.add(hemi);
 
+// Sanftes Grundlicht – hellt abgeschattete Bereiche auf (z. B. Cockpit-Innenraum, Garage)
+const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+scene.add(ambient);
+
 // ---------- Nachtlicht (Mond) ----------
 const moon = new THREE.DirectionalLight(0x8aa6ff, 0.35);
 moon.position.set(-80, 120, -50);
@@ -737,6 +741,7 @@ function applyMode() {
     moon.visible = true;
     hemi.intensity = 0.12;
     hemi.color.set(0x223355);
+    ambient.intensity = 0.1;
     stars.visible = true;
     sky.visible = false;                 // nachts kein Tageshimmel
     ground.material.color.set(0x33443a); // Grastextur abdunkeln
@@ -749,6 +754,7 @@ function applyMode() {
     moon.visible = false;
     hemi.intensity = 1.2;
     hemi.color.set(0xbfd9ff);
+    ambient.intensity = 0.45;
     stars.visible = false;
     sky.visible = true;
     ground.material.color.set(0xffffff); // volle Grastextur-Farbe
