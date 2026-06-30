@@ -1156,8 +1156,14 @@ function updateCar(dt) {
     }
 
     if (rt > 0.02) throttle = Math.max(throttle, rt);
-    // LT bremst nur noch – in jedem Gang. Rückwärts fährt man über den R-Gang.
+    // LT bremst – in jedem Gang. Rückwärts fährt man (Handschaltung) über den R-Gang.
     if (lt > 0.02) brakeInput = Math.max(brakeInput, lt);
+    // Automatik: Der Controller hat keine eigene R-Taste. Im Stand (oder bereits
+    // rückwärts) wird LT zum Rückwärtsgang statt zur Bremse.
+    if (autoGearbox && lt > 0.1 && rt <= 0.02 && (Math.abs(speed) < 0.5 || gear === 0)) {
+      reverse = Math.max(reverse, lt);
+      brakeInput = 0;
+    }
 
     const dz = 0.12; // Deadzone gegen Stick-Drift
     if (Math.abs(stickX) > dz) {
