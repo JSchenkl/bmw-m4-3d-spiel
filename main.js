@@ -36,6 +36,9 @@ controls.autoRotateSpeed = 0.8;
 
 // Kameraperspektive: 0 = Verfolgerkamera (Außenansicht), 1 = Cockpit (Fahrersicht)
 let cameraMode = 0;
+// Belichtung: Grundwert (Tag/Nacht) × Cockpit-Dämpfung (Cockpit 15 % gedämmt)
+let baseExposure = 1.0;
+function applyExposure() { renderer.toneMappingExposure = baseExposure * (cameraMode === 1 ? 0.85 : 1.0); }
 let lookYaw = 0;   // Umsehen in der Cockpit-Sicht (horizontal, recentert zu 0)
 let lookPitch = 0; // Umsehen in der Cockpit-Sicht (vertikal)
 const CHASE_FOV = 45;   // Sichtfeld der Verfolgerkamera
@@ -53,32 +56,10 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 const envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environment = envTexture;
 
-// Prozedurale Grastextur (kein externer Download möglich): grüner Grund + feines Rauschen + Flecken
-function makeGrassTexture() {
-  const c = document.createElement('canvas'); c.width = c.height = 256;
-  const g = c.getContext('2d');
-  g.fillStyle = '#4e7a3a'; g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 16000; i++) {            // feine Grashalm-Sprenkel
-    const x = Math.random() * 256, y = Math.random() * 256, sh = Math.random();
-    g.fillStyle = `rgba(${40 + sh * 45 | 0},${85 + sh * 70 | 0},${28 + sh * 45 | 0},0.5)`;
-    g.fillRect(x, y, 1.6, 1.6);
-  }
-  for (let i = 0; i < 48; i++) {                // größere helle/dunkle Wiesenflecken
-    const x = Math.random() * 256, y = Math.random() * 256, rad = 8 + Math.random() * 24;
-    g.fillStyle = Math.random() < 0.5 ? 'rgba(28,48,20,0.22)' : 'rgba(122,150,82,0.20)';
-    g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(180, 180);
-  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  return tex;
-}
-
 // ---------- Boden (Wiese rund um die Strecke) ----------
 const ground = new THREE.Mesh(
   new THREE.CircleGeometry(8000, 64),
-  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0, metalness: 0.0, map: makeGrassTexture() })
+  new THREE.MeshStandardMaterial({ color: 0x4e7a3a, roughness: 1.0, metalness: 0.0 })
 );
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
@@ -109,16 +90,18 @@ let trackLoadedFile = null;  // zuletzt geladene CSV
 let pitDirection = null;     // Fahrtrichtung in der Boxengasse (für die Auto-Ausrichtung)
 let trackColliders = [];     // Kollisionsboxen der Mauern und Banden
 let curbData = null;         // Mittellinie + Breiten für die Curb-Neigung
+let garageBays = [];         // gefüllte Garagen-Stellplätze (dort wird ein M4 geparkt)
 
 function loadTrack(file) {
   return createTrack(file)
-    .then(({ group, pitDirection: dir, colliders, curbData: cd }) => {
+    .then(({ group, pitDirection: dir, colliders, curbData: cd, garageBays: bays }) => {
       if (trackGroup) scene.remove(trackGroup);
       trackGroup = group;
       scene.add(group);
       pitDirection = dir;
       trackColliders = colliders;
       curbData = cd;
+      garageBays = bays || [];
       buildCenterline(cd);
       // Boxengassen-Szene gehört zur Strecke → beim Wechsel neu aufbauen
       if (pitScene) { scene.remove(pitScene); pitScene = null; pitCrew.length = 0; }
@@ -744,8 +727,8 @@ function applyMode() {
     ambient.intensity = 0.1;
     stars.visible = true;
     sky.visible = false;                 // nachts kein Tageshimmel
-    ground.material.color.set(0x33443a); // Grastextur abdunkeln
-    renderer.toneMappingExposure = 0.85;
+    ground.material.color.set(0x0e1810);
+    baseExposure = 0.85; applyExposure();
   } else {
     scene.background = null;             // der Sky-Shader liefert Himmel + Sonne
     scene.fog = new THREE.Fog(0xbcd3e8, 800, 8500);
@@ -757,8 +740,8 @@ function applyMode() {
     ambient.intensity = 0.45;
     stars.visible = false;
     sky.visible = true;
-    ground.material.color.set(0xffffff); // volle Grastextur-Farbe
-    renderer.toneMappingExposure = 1.0;
+    ground.material.color.set(0x4e7a3a);
+    baseExposure = 1.0; applyExposure();
   }
   applyHeadlights();
   applyTaillights();
@@ -1053,6 +1036,7 @@ function applyCameraMode() {
     lookPitch = 0;
   }
   camera.updateProjectionMatrix();
+  applyExposure(); // Cockpit 15 % gedämmt
   btnView.textContent = `🎥 Ansicht: ${cameraMode === 1 ? 'Cockpit' : 'Verfolger'}`;
   btnView.classList.toggle('active', cameraMode === 1);
 }
@@ -2313,9 +2297,21 @@ function makeCrewMember(color) {
   return g;
 }
 
+const _bayFwd = new THREE.Vector3();
 function buildPitScene() {
   pitScene = new THREE.Group();
   const total = centerline.total;
+
+  // BMW M4 (Spielerauto) in jeden gefüllten Garagen-Stellplatz stellen
+  for (const b of garageBays) {
+    const carG = new THREE.Group();
+    carG.add(currentCar.clone(true));
+    carG.position.set(b.x, carGroup.position.y, b.z);
+    _bayFwd.set(b.fx, 0, b.fz);
+    carG.quaternion.setFromUnitVectors(carForward, _bayFwd); // Front zur Gasse
+    pitScene.add(carG);
+  }
+
   const team = [0x2aa6e0, 0xe2001a, 0xf0f0f0];
   const arcs = [total - 70, total - 120, total - 170]; // drei Boxen-Plätze vor der Linie
   arcs.forEach((arc, idx) => {
