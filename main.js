@@ -2540,7 +2540,7 @@ renderer.setAnimationLoop(() => {
   if (mirrorOn) {
     const vw = window.innerWidth, vh = window.innerHeight;
     const mw = Math.min(520, vw * 0.4), mh = mw * 0.2;
-    const mx = (vw - mw) / 2, my = vh - mh - 12; // three.js-Viewport: Ursprung unten-links
+    const mx = (vw - mw) / 2, my = vh - mh - 74; // unter der Drehzahl-/Tempoanzeige (three.js-Viewport: Ursprung unten-links)
     const fwdW = carForward.clone().applyAxisAngle(UP, carYaw);
     // knapp über dem Dach, Blick nach hinten und leicht nach unten → freie Sicht nach hinten
     const camY = carGroup.position.y + 1.6;
