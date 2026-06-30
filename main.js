@@ -1308,10 +1308,6 @@ function updateCar(dt) {
     if (speed !== 0) w.spin.rotateOnAxis(w.axisLocal, (speed / w.radius) * dt);
     if (w.steer) w.steer.quaternion.setFromAxisAngle(w.upLocal, steerAngle);
   }
-  // Lenkrad im Cockpit mitdrehen (stärker als die Räder)
-  for (const sp of steeringParts) {
-    sp.pivot.quaternion.setFromAxisAngle(sp.axisLocal, STEER_WHEEL.sign * steerAngle * STEER_WHEEL.ratio);
-  }
 
 
   speedNumEl.textContent = Math.round(Math.abs(speed) * 3.6);
