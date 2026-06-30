@@ -318,6 +318,15 @@
       text-shadow: 0 4px 16px rgba(0,0,0,0.7);
     }
 
+    /* Rückspiegel-Rahmen (das Bild rendert die Engine direkt in diesen Bereich) */
+    #rear-mirror {
+      position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+      width: min(520px, 40vw); aspect-ratio: 5 / 1; z-index: 30; display: none;
+      border: 2px solid rgba(255,255,255,0.55); border-radius: 10px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(0,0,0,0.6);
+      pointer-events: none;
+    }
+
     /* Controller-Auswahl im Startmenü (Kreuztasten wechseln, A bestätigt) */
     .cnav-selected {
       outline: 4px solid #2aa6e0 !important; outline-offset: 5px;
@@ -390,6 +399,9 @@
       <div id="start-keys">W Gas &nbsp;&middot;&nbsp; A / D Lenken &nbsp;&middot;&nbsp; Leertaste Bremse &nbsp;&middot;&nbsp; T Kamera</div>
     </div>
   </div>
+
+  <!-- Rückspiegel-Rahmen (Cockpit-Sicht); Blick nach hinten wird hineingerendert -->
+  <div id="rear-mirror"></div>
 
   <!-- Streckenauswahl nach „SPIELEN" (vor der Modus-Wahl) -->
   <div id="track-screen">
