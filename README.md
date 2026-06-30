@@ -22,7 +22,8 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 | **L** / **J** | Hochschalten / Runterschalten |
 | **T** | Kamera wechseln (Verfolger / Cockpit) |
 | **M** | Menü öffnen/schließen |
-| 🎮 **Xbox-Controller** | wird automatisch erkannt (RT Gas, LT Bremse, L-Stick Lenken) |
+| 🎮 **Xbox-Controller** | wird automatisch erkannt (RT Gas, LT Bremse, L-Stick Lenken, RB/LB schalten) |
+| 🎮 **RB / LB (Automatik)** | Fahrstufe **D** (vorwärts) / **R** (rückwärts) wählen |
 
 ## Features
 

@@ -1076,18 +1076,20 @@ const GEAR_PULL = [0, 1.0, 0.74, 0.56, 0.46, 0.38, 0.32]; // Zugkraft-Faktor je 
 let gear = 1; // 0 = Rückwärtsgang (R), 1…6 = Vorwärtsgänge
 let prevGearSound = 1; // letzter Gang – für den Schaltsound (Hoch-/Runterschalten)
 let autoGearbox = false; // false = Handschaltung, true = Automatikgetriebe
+let autoReverse = false; // Automatik: true = Rückwärtsgang (R) gewählt (Tastatur W/S bzw. Controller LB/RB)
 // Manuell schalten geht nur bei der Handschaltung – im Automatikmodus übernimmt das Spiel.
 const shiftUp = () => { if (!autoGearbox) gear = Math.min(6, gear + 1); };
 const shiftDown = () => { if (!autoGearbox) gear = Math.max(0, gear - 1); };
 
 // Automatikgetriebe: wählt Fahrtrichtung (D/R) und Gang selbsttätig nach Tempo.
-function autoShiftGear(throttle, reverse) {
+// Richtung per Tastatur (W/S); der Controller setzt sie über LB/RB direkt (autoReverse).
+function autoShiftGear(keyFwd, keyRev) {
   if (!autoGearbox) return;
   const vAbs = Math.abs(speed);
-  if (vAbs < 0.5 && !braking) {
-    // Im Stand wie bei einer Automatik die Richtung wählen
-    if (throttle) gear = Math.max(gear, 1);      // W → Fahrstufe D (1. Gang)
-    else if (reverse) gear = 0;                  // S → Rückwärtsgang R
+  if (vAbs < 0.5) {
+    if (keyFwd && !keyRev) autoReverse = false;        // W → Fahrstufe D
+    else if (keyRev && !keyFwd) autoReverse = true;    // S → Rückwärtsgang R
+    gear = autoReverse ? 0 : Math.max(gear, 1);
   } else if (gear >= 1) {
     // Vorwärts: kurz vorm Gang-Höchsttempo hoch-, bei zu niedriger Drehzahl runterschalten
     const frac = vAbs / GEAR_MAX_SPEED[gear];
@@ -1257,14 +1259,8 @@ function updateCar(dt) {
     }
 
     if (rt > 0.02) throttle = Math.max(throttle, rt);
-    // LT bremst – in jedem Gang. Rückwärts fährt man (Handschaltung) über den R-Gang.
+    // LT bremst – in jedem Gang. Im R-Gang treibt RT (Gas) rückwärts (reverseInput nutzt throttle).
     if (lt > 0.02) brakeInput = Math.max(brakeInput, lt);
-    // Automatik: Der Controller hat keine eigene R-Taste. Im Stand (oder bereits
-    // rückwärts) wird LT zum Rückwärtsgang statt zur Bremse.
-    if (autoGearbox && lt > 0.1 && rt <= 0.02 && (Math.abs(speed) < 0.5 || gear === 0)) {
-      reverse = Math.max(reverse, lt);
-      brakeInput = 0;
-    }
 
     const dz = 0.12; // Deadzone gegen Stick-Drift
     if (Math.abs(stickX) > dz) {
@@ -1274,8 +1270,9 @@ function updateCar(dt) {
     if (padPressedOnce(pad, 2)) btnHead.click();     // X
     if (padPressedOnce(pad, 1)) btnTail.click();     // B
     if (padPressedOnce(pad, 3)) btnDayNight.click(); // Y
-    if (padPressedOnce(pad, 5)) shiftUp();           // RB = hochschalten
-    if (padPressedOnce(pad, 4)) shiftDown();         // LB = runterschalten
+    // RB / LB: Handschaltung = hoch/runter; Automatik = Fahrstufe D (vorwärts) / R (rückwärts)
+    if (padPressedOnce(pad, 5)) { if (autoGearbox) { autoReverse = false; gear = Math.max(gear, 1); } else shiftUp(); }
+    if (padPressedOnce(pad, 4)) { if (autoGearbox) { autoReverse = true; gear = 0; } else shiftDown(); }
     if (padPressedOnce(pad, 9)) toggleMenu();        // ☰ Menü-Button (drei Striche)
 
     // Menü-Navigation: D-Pad hoch/runter bewegt die Auswahl, A löst sie aus
@@ -1345,8 +1342,9 @@ function updateCar(dt) {
   let slipTarget = 0; // angeforderter Heck-Schlupf dieses Frames (für den Oversteer)
   let longUse = 0;    // genutzte Längs-Haftung (Reibkreis): Gas/Bremse zehrt am Kurven-Grip
 
-  // Automatikgetriebe wählt Gang/Richtung, bevor der Antrieb berechnet wird
-  autoShiftGear(throttle, reverse);
+  // Automatikgetriebe wählt Gang/Richtung, bevor der Antrieb berechnet wird.
+  // Richtungswahl per Tastatur nur über W/S (nicht über den RT-Gashebel des Controllers).
+  autoShiftGear(has('KeyW', 'ArrowUp') ? 1 : 0, reverse);
 
   // Im Rückwärtsgang (R = Gang 0) fährt Gas rückwärts; sonst zählt die S/LT-Taste
   const reverseInput = gear === 0 ? Math.max(throttle, reverse) : reverse;
@@ -1762,6 +1760,7 @@ btnPit.addEventListener('click', () => {
   steerAngle = 0;
   carRoll = 0;
   gear = 1;
+  autoReverse = false;
   prevGearSound = 1;
    alignCarToPitlane();                 // in Fahrtrichtung der Boxengasse ausrichten
   prevCarPos.copy(carGroup.position);  // keinen Kamerasprung erzeugen
@@ -1779,7 +1778,7 @@ btnHome.addEventListener('click', () => {
 
   // Auto an den Startplatz, Tempo/Gang zurück
   carGroup.position.set(0, 0.05, 0);
-  speed = 0; steerAngle = 0; carRoll = 0; gear = 1; prevGearSound = 1;  alignCarToPitlane();
+  speed = 0; steerAngle = 0; carRoll = 0; gear = 1; autoReverse = false; prevGearSound = 1;  alignCarToPitlane();
   prevCarPos.copy(carGroup.position);
 
   // Ton stumm – beim nächsten Start wieder ab erstem Knopfdruck
@@ -2043,7 +2042,7 @@ function setupGrid() {
       _hd.set(c.tx, 0, c.tz);
       setHeading(_hd);
       prevCarPos.copy(carGroup.position);
-      speed = 0; gear = 1; prevGearSound = 1;
+      speed = 0; gear = 1; autoReverse = false; prevGearSound = 1;
     } else {
       const bot = bots[e.who];
       bot.s = arc; bot.offset = gridOffset(i);    // Startaufstellung gestaffelt
