@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { Sky } from 'three/addons/objects/Sky.js';
 import { createTrack } from './track.js';
 import * as engineAudio from './audio.js';
 
@@ -53,76 +52,14 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 const envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environment = envTexture;
 
-// Prozedurale Grastextur (kein externer Download): grüner Grund + feines Rauschen + Flecken
-function makeGrassTexture() {
-  const c = document.createElement('canvas'); c.width = c.height = 256;
-  const g = c.getContext('2d');
-  g.fillStyle = '#4e7a3a'; g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 16000; i++) {           // feine Grashalm-Sprenkel
-    const x = Math.random() * 256, y = Math.random() * 256, sh = Math.random();
-    g.fillStyle = `rgba(${40 + sh * 45 | 0},${85 + sh * 70 | 0},${28 + sh * 45 | 0},0.5)`;
-    g.fillRect(x, y, 1.6, 1.6);
-  }
-  for (let i = 0; i < 48; i++) {               // größere helle/dunkle Wiesenflecken
-    const x = Math.random() * 256, y = Math.random() * 256, rad = 8 + Math.random() * 24;
-    g.fillStyle = Math.random() < 0.5 ? 'rgba(28,48,20,0.22)' : 'rgba(122,150,82,0.20)';
-    g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(320, 320);
-  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  return tex;
-}
-
 // ---------- Boden (Wiese rund um die Strecke) ----------
 const ground = new THREE.Mesh(
   new THREE.CircleGeometry(8000, 64),
-  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0, metalness: 0.0, map: makeGrassTexture() })
+  new THREE.MeshStandardMaterial({ color: 0x4e7a3a, roughness: 1.0, metalness: 0.0 })
 );
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
-
-// ---------- Himmel (atmosphärischer Sky-Shader mit Sonne) ----------
-const sky = new Sky();
-sky.scale.setScalar(10000);
-scene.add(sky);
-{
-  const u = sky.material.uniforms;
-  u['turbidity'].value = 6;
-  u['rayleigh'].value = 1.6;
-  u['mieCoefficient'].value = 0.005;
-  u['mieDirectionalG'].value = 0.8;
-  u['sunPosition'].value.copy(new THREE.Vector3(90, 130, 60).normalize()); // Sonnenrichtung
-}
-
-// ---------- Wolken (prozedurale Sprites, nur tagsüber) ----------
-function makeCloudTexture() {
-  const c = document.createElement('canvas'); c.width = c.height = 128;
-  const g = c.getContext('2d');
-  for (let i = 0; i < 20; i++) {               // weiche weiße Ballen zu einer Wolke
-    const x = 64 + (Math.random() - 0.5) * 72, y = 64 + (Math.random() - 0.5) * 38, rad = 12 + Math.random() * 28;
-    const grd = g.createRadialGradient(x, y, 0, x, y, rad);
-    grd.addColorStop(0, 'rgba(255,255,255,0.5)');
-    grd.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grd; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
-  }
-  return new THREE.CanvasTexture(c);
-}
-const cloudGroup = new THREE.Group();
-scene.add(cloudGroup);
-{
-  const tex = makeCloudTexture();
-  for (let i = 0; i < 26; i++) {
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.85, depthWrite: false, fog: false }));
-    const ang = Math.random() * Math.PI * 2, dist = 700 + Math.random() * 3200;
-    s.position.set(Math.cos(ang) * dist, 520 + Math.random() * 360, Math.sin(ang) * dist);
-    const sc = 420 + Math.random() * 520;
-    s.scale.set(sc, sc * 0.55, 1);
-    cloudGroup.add(s);
-  }
-}
 
 // ---------- Rennstrecken (echte Vermessungsdaten, TUM racetrack-database) ----------
 const TRACKS = [
@@ -765,22 +702,18 @@ function applyMode() {
     hemi.intensity = 0.12;
     hemi.color.set(0x223355);
     stars.visible = true;
-    sky.visible = false;            // nachts kein Tageshimmel
-    cloudGroup.visible = false;
-    ground.material.color.set(0x33443a); // Grastextur abdunkeln
+    ground.material.color.set(0x0e1810);
     renderer.toneMappingExposure = 0.85;
   } else {
-    scene.background = null;        // der Sky-Shader liefert den Himmel
-    scene.fog = new THREE.Fog(0xbcd3e8, 800, 8500);
+    scene.background = new THREE.Color(0xa8c8e8);
+    scene.fog = new THREE.Fog(0xa8c8e8, 600, 8000);
     scene.environmentIntensity = 1.0;
     sun.visible = true;
     moon.visible = false;
     hemi.intensity = 1.2;
     hemi.color.set(0xbfd9ff);
     stars.visible = false;
-    sky.visible = true;
-    cloudGroup.visible = true;
-    ground.material.color.set(0xffffff); // volle Grastextur-Farbe
+    ground.material.color.set(0x4e7a3a);
     renderer.toneMappingExposure = 1.0;
   }
   applyHeadlights();
