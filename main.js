@@ -2535,29 +2535,33 @@ renderer.setAnimationLoop(() => {
 
   renderer.render(scene, camera);
 
-  // Rückspiegel: kleiner Streifen oben mittig mit Blick nach hinten (nur Cockpit-Sicht)
-  const mirrorOn = cameraMode === 1 && gameStarted && carForward;
+  // Rückspiegel: Blick nach hinten, exakt in den sichtbaren Rahmen (#rear-mirror) gerendert
+  const mirrorOn = cameraMode === 1 && gameStarted && carForward && rearMirrorEl;
+  if (rearMirrorEl) rearMirrorEl.style.display = mirrorOn ? '' : 'none';
   if (mirrorOn) {
     const vw = window.innerWidth, vh = window.innerHeight;
-    const mw = Math.min(520, vw * 0.4), mh = mw * 0.2;
-    const mx = (vw - mw) / 2, my = vh - mh - 74; // unter der Drehzahl-/Tempoanzeige (three.js-Viewport: Ursprung unten-links)
-    const fwdW = carForward.clone().applyAxisAngle(UP, carYaw);
-    // knapp über dem Dach, Blick nach hinten und leicht nach unten → freie Sicht nach hinten
-    const camY = carGroup.position.y + 1.6;
-    mirrorCam.position.set(carGroup.position.x, camY, carGroup.position.z);
-    mirrorCam.up.set(0, 1, 0);
-    mirrorCam.lookAt(
-      carGroup.position.x - fwdW.x * 14,
-      carGroup.position.y + 0.4,
-      carGroup.position.z - fwdW.z * 14
-    );
-    mirrorCam.aspect = mw / mh; mirrorCam.updateProjectionMatrix();
-    renderer.setScissorTest(true);
-    renderer.setViewport(mx, my, mw, mh);
-    renderer.setScissor(mx, my, mw, mh);
-    renderer.render(scene, mirrorCam);
-    renderer.setScissorTest(false);
-    renderer.setViewport(0, 0, vw, vh);
+    // Position/Größe direkt aus dem Rahmen lesen → Bild deckt sich immer mit dem Rahmen
+    const r = rearMirrorEl.getBoundingClientRect();
+    const b = 2;                                  // Rahmenbreite (innen rendern)
+    const mw = r.width - 2 * b, mh = r.height - 2 * b;
+    const mx = r.left + b, my = vh - r.bottom + b; // three.js-Viewport: Ursprung unten-links
+    if (mw > 4 && mh > 4) {
+      const fwdW = carForward.clone().applyAxisAngle(UP, carYaw);
+      const camY = carGroup.position.y + 1.6;     // knapp über dem Dach, Blick nach hinten
+      mirrorCam.position.set(carGroup.position.x, camY, carGroup.position.z);
+      mirrorCam.up.set(0, 1, 0);
+      mirrorCam.lookAt(
+        carGroup.position.x - fwdW.x * 14,
+        carGroup.position.y + 0.4,
+        carGroup.position.z - fwdW.z * 14
+      );
+      mirrorCam.aspect = mw / mh; mirrorCam.updateProjectionMatrix();
+      renderer.setScissorTest(true);
+      renderer.setViewport(mx, my, mw, mh);
+      renderer.setScissor(mx, my, mw, mh);
+      renderer.render(scene, mirrorCam);
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, vw, vh);
+    }
   }
-  if (rearMirrorEl) rearMirrorEl.style.display = mirrorOn ? '' : 'none';
 });
