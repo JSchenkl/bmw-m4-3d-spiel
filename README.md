@@ -27,7 +27,8 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 ## Features
 
 - **BMW M4 Competition** und **Mercedes 300SL Gullwing** als 3D-Modelle (GLB)
-- **Spa-Francorchamps** aus echten Vermessungsdaten (TUM racetrack-database)
+- **3 Strecken** aus echten Vermessungsdaten (TUM racetrack-database): **Spa-Francorchamps**, **Hockenheimring**, **Silverstone** – inkl. Gras, Kiesbett und Reifen-Bande
+- **Streckenauswahl** vor der Modus-Wahl (Kreuztasten wechseln die Strecke, mit Streckenkarte von oben, Name, Länge und Land)
 - Scheinwerfer & Rücklichter mit Lichtkegeln
 - Tag-/Nachtmodus
 - Motorgeräusch (synthetisierter Reihensechszylinder)
