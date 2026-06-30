@@ -216,17 +216,24 @@ export async function createSpaTrack() {
   // --- Auslaufzone: Gras + Kiesbett + Bande (außerhalb der Curbs; überschneidet die Strecke nicht) ---
   const GRASS_WIDTH = 50;      // Grasstreifen zwischen Curb-Außenkante und Kiesbett
   const GRAVEL_MAX = 15;       // maximale Kiesbett-Breite (offene Auslaufzonen, 2,5× vergrößert)
-  const BARRIER_H = 1.0;
-  const STRIPE = 6;            // Streifenlänge der rot/weißen Leitplanke (Meter)
+  const BARRIER_H = 1.1;       // Höhe der dunklen Rückwand hinter der Reifenwand
   const SAFE = 1.5;            // Sicherheitsabstand zu anderen Streckenteilen
+  // Reifenwand (gestapelte Reifen als 3D-Bande)
+  const TIRE_R = 0.26, TIRE_TUBE = 0.12;          // Reifenradius + Wulststärke
+  const TIRE_OUT = TIRE_R + TIRE_TUBE;            // Außenradius (~0.38 m)
+  const TIRE_STEP = 1.2;                          // Reifenabstand entlang der Bande (m)
+  const TIRE_ROWS = [TIRE_OUT, TIRE_OUT + 0.58];  // zwei Reihen übereinander
   const pitSet = new Set(seq); // Boxengassen-Bereich (Pit-Seite dort aussparen)
   let gravelL = null, gravelR = null;
   let grassL = null, grassR = null;
   const grassMat = new THREE.MeshStandardMaterial({ color: 0x3a7d2c, roughness: 1, side: THREE.DoubleSide });
   const gravelMat = new THREE.MeshStandardMaterial({ color: 0xc9b489, roughness: 1, side: THREE.DoubleSide });
-  const railRedMat = new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.55, metalness: 0.3, side: THREE.DoubleSide });
-  const railWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.55, metalness: 0.3, side: THREE.DoubleSide });
-  const railTopMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.6, metalness: 0.5, side: THREE.DoubleSide });
+  const barrierBackMat = new THREE.MeshStandardMaterial({ color: 0x202024, roughness: 0.9, side: THREE.DoubleSide });
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.95 });
+  const tireGeo = new THREE.TorusGeometry(TIRE_R, TIRE_TUBE, 6, 8);
+  const tireMatrices = [];   // sammelt alle Reifen-Instanzen → eine InstancedMesh am Ende
+  const _tQ = new THREE.Quaternion(), _tP = new THREE.Vector3(), _tA = new THREE.Vector3();
+  const _tM = new THREE.Matrix4(), _tZ = new THREE.Vector3(0, 0, 1), _tONE = new THREE.Vector3(1, 1, 1);
 
   // Berechnet für jeden Streckenpunkt den sicheren Auslaufraum ab Curb-Außenkante.
   // Strahl startet am Curb-Rand in Richtung side*leftNs[i] und wird gestoppt,
@@ -306,7 +313,7 @@ export async function createSpaTrack() {
     // ausgespart wird (sonst überschneiden Kies/Bande die Boxengasse & den Start).
     const grass = { pos: [], idx: [] };
     const gravel = { pos: [], idx: [] };
-    const red = { pos: [], idx: [] }, white = { pos: [], idx: [] }, top = { pos: [], idx: [] };
+    const backing = { pos: [], idx: [] };
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
       if (side === -1 && (pitSet.has(i) || pitSet.has(j))) continue; // Pit-Bereich frei lassen
@@ -323,30 +330,45 @@ export async function createSpaTrack() {
       gravel.pos.push(ai.x, gy + 0.002, ai.z, oi.x, gy + 0.002, oi.z, aj.x, gy + 0.002, aj.z, oj.x, gy + 0.002, oj.z);
       if (side === 1) gravel.idx.push(go, go + 2, go + 1, go + 1, go + 2, go + 3);
       else gravel.idx.push(go, go + 1, go + 2, go + 1, go + 3, go + 2);
-      // rot/weiße Leitplanke an der Kies-Außenkante
-      const buf = (Math.floor(s[i] / STRIPE) % 2 === 0) ? red : white;
-      const o = buf.pos.length / 3;
-      buf.pos.push(oi.x, ASPHALT_Y, oi.z, oi.x, BARRIER_H, oi.z, oj.x, ASPHALT_Y, oj.z, oj.x, BARRIER_H, oj.z);
-      buf.idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3);
-      // dunkle Abschlusskante (Handlauf) oben
-      const to = top.pos.length / 3;
-      top.pos.push(oi.x, BARRIER_H, oi.z, oi.x, BARRIER_H + 0.12, oi.z, oj.x, BARRIER_H, oj.z, oj.x, BARRIER_H + 0.12, oj.z);
-      top.idx.push(to, to + 2, to + 1, to + 1, to + 2, to + 3);
+      // dunkle Rückwand an der Kies-Außenkante (füllt die Lücken hinter den Reifen)
+      const bo = backing.pos.length / 3;
+      backing.pos.push(oi.x, ASPHALT_Y, oi.z, oi.x, BARRIER_H, oi.z, oj.x, ASPHALT_Y, oj.z, oj.x, BARRIER_H, oj.z);
+      backing.idx.push(bo, bo + 2, bo + 1, bo + 1, bo + 2, bo + 3);
 
-      // Kollisionssegment exakt auf der Leitplanke (je Segment, dünn) – folgt
-      // der Kurve, statt mit langen Sehnen nach innen in die Strecke zu ragen.
+      // Kollisionssegment exakt auf der Bande (je Segment, dünn) – folgt der Kurve.
       const clen = oi.distanceTo(oj);
       if (clen >= 0.01) {
+        const dirx = (oj.x - oi.x) / clen, dirz = (oj.z - oi.z) / clen;
         const cmid = oi.clone().add(oj).multiplyScalar(0.5);
-        colliders.push({ cx: cmid.x, cz: cmid.z, ax: (oj.x - oi.x) / clen, az: (oj.z - oi.z) / clen, halfLen: clen / 2 + 0.05, halfWid: 0.12 });
+        colliders.push({ cx: cmid.x, cz: cmid.z, ax: dirx, az: dirz, halfLen: clen / 2 + 0.05, halfWid: 0.12 });
+        // Reifen entlang des Segments verteilen (Reifenachse quer zur Bande, zwei Reihen)
+        _tA.set(dirz, 0, -dirx);
+        _tQ.setFromUnitVectors(_tZ, _tA);
+        const cnt = Math.max(1, Math.round(clen / TIRE_STEP));
+        for (let t = 0; t < cnt; t++) {
+          const f = (t + 0.5) / cnt, px = oi.x + (oj.x - oi.x) * f, pz = oi.z + (oj.z - oi.z) * f;
+          for (const ry of TIRE_ROWS) {
+            _tP.set(px, ry, pz);
+            _tM.compose(_tP, _tQ, _tONE);
+            tireMatrices.push(_tM.clone());
+          }
+        }
       }
     }
     const grassMesh = new THREE.Mesh(mkGeo(grass), grassMat); grassMesh.receiveShadow = true; group.add(grassMesh);
     const gMesh = new THREE.Mesh(mkGeo(gravel), gravelMat); gMesh.receiveShadow = true; group.add(gMesh);
-    for (const part of [[red, railRedMat], [white, railWhiteMat], [top, railTopMat]]) {
-      const mesh = new THREE.Mesh(mkGeo(part[0]), part[1]);
-      mesh.castShadow = true; mesh.receiveShadow = true; group.add(mesh);
-    }
+    const backMesh = new THREE.Mesh(mkGeo(backing), barrierBackMat);
+    backMesh.castShadow = true; backMesh.receiveShadow = true; group.add(backMesh);
+  }
+
+  // Reifenwand als eine InstancedMesh (ein Draw-Call für alle Reifen)
+  if (tireMatrices.length) {
+    const tires = new THREE.InstancedMesh(tireGeo, tireMat, tireMatrices.length);
+    for (let i = 0; i < tireMatrices.length; i++) tires.setMatrixAt(i, tireMatrices[i]);
+    tires.instanceMatrix.needsUpdate = true;
+    tires.castShadow = true; tires.receiveShadow = true;
+    tires.frustumCulled = false; // Bande umschließt die gesamte Strecke
+    group.add(tires);
   }
 
   // --- Startplatz: Punkt der Boxengasse auf Höhe der Start/Ziel-Linie ---
