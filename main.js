@@ -958,7 +958,7 @@ const MAX_REVERSE = -20 / 3.6;     // m/s rückwärts
 //   1,07 g im Edmunds-Skidpad-Test des M4 Competition
 const WHEELBASE   = 2.857;             // m
 const MAX_LAT_ACC = 1.07 * 9.81;       // m/s² Haftgrenze der Reifen
-const MAX_STEER   = 32 * Math.PI / 180; // max. Radeinschlag (rad)
+const MAX_STEER   = 27.2 * Math.PI / 180; // max. Radeinschlag (rad, 15 % weniger direkt)
 const STEER_RATE  = 2.5;               // Lenkgeschwindigkeit (Volleinschläge pro Sekunde)
 let steerAngle = 0;                    // aktueller Radeinschlag
 
