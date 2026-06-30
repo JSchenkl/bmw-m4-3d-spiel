@@ -2058,7 +2058,7 @@ function updateBots(dt) {
         }
         // Totband um die Zieldrehzahl: kein Hin-und-Her zwischen Gas und Bremse (kein Rucken/Flackern)
         if (bot.v < target - 0.4) {
-          const a = Math.max(0, engineAccel(bot.v)) * (bot.accelF || 1) * BOT_GRIP; // 10 % weniger Traktion
+          const a = Math.max(0, engineAccel(bot.v)); // exakt dieselbe Beschleunigung wie der Spieler
           bot.v = Math.min(target, bot.v + a * dt);
         } else if (bot.v > target + 0.4) {
           bot.v = Math.max(target, bot.v - BOT_BRAKE * BOT_GRIP * dt);   // Bremse vor Kurven (10 % schwächer)
@@ -2263,7 +2263,7 @@ function setupGrid() {
       bot._prevS = arc; bot.crossings = 0;        // Rundenzählung (Wrap der Bogenlänge)
       bot.v = 0;                                  // startet aus dem Stand
       bot.launchTimer = 0;
-      bot.reaction = 0.340 + Math.random() * 0.310; // eigene Reaktionszeit 0,340…0,650 s
+      bot.reaction = 0.200 + Math.random() * 0.150; // eigene Reaktionszeit 0,200…0,350 s
       // eigene Ideallinie (seitlicher Versatz, je Bot unterschiedlich)
       bot.lineOffset = (e.who - (BOT_COUNT - 1) / 2) * 1.7 + (Math.random() - 0.5) * 1.2;
       // eigene Fahr-Charakteristik: Kurvenmut (später/früher bremsen) + Beschleunigung
