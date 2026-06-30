@@ -1216,6 +1216,7 @@ function updateCar(dt) {
   const fRoll = v > 0.1 ? MASS * 9.81 * ROLL_RES : 0;      // Rollwiderstand
   let accel = 0;
   let slipTarget = 0; // angeforderter Heck-Schlupf dieses Frames (für den Oversteer)
+  let longUse = 0;    // genutzte Längs-Haftung (Reibkreis): Gas/Bremse zehrt am Kurven-Grip
 
   // Automatikgetriebe wählt Gang/Richtung, bevor der Antrieb berechnet wird
   autoShiftGear(throttle, reverse);
@@ -1225,6 +1226,7 @@ function updateCar(dt) {
 
   if (braking) {
     accel = -Math.sign(speed) * (BRAKE_DECEL * brakeInput * surfaceGrip + (fDrag + fRoll) / MASS);
+    longUse = BRAKE_DECEL * brakeInput * surfaceGrip;   // Bremskraft belegt Längs-Haftung
     // nicht über den Nullpunkt hinaus bremsen
     if (Math.abs(accel * dt) >= v) { speed = 0; accel = 0; }
   } else if (gear >= 1 && throttle) {
@@ -1241,6 +1243,7 @@ function updateCar(dt) {
       const grip = 1 - 0.12 * Math.min(1, slipTarget); // durchdrehende Reifen ziehen etwas schlechter
       // Untergrund: auf Gras/Kies greift der Antrieb nur anteilig (Gras = 30 %)
       accel = (fDrive * grip * surfaceGrip - fDrag - fRoll) / MASS;
+      longUse = (fDrive * surfaceGrip) / MASS;          // Antriebskraft belegt Längs-Haftung
     } else {
       accel = -(fDrag + fRoll) / MASS; // Drehzahlbegrenzer: nur noch Fahrwiderstände
     }
@@ -1267,12 +1270,14 @@ function updateCar(dt) {
   if (Math.abs(speed) > 0.05 && Math.abs(steerAngle) > 0.0005) {
     let omega = (speed / WHEELBASE) * Math.tan(steerAngle);
 
-    // Kammscher Kreis: wer stark bremst oder beschleunigt, hat weniger Seitengrip
-    const latAcc = MAX_LAT_ACC * surfaceGrip;
-    const usedLong = Math.min(Math.abs(accel) / latAcc, 0.9);
-    // Kurven-Grip sinkt mit der Geschwindigkeit: je schneller durch die Kurve, desto weniger Haftung
+    // Reibkreis (Kammscher Kreis): das Reifen-Grip-Budget teilt sich auf Längs-
+    // (Gas/Bremse) und Querkräfte auf. Wer in der Kurve Gas gibt oder bremst, hat
+    // weniger Seitenhaftung – je mehr Gas, desto weniger Grip. Zusätzlich sinkt das
+    // Budget mit der Geschwindigkeit (schnelle Kurven = weniger Grip).
     const speedGrip = THREE.MathUtils.clamp(1 - Math.max(0, v - 12) * 0.013, 0.4, 1);
-    const latMax = Math.max(0.3 * latAcc, latAcc * Math.sqrt(1 - usedLong * usedLong)) * speedGrip;
+    const aMax = MAX_LAT_ACC * surfaceGrip * speedGrip;        // gesamtes Grip-Budget
+    const longShare = Math.min(longUse, aMax);                 // davon längs belegt
+    const latMax = Math.max(0.1 * aMax, Math.sqrt(aMax * aMax - longShare * longShare));
 
     const aLat = Math.abs(speed * omega);
     let slide = rearSlip;                       // Antriebs-Schlupf (durchdrehendes Heck)
