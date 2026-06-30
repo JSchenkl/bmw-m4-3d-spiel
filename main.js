@@ -1402,7 +1402,9 @@ function updateCar(dt) {
     // weniger Seitenhaftung – je mehr Gas, desto weniger Grip. Zusätzlich sinkt das
     // Budget mit der Geschwindigkeit (schnelle Kurven = weniger Grip).
     const speedGrip = THREE.MathUtils.clamp(1 - Math.max(0, v - 12) * 0.013, 0.4, 1);
-    const aMax = MAX_LAT_ACC * surfaceGrip * speedGrip;        // gesamtes Grip-Budget
+    // Beim Gasgeben in der Kurve etwas mehr Grip (+10 % bei Vollgas) – stabilerer Kurvenausgang
+    const throttleGrip = 1 + 0.1 * Math.min(1, throttle);
+    const aMax = MAX_LAT_ACC * surfaceGrip * speedGrip * throttleGrip; // gesamtes Grip-Budget
     const longShare = Math.min(longUse, aMax);                 // davon längs belegt
     const latMax = Math.max(0.1 * aMax, Math.sqrt(aMax * aMax - longShare * longShare));
 
