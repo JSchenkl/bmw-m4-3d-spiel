@@ -2339,7 +2339,6 @@ function makeCrewMember(color) {
 const _bayFwd = new THREE.Vector3();
 function buildPitScene() {
   pitScene = new THREE.Group();
-  const total = centerline.total;
 
   // BMW M4 (Spielerauto) in jeden gefüllten Garagen-Stellplatz stellen
   for (const b of garageBays) {
@@ -2351,35 +2350,7 @@ function buildPitScene() {
     pitScene.add(carG);
   }
 
-  const team = [0x2aa6e0, 0xe2001a, 0xf0f0f0];
-  const arcs = [total - 70, total - 120, total - 170]; // drei Boxen-Plätze vor der Linie
-  arcs.forEach((arc, idx) => {
-    const c = centerlineAt(arc);
-    const tx = c.tx, tz = c.tz;
-    const lnx = tz, lnz = -tx;                 // Quernormale (Boxengassen-Seite)
-    const px = c.x + lnx * -15, pz = c.z + lnz * -15;
-
-    // (Auto am Boxenstopp entfernt – nur noch Crew + Reifenstapel)
-
-    // Reifenstapel neben der Box
-    for (let t = 0; t < 3; t++) {
-      const tire = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.34, 0.34, 0.22, 16),
-        new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.95 }));
-      tire.position.set(px + tx * 2.2 + lnx * -2.6, 0.12 + t * 0.24, pz + tz * 2.2 + lnz * -2.6);
-      pitScene.add(tire);
-    }
-
-    // 4 Crew-Mitglieder an den Radpositionen
-    const wheels = [[2, 0.9], [2, -0.9], [-2, 0.9], [-2, -0.9]];
-    wheels.forEach(([lon, lat], wi) => {
-      const m = makeCrewMember(team[idx % team.length]);
-      m.position.set(px + tx * lon + lnx * lat, carGroup.position.y, pz + tz * lon + lnz * lat);
-      m.rotation.y = Math.atan2(tx, tz);
-      pitScene.add(m);
-      pitCrew.push({ mesh: m, baseY: carGroup.position.y, phase: idx * 4 + wi });
-    });
-  });
+  // Boxenstopp-Szene (Crew + Reifenstapel) entfernt – nur noch die M4 in den Garagen
   scene.add(pitScene);
 }
 
