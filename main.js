@@ -69,10 +69,10 @@ function makeSkyGradient() {
   const c = document.createElement('canvas'); c.width = 8; c.height = 256;
   const g = c.getContext('2d');
   const grd = g.createLinearGradient(0, 0, 0, 256);
-  grd.addColorStop(0.0, '#4aa6ef');   // Zenit: helles Himmelblau
-  grd.addColorStop(0.45, '#73bdf5');  // mittlerer Himmel
-  grd.addColorStop(0.8, '#a9d6f8');   // Richtung Horizont heller
-  grd.addColorStop(1.0, '#dcefff');   // Horizontdunst (fast weiß-blau)
+  grd.addColorStop(0.0, '#2e84d6');   // Zenit: Himmelblau (etwas dunkler)
+  grd.addColorStop(0.45, '#549fe8');  // mittlerer Himmel
+  grd.addColorStop(0.8, '#8fc4f0');   // Richtung Horizont heller
+  grd.addColorStop(1.0, '#c6e2f8');   // Horizontdunst
   g.fillStyle = grd; g.fillRect(0, 0, 8, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -432,7 +432,7 @@ function loadCar(index) {
       }
       if (cfg.windowRe.test(matName)) {
         node.material.transparent = true;
-        node.material.opacity = Math.min(node.material.opacity, 0.1); // Scheiben nur ~10 % getönt → klare Sicht
+        node.material.opacity = Math.min(node.material.opacity, 0.15); // Scheiben ~15 % getönt
       }
     });
 
@@ -753,7 +753,7 @@ function applyMode() {
     baseExposure = 0.85; applyExposure();
   } else {
     scene.background = skyTexture;       // blauer Himmel-Verlauf
-    scene.fog = new THREE.Fog(0xdcefff, 800, 8500);
+    scene.fog = new THREE.Fog(0xc6e2f8, 800, 8500);
     scene.environmentIntensity = 1.0;
     sun.visible = true;
     moon.visible = false;
