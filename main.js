@@ -1748,13 +1748,21 @@ function updateTimeAttack(dt) {
     if (ghost.timing) {
       // Abgeschlossene gemessene Runde
       ghost.lastLap = ghost.lapElapsed;
-      if (ghost.lapElapsed < ghost.bestLap) {
+      const prevBest = ghost.bestLap;
+      const improved = ghost.lapElapsed < ghost.bestLap;
+      if (improved) {
         ghost.bestLap = ghost.lapElapsed;
         ghost.best = ghost.recording;
         ghost.bestDur = ghost.lapElapsed;
         buildGhostMesh();
       }
-      showRaceMsg(`Runde: ${fmtTime(ghost.lapElapsed)}`, '#69f0ae');
+      // Training: bei neuer Bestzeit oben die Verbesserung in Sekunden anzeigen
+      if (!raceMode && improved && isFinite(prevBest)) {
+        const delta = (prevBest - ghost.lapElapsed).toFixed(2).replace('.', ',');
+        showRaceMsg(`Bestzeit ${fmtTime(ghost.lapElapsed)} — ${delta} s schneller`, '#69f0ae');
+      } else {
+        showRaceMsg(`Runde: ${fmtTime(ghost.lapElapsed)}`, '#69f0ae');
+      }
       // Rennmodus: erste gültige Runde ist die Quali-Zeit → „Rennen starten" anbieten
       if (raceMode && race.phase === 'quali') {
         race.qualiTime = ghost.lapElapsed;
