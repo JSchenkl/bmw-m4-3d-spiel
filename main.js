@@ -1270,7 +1270,9 @@ function updateCar(dt) {
     // Kammscher Kreis: wer stark bremst oder beschleunigt, hat weniger Seitengrip
     const latAcc = MAX_LAT_ACC * surfaceGrip;
     const usedLong = Math.min(Math.abs(accel) / latAcc, 0.9);
-    const latMax = Math.max(0.3 * latAcc, latAcc * Math.sqrt(1 - usedLong * usedLong));
+    // Kurven-Grip sinkt mit der Geschwindigkeit: je schneller durch die Kurve, desto weniger Haftung
+    const speedGrip = THREE.MathUtils.clamp(1 - Math.max(0, v - 12) * 0.013, 0.4, 1);
+    const latMax = Math.max(0.3 * latAcc, latAcc * Math.sqrt(1 - usedLong * usedLong)) * speedGrip;
 
     const aLat = Math.abs(speed * omega);
     let slide = rearSlip;                       // Antriebs-Schlupf (durchdrehendes Heck)
