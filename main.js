@@ -22,6 +22,8 @@ camera.position.set(7, 2.5, 7);
 // Rückspiegel-Kamera (Blick nach hinten), wird in einen kleinen Streifen oben gerendert
 const mirrorCam = new THREE.PerspectiveCamera(72, 5, 0.1, 2000);
 const rearMirrorEl = document.getElementById('rear-mirror');
+const mirrorLeftEl = document.getElementById('mirror-left');
+const mirrorRightEl = document.getElementById('mirror-right');
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -2699,33 +2701,48 @@ renderer.setAnimationLoop(() => {
   updateSunGlare(); // Blenden, wenn man in die Sonne schaut
   renderer.render(scene, camera);
 
-  // Rückspiegel: Blick nach hinten, exakt in den sichtbaren Rahmen (#rear-mirror) gerendert
-  const mirrorOn = cameraMode === 1 && gameStarted && carForward && rearMirrorEl;
+  // Spiegel: nur in der Cockpit-Kamera sichtbar (Rückspiegel + zwei Seitenspiegel)
+  const mirrorOn = cameraMode === 1 && gameStarted && carForward;
   if (rearMirrorEl) rearMirrorEl.style.display = mirrorOn ? 'block' : 'none';
+  if (mirrorLeftEl) mirrorLeftEl.style.display = mirrorOn ? 'block' : 'none';
+  if (mirrorRightEl) mirrorRightEl.style.display = mirrorOn ? 'block' : 'none';
   if (mirrorOn) {
-    const vw = window.innerWidth, vh = window.innerHeight;
-    // Position/Größe direkt aus dem Rahmen lesen → Bild deckt sich immer mit dem Rahmen
-    const r = rearMirrorEl.getBoundingClientRect();
-    const b = 2;                                  // Rahmenbreite (innen rendern)
-    const mw = r.width - 2 * b, mh = r.height - 2 * b;
-    const mx = r.left + b, my = vh - r.bottom + b; // three.js-Viewport: Ursprung unten-links
-    if (mw > 4 && mh > 4) {
-      const fwdW = carForward.clone().applyAxisAngle(UP, carYaw);
-      const camY = carGroup.position.y + 1.6;     // knapp über dem Dach, Blick nach hinten
-      mirrorCam.position.set(carGroup.position.x, camY, carGroup.position.z);
-      mirrorCam.up.set(0, 1, 0);
-      mirrorCam.lookAt(
-        carGroup.position.x - fwdW.x * 14,
-        carGroup.position.y + 0.4,
-        carGroup.position.z - fwdW.z * 14
-      );
-      mirrorCam.aspect = mw / mh; mirrorCam.updateProjectionMatrix();
-      renderer.setScissorTest(true);
-      renderer.setViewport(mx, my, mw, mh);
-      renderer.setScissor(mx, my, mw, mh);
-      renderer.render(scene, mirrorCam);
-      renderer.setScissorTest(false);
-      renderer.setViewport(0, 0, vw, vh);
-    }
+    const fwdW = carForward.clone().applyAxisAngle(UP, carYaw);
+    // "links" quer zur Fahrtrichtung (in der Ebene): 90° gegen den Uhrzeigersinn um die Hochachse
+    const leftW = new THREE.Vector3(fwdW.z, 0, -fwdW.x);
+    const px = carGroup.position.x, py = carGroup.position.y, pz = carGroup.position.z;
+    // Rückspiegel: Blick gerade nach hinten
+    renderMirror(rearMirrorEl,
+      px, py + 1.6, pz,
+      px - fwdW.x * 14, py + 0.4, pz - fwdW.z * 14);
+    // Linker Seitenspiegel: Blick nach hinten-links
+    renderMirror(mirrorLeftEl,
+      px + leftW.x * 0.95, py + 1.15, pz + leftW.z * 0.95,
+      px + (-fwdW.x * 10 + leftW.x * 7), py + 0.4, pz + (-fwdW.z * 10 + leftW.z * 7));
+    // Rechter Seitenspiegel: Blick nach hinten-rechts
+    renderMirror(mirrorRightEl,
+      px - leftW.x * 0.95, py + 1.15, pz - leftW.z * 0.95,
+      px + (-fwdW.x * 10 - leftW.x * 7), py + 0.4, pz + (-fwdW.z * 10 - leftW.z * 7));
   }
 });
+
+// Rendert die Szene aus Sicht eines Spiegels exakt in den sichtbaren Rahmen (DOM-Element).
+function renderMirror(el, camX, camY, camZ, lookX, lookY, lookZ) {
+  if (!el) return;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const r = el.getBoundingClientRect();
+  const b = 2;                                   // Rahmenbreite (innen rendern)
+  const mw = r.width - 2 * b, mh = r.height - 2 * b;
+  const mx = r.left + b, my = vh - r.bottom + b; // three.js-Viewport: Ursprung unten-links
+  if (mw <= 4 || mh <= 4) return;
+  mirrorCam.position.set(camX, camY, camZ);
+  mirrorCam.up.set(0, 1, 0);
+  mirrorCam.lookAt(lookX, lookY, lookZ);
+  mirrorCam.aspect = mw / mh; mirrorCam.updateProjectionMatrix();
+  renderer.setScissorTest(true);
+  renderer.setViewport(mx, my, mw, mh);
+  renderer.setScissor(mx, my, mw, mh);
+  renderer.render(scene, mirrorCam);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, vw, vh);
+}
