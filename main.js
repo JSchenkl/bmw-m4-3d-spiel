@@ -123,6 +123,7 @@ const TRACKS = [
   { id: 'hockenheim', name: 'Hockenheimring', country: 'Deutschland', length: '4,574 km', file: 'models/hockenheim_track.csv' },
   { id: 'silverstone', name: 'Silverstone', country: 'Großbritannien', length: '5,891 km', file: 'models/silverstone_track.csv' },
   { id: 'monza', name: 'Autodromo Nazionale Monza', country: 'Italien', length: '5,793 km', file: 'models/monza_track.csv' },
+  { id: 'montreal', name: 'Circuit Gilles-Villeneuve', country: 'Kanada', length: '4,361 km', file: 'models/montreal_track.csv' },
 ];
 let selectedTrackIndex = 0;
 let trackGroup = null;       // aktuelle Strecken-Gruppe (zum Entfernen beim Wechsel)
