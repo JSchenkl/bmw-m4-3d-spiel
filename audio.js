@@ -119,6 +119,41 @@ export function downshift() {
   exhaustPop(0.3);
 }
 
+// Aufprall-/Crash-Geräusch: dumpfer Schlag (tiefer Ton) + metallisches Rausch-Krachen.
+// amp 0…1 skaliert die Härte des Einschlags (leichtes Schrammen leise, Frontal-Crash laut).
+export function crash(amp = 1) {
+  if (!enabled || !ctx) return;
+  amp = Math.max(0.15, Math.min(1, amp));
+  const t = ctx.currentTime;
+
+  // 1) Dumpfer Schlag – Körper des Aufpralls (tiefer Ton, der schnell abfällt)
+  const o = ctx.createOscillator();
+  const og = ctx.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(150, t);
+  o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+  og.gain.setValueAtTime(0.0001, t);
+  og.gain.exponentialRampToValueAtTime(amp * 0.95, t + 0.006);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+  o.connect(og); og.connect(master);
+  o.start(t); o.stop(t + 0.34);
+
+  // 2) Metallisches Krachen/Bersten – gefiltertes Rauschen mit schnellem Abfall
+  const len = Math.floor(ctx.sampleRate * 0.36);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.6);
+  const nb = ctx.createBufferSource();
+  nb.buffer = buf;
+  const nf = ctx.createBiquadFilter();
+  nf.type = 'highpass'; nf.frequency.value = 1100; nf.Q.value = 0.6;
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(amp * 0.85, t);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  nb.connect(nf); nf.connect(ng); ng.connect(master);
+  nb.start(t);
+}
+
 // Kurzer Auspuffknall: tiefer Ton + gefilterter Rauschimpuls
 function exhaustPop(amp) {
   const t = ctx.currentTime;
