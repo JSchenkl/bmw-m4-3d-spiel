@@ -450,6 +450,13 @@
       position: absolute; bottom: 38px; left: 24px; color: #aab3c0;
       font-family: 'Segoe UI', Arial, sans-serif; font-size: 15px;
     }
+    /* aktuelle Bestzeit der gewählten Strecke – oben rechts, über dem Streckennamen */
+    #track-best {
+      position: absolute; top: 22px; right: 26px; z-index: 2;
+      font-family: 'Segoe UI', Arial, sans-serif; color: #ffd54a;
+      font-size: clamp(16px, 1.8vw, 24px); font-weight: 800; letter-spacing: 1px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.7);
+    }
   </style>
 </head>
 <body>
@@ -481,6 +488,7 @@
 
   <!-- Streckenauswahl nach „SPIELEN" (vor der Modus-Wahl) -->
   <div id="track-screen">
+    <div id="track-best">Bestzeit —:—</div>
     <button class="track-arrow" id="track-prev" aria-label="vorherige Strecke">‹</button>
     <div class="track-slot">
       <div class="track-info">

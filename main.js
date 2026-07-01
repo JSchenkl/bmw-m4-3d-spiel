@@ -130,6 +130,13 @@ const TRACKS = [
   { id: 'montreal', name: 'Circuit Gilles-Villeneuve', country: 'Kanada', length: '4,361 km', file: 'models/montreal_track.csv' },
 ];
 let selectedTrackIndex = 0;
+let currentTrackId = TRACKS[0].id; // aktuell geladene Strecke (für die Bestzeit-Zuordnung)
+// Persönliche Bestzeiten je Strecke (in localStorage gespeichert → bleiben erhalten)
+const BEST_KEY = 'bmwm4_bestTimes';
+let bestByTrack = {};
+try { bestByTrack = JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch (e) { bestByTrack = {}; }
+function saveBestTimes() { try { localStorage.setItem(BEST_KEY, JSON.stringify(bestByTrack)); } catch (e) {} }
+const fileToTrackId = (file) => { const t = TRACKS.find((t) => t.file === file); return t ? t.id : null; };
 let trackGroup = null;       // aktuelle Strecken-Gruppe (zum Entfernen beim Wechsel)
 let trackLoadedFile = null;  // zuletzt geladene CSV
 let pitDirection = null;     // Fahrtrichtung in der Boxengasse (für die Auto-Ausrichtung)
@@ -157,6 +164,14 @@ function loadTrack(file) {
       if (gridBoxes) { scene.remove(gridBoxes); gridBoxes = null; } // Startboxen neu aufbauen
       alignCarToPitlane();
       trackLoadedFile = file;
+      // Strecke gewechselt: Ghost-/Rundenmessung zurücksetzen, Bestzeit dieser Strecke laden
+      currentTrackId = fileToTrackId(file) || currentTrackId;
+      if (ghost.mesh) { scene.remove(ghost.mesh); disposeGhostMaterials(); ghost.mesh = null; }
+      ghost.best = null; ghost.bestDur = 0; ghost.recording = []; ghost.cursor = 0;
+      ghost.timing = false; ghost.lapElapsed = 0; ghost.lastLap = null;
+      ghost.hasProgress = false; ghost.prevProgress = 0; ghost.maxProgress = 0;
+      ghost.bestLap = bestByTrack[currentTrackId] != null ? bestByTrack[currentTrackId] : Infinity;
+      updateLapHud();
     })
     .catch((err) => console.error('Strecke konnte nicht geladen werden:', err));
 }
@@ -1042,6 +1057,8 @@ function renderTrackScreen() {
   set('track-name', t.name);
   set('track-country', t.country);
   set('track-length', t.length);
+  const bt = bestByTrack[t.id];
+  set('track-best', bt != null ? `Bestzeit ${fmtTime(bt)}` : 'Bestzeit —:—');
   setTrackMap(t);
 }
 function cycleTrack(dir) {
@@ -1798,6 +1815,8 @@ function updateTimeAttack(dt) {
         ghost.best = ghost.recording;
         ghost.bestDur = ghost.lapElapsed;
         buildGhostMesh();
+        bestByTrack[currentTrackId] = ghost.lapElapsed; // persönliche Bestzeit dieser Strecke merken
+        saveBestTimes();
       }
       // Training: bei neuer Bestzeit oben die Verbesserung in Sekunden anzeigen
       if (!raceMode && improved && isFinite(prevBest)) {
@@ -1878,6 +1897,8 @@ btnResetTime.addEventListener('click', () => {
   ghost.hasProgress = false;
   ghost.prevProgress = 0;
   ghost.maxProgress = 0;
+  delete bestByTrack[currentTrackId]; // gespeicherte Bestzeit dieser Strecke ebenfalls löschen
+  saveBestTimes();
   updateLapHud();
 });
 
