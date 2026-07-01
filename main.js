@@ -1460,8 +1460,8 @@ function updateCar(dt) {
   const onGrass = carOnGrass();
   const onGravelSurf = !onGrass && carOnGravel();
   const surfaceGrip = onGrass ? 0.315 : (onGravelSurf ? 0.55 : 1.0); // Standard-Grip (Gras bremst ~5 % weniger)
-  // Wegrutsch-/Dreh-Dynamik: das Heck kann auch auf der Strecke ausbrechen (nicht nur auf Gras/Kies).
-  const overMul = onGrass ? 0.4 : (onGravelSurf ? 0.3 : 0.3);
+  // Automatisches Ausbrechen nur auf Gras/Kies – auf der Strecke greift es normal (kein Übersteuer-Zusatz).
+  const overMul = onGrass ? 0.4 : (onGravelSurf ? 0.3 : 0);
 
   // Längsdynamik: Kräftebilanz aus Antrieb, Luft- und Rollwiderstand
   const v = Math.abs(speed);
