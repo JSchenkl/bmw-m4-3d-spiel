@@ -808,6 +808,28 @@ function applyMode() {
   applyHeadlights();
   applyTaillights();
   applyBotLights();
+  applyWeather();
+}
+
+// Regen-Optik: bedeckter, grauer Himmel + dichterer Nebel; Windschutzscheiben-Overlay
+// (Tropfen + Wischer) nur im Cockpit sichtbar. Bei Sonne bleibt es beim applyMode-Look.
+const rainOverlayEl = document.getElementById('rain-overlay');
+function applyWeather() {
+  if (weather === 'rain') {
+    // grauer, bedeckter Himmel – tags heller als nachts
+    const sky = isNight ? 0x0a0c12 : 0x8b939e;
+    scene.background = new THREE.Color(sky);
+    scene.fog = new THREE.Fog(sky, isNight ? 150 : 350, isNight ? 2600 : 4200);
+    if (sunSprite) sunSprite.visible = false;
+    if (!isNight) { hemi.intensity = 0.8; hemi.color.set(0xaab4c0); ambient.intensity = 0.38; }
+    baseExposure = isNight ? 0.8 : 0.92; applyExposure();
+  }
+  updateRainOverlay();
+}
+
+// Windschutzscheiben-Regen nur bei Regen UND Cockpit-Kamera zeigen
+function updateRainOverlay() {
+  if (rainOverlayEl) rainOverlayEl.classList.toggle('on', weather === 'rain' && cameraMode === 1 && gameStarted);
 }
 
 function applyHeadlights() {
@@ -897,6 +919,8 @@ btnSound.addEventListener('click', () => {
 
 // ---------- Startbildschirm & Modus-Auswahl ----------
 let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots)
+let weather = 'sun';       // 'sun' | 'rain' – im Regen weniger Grip + Regeneffekte
+let pendingRaceMode = false; // gewählter Modus, bis das Wetter gewählt ist
 {
   const startScreen = document.getElementById('start-screen');
   const modeScreen = document.getElementById('mode-screen');
@@ -924,6 +948,7 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
     btnTail.textContent = '🔴 Rücklichter: AUS';
     btnTail.classList.remove('active');
     applyMode();
+    applyWeather();   // Regen-Optik (Himmel/Nebel/Overlay) je nach Wetter setzen
     controls.autoRotate = false;
     btnRotate.textContent = '🔄 Auto-Rotation: AUS';
 
@@ -944,6 +969,7 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
 
     // Zeitfahren ab der ersten Runde scharf schalten
     gameStarted = true;
+    updateRainOverlay(); // Regen-Scheibe jetzt (Cockpit + Spiel läuft) ggf. einblenden
     armLap();
 
     // Ghost-Car nur im Training anzeigen
@@ -953,8 +979,23 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
     if (raceMode) startRaceQuali(); else raceReset();
   }
 
-  document.getElementById('btn-training').addEventListener('click', () => startGame(false));
-  document.getElementById('btn-rennen').addEventListener('click', () => startGame(true));
+  // Nach der Modus-Wahl kommt die Wetterauswahl; erst danach startet das Spiel.
+  const weatherScreen = document.getElementById('weather-screen');
+  function showWeatherScreen(isRace) {
+    pendingRaceMode = isRace;
+    modeScreen.classList.remove('visible');
+    weatherScreen.classList.add('visible');
+    startNavIndex = 0; highlightStartItem();
+  }
+  document.getElementById('btn-training').addEventListener('click', () => showWeatherScreen(false));
+  document.getElementById('btn-rennen').addEventListener('click', () => showWeatherScreen(true));
+  function chooseWeather(w) {
+    weather = w;
+    weatherScreen.classList.remove('visible');
+    startGame(pendingRaceMode);
+  }
+  document.getElementById('btn-weather-sun').addEventListener('click', () => chooseWeather('sun'));
+  document.getElementById('btn-weather-rain').addEventListener('click', () => chooseWeather('rain'));
 }
 
 // ---------- Menü ein-/ausblenden (Taste M, Klick auf den Menü-Button, Esc schließt) ----------
@@ -1002,7 +1043,11 @@ let startNavIndex = 0;
 function getStartItems() {
   // Buttons des aktuell sichtbaren Vor-Spiel-Bildschirms
   const mode = document.getElementById('mode-screen');
+  const weatherS = document.getElementById('weather-screen');
   const start = document.getElementById('start-screen');
+  if (weatherS && weatherS.classList.contains('visible')) {
+    return [document.getElementById('btn-weather-sun'), document.getElementById('btn-weather-rain')];
+  }
   if (mode && mode.classList.contains('visible')) {
     return [document.getElementById('btn-training'), document.getElementById('btn-rennen')];
   }
@@ -1102,6 +1147,7 @@ function applyCameraMode() {
   }
   camera.updateProjectionMatrix();
   applyExposure(); // Cockpit 15 % gedämmt
+  updateRainOverlay(); // Regen-Scheibe nur im Cockpit
   btnView.textContent = `🎥 Ansicht: ${cameraMode === 1 ? 'Cockpit' : 'Verfolger'}`;
   btnView.classList.toggle('active', cameraMode === 1);
 }
@@ -1459,10 +1505,13 @@ function updateCar(dt) {
   // overMul steuert, wie leicht das Heck ausbricht (→ Drehen um die eigene Achse).
   const onGrass = carOnGrass();
   const onGravelSurf = !onGrass && carOnGravel();
-  const surfaceGrip = onGrass ? 0.315 : (onGravelSurf ? 0.55 : 1.0); // Gras bremst ~5 % weniger (0,30 → 0,315)
-  // Automatisches Ausbrechen nur auf Gras/Kies – auf der Strecke greift es normal (kein Übersteuer-Zusatz).
-  // Auf Gras bewusst dezent, damit es einen nicht zu stark herumdreht.
-  const overMul = onGrass ? 0.4 : (onGravelSurf ? 0.3 : 0);
+  const raining = weather === 'rain';
+  let surfaceGrip = onGrass ? 0.315 : (onGravelSurf ? 0.55 : 1.0); // Gras bremst ~5 % weniger (0,30 → 0,315)
+  if (raining) surfaceGrip *= 0.7; // Regen: 30 % weniger Grip (Bremsen, Traktion, Kurvenhaftung)
+  // Automatisches Ausbrechen (→ Drehen um die eigene Achse): auf Gras/Kies stark, auf trockener
+  // Strecke gar nicht – bei Regen bricht das Heck aber auch auf dem Asphalt aus (Wegrutsch-/Dreh-Dynamik).
+  let overMul = onGrass ? 0.4 : (onGravelSurf ? 0.3 : 0);
+  if (raining) overMul = Math.max(overMul, 0.3);
 
   // Längsdynamik: Kräftebilanz aus Antrieb, Luft- und Rollwiderstand
   const v = Math.abs(speed);
@@ -1948,10 +1997,12 @@ btnHome.addEventListener('click', () => {
   controls.autoRotate = true;
   btnRotate.textContent = '🔄 Auto-Rotation: AN';
   isNight = true; headlightsOn = true; taillightsOn = true;
+  weather = 'sun'; // Wetter für die nächste Auswahl zurücksetzen (Startbildschirm ohne Regen)
   applyMode();
 
-  // Modus- und Streckenauswahl sicher aus, Startbildschirm wieder einblenden
+  // Modus-, Wetter- und Streckenauswahl sicher aus, Startbildschirm wieder einblenden
   document.getElementById('mode-screen').classList.remove('visible');
+  document.getElementById('weather-screen').classList.remove('visible');
   document.getElementById('track-screen').classList.remove('visible');
   const ss = document.getElementById('start-screen');
   ss.style.display = '';
@@ -2000,10 +2051,11 @@ function botTargetSpeed(s) {
   if (kappa < 1e-4) return BOT_MAX_SPEED;
   // Gleiche Querhaftung wie der Spieler: 1,07 g, inkl. geschwindigkeitsabhängigem
   // Grip-Abfall (schnelle Kurven = weniger Grip). v² = aLat(v)·Radius, iterativ gelöst.
+  const wet = weather === 'rain' ? 0.7 : 1; // im Regen 30 % weniger Grip – wie beim Spieler
   let v = 45;
   for (let it = 0; it < 6; it++) {
     const sg = Math.max(0.4, Math.min(1, 1 - Math.max(0, v - 12) * 0.013)); // wie speedGrip beim Spieler
-    v = 0.5 * v + 0.5 * Math.sqrt((MAX_LAT_ACC * sg * BOT_GRIP) / kappa);
+    v = 0.5 * v + 0.5 * Math.sqrt((MAX_LAT_ACC * sg * BOT_GRIP * wet) / kappa);
   }
   return Math.max(BOT_MIN_SPEED, Math.min(BOT_MAX_SPEED, v));
 }
@@ -2592,6 +2644,54 @@ function updateDust(dt) {
   dustPoints.geometry.attributes.position.needsUpdate = true;
 }
 
+// ---------- Aufgewirbelter Regen (Gischt) hinter dem Auto ----------
+const SPRAY_N = 220;
+let sprayPoints = null, sprayPos = null;
+const sprayVel = [], sprayLife = [];
+let sprayNext = 0;
+function initSpray() {
+  sprayPos = new Float32Array(SPRAY_N * 3);
+  for (let i = 0; i < SPRAY_N; i++) { sprayPos[i * 3 + 1] = -9999; sprayVel.push(new THREE.Vector3()); sprayLife.push(0); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(sprayPos, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xdfe8f2, size: 0.5, transparent: true, opacity: 0.5, depthWrite: false });
+  sprayPoints = new THREE.Points(geo, mat);
+  sprayPoints.frustumCulled = false;
+  scene.add(sprayPoints);
+}
+function spawnSpray(x, y, z, bx, bz) {
+  const i = sprayNext; sprayNext = (sprayNext + 1) % SPRAY_N;
+  sprayPos[i * 3] = x; sprayPos[i * 3 + 1] = y; sprayPos[i * 3 + 2] = z;
+  // nach hinten weggeschleudert (entgegen der Fahrtrichtung) + nach oben + etwas Streuung
+  sprayVel[i].set(bx * (2 + Math.random() * 3) + (Math.random() - 0.5) * 2,
+    1.0 + Math.random() * 2.2,
+    bz * (2 + Math.random() * 3) + (Math.random() - 0.5) * 2);
+  sprayLife[i] = 0.5 + Math.random() * 0.5;
+}
+function updateSpray(dt) {
+  if (!sprayPoints) initSpray();
+  // Gischt nur bei Regen, auf fester Strecke, ab spürbarem Tempo
+  if (weather === 'rain' && gameStarted && carForward && Math.abs(speed) > 6 && !carOnGrass() && !carOnGravel()) {
+    const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
+    const bx = -fwd.x, bz = -fwd.z;                 // Richtung nach hinten
+    const rear = carGroup.position.clone().addScaledVector(fwd, -carHalf.len * 0.8);
+    const n = Math.min(6, 2 + Math.floor(Math.abs(speed) / 12)); // schneller = mehr Gischt
+    for (let k = 0; k < n; k++) {
+      spawnSpray(rear.x + (Math.random() - 0.5) * 1.8, 0.25, rear.z + (Math.random() - 0.5) * 1.8, bx, bz);
+    }
+  }
+  for (let i = 0; i < SPRAY_N; i++) {
+    if (sprayLife[i] <= 0) continue;
+    sprayLife[i] -= dt;
+    if (sprayLife[i] <= 0) { sprayPos[i * 3 + 1] = -9999; continue; }
+    sprayPos[i * 3] += sprayVel[i].x * dt;
+    sprayPos[i * 3 + 1] += sprayVel[i].y * dt;
+    sprayPos[i * 3 + 2] += sprayVel[i].z * dt;
+    sprayVel[i].y -= 3.2 * dt;                       // fällt zurück
+  }
+  sprayPoints.geometry.attributes.position.needsUpdate = true;
+}
+
 // ---------- Resize & Render-Loop ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -2614,7 +2714,7 @@ renderer.setAnimationLoop(() => {
   if (gameStarted && raceMode && !gamePaused()) { updateRace(dt); updateBots(dt); }
 
   updateCar(dt);
-  if (!gamePaused()) updateDust(dt);
+  if (!gamePaused()) { updateDust(dt); updateSpray(dt); }
   updateLightsFollow();
 
   // Bei offenem Menü pausiert nur die Fahrphysik & die Rundenuhr (das Auto behält sein Tempo).
