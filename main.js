@@ -124,6 +124,7 @@ const TRACKS = [
   { id: 'silverstone', name: 'Silverstone', country: 'Großbritannien', length: '5,891 km', file: 'models/silverstone_track.csv' },
   { id: 'monza', name: 'Autodromo Nazionale Monza', country: 'Italien', length: '5,793 km', file: 'models/monza_track.csv' },
   { id: 'montreal', name: 'Circuit Gilles-Villeneuve', country: 'Kanada', length: '4,361 km', file: 'models/montreal_track.csv' },
+  { id: 'saopaulo', name: 'Autódromo José Carlos Pace (Interlagos)', country: 'Brasilien', length: '4,309 km', file: 'models/saopaulo_track.csv' },
 ];
 let selectedTrackIndex = 0;
 let currentTrackId = TRACKS[0].id; // aktuell geladene Strecke (für die Bestzeit-Zuordnung)
