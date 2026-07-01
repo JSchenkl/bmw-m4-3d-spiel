@@ -383,20 +383,6 @@
       pointer-events: none;
     }
 
-    /* Seitenspiegel – per JS an die Außenspiegel-Position des 3D-Modells geheftet
-       (bleiben beim Umsehen an ihrer Weltposition). Typische Außenspiegel-Form (außen abgerundet). */
-    .side-mirror {
-      position: fixed;
-      width: min(170px, 14vw); aspect-ratio: 16 / 9;
-      z-index: 30; display: none;
-      border: 2px solid rgba(255,255,255,0.5);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(0,0,0,0.6);
-      pointer-events: none;
-    }
-    /* linker Spiegel: außen (links) stärker gerundet */
-    #mirror-left  { border-radius: 34px 12px 12px 20px; }
-    /* rechter Spiegel: außen (rechts) stärker gerundet */
-    #mirror-right { border-radius: 12px 34px 20px 12px; }
 
     /* Controller-Auswahl im Startmenü (Kreuztasten wechseln, A bestätigt) */
     .cnav-selected {
@@ -483,8 +469,6 @@
 
   <!-- Rückspiegel-Rahmen (Cockpit-Sicht); Blick nach hinten wird hineingerendert -->
   <div id="rear-mirror"></div>
-  <div id="mirror-left" class="side-mirror"></div>
-  <div id="mirror-right" class="side-mirror"></div>
 
   <!-- Streckenauswahl nach „SPIELEN" (vor der Modus-Wahl) -->
   <div id="track-screen">
