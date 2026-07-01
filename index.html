@@ -383,18 +383,20 @@
       pointer-events: none;
     }
 
-    /* Seitenspiegel – dort, wo im Cockpit die echten Außenspiegel des M4 liegen
-       (an den Seitenrändern, auf Höhe der Seitenfenster) */
+    /* Seitenspiegel – oben bei den Instrumenten (links/rechts neben dem Rückspiegel),
+       in der typischen Außenspiegel-Form (außen abgerundet) */
     .side-mirror {
-      position: fixed; top: 56%; transform: translateY(-50%);
-      width: min(190px, 16vw); aspect-ratio: 5 / 3;
+      position: fixed; top: 84px;
+      width: min(210px, 17vw); aspect-ratio: 16 / 9;
       z-index: 30; display: none;
-      border: 2px solid rgba(255,255,255,0.5); border-radius: 10px;
+      border: 2px solid rgba(255,255,255,0.5);
       box-shadow: 0 4px 16px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(0,0,0,0.6);
       pointer-events: none;
     }
-    #mirror-left  { left: 1.5%; }
-    #mirror-right { right: 1.5%; }
+    /* linker Spiegel: außen (links) stärker gerundet */
+    #mirror-left  { left: 3%;  border-radius: 34px 12px 12px 20px; }
+    /* rechter Spiegel: außen (rechts) stärker gerundet */
+    #mirror-right { right: 3%; border-radius: 12px 34px 20px 12px; }
 
     /* Controller-Auswahl im Startmenü (Kreuztasten wechseln, A bestätigt) */
     .cnav-selected {
