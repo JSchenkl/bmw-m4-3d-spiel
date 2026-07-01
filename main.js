@@ -790,6 +790,7 @@ function applyMode() {
   }
   applyHeadlights();
   applyTaillights();
+  applyBotLights();
 }
 
 function applyHeadlights() {
@@ -2024,17 +2025,20 @@ function createBots() {
     .map((w) => ({ path: nodeIndexPath(currentCar, w.spin), axisLocal: w.axisLocal, radius: w.radius }))
     .filter((w) => w.path);
   const tailSet = new Set(taillightMats); // Rücklicht-Materialien des Spielers
+  const headSet = new Set(headlightMats); // Scheinwerfer-Materialien des Spielers
   for (let k = 0; k < BOT_COUNT; k++) {
     const clone = currentCar.clone(true); // gleiches Auto-Modell wie der Spieler
     // WICHTIG: clone(true) teilt die Materialien mit dem Spieler. Eigene Materialien
-    // klonen, sonst leuchten beim Bremsen des Spielers auch die Bot-Lichter mit.
+    // klonen, sonst leuchten beim Bremsen/Licht des Spielers auch die Bot-Lichter mit.
     const tailMats = [];
+    const headMats = [];
     clone.traverse((node) => {
       if (!node.isMesh || !node.material) return;
       const mats = Array.isArray(node.material) ? node.material : [node.material];
       const cloned = mats.map((m) => {
         const c = m.clone();
         if (tailSet.has(m)) { c.emissive = new THREE.Color(0x000000); c.emissiveIntensity = 1; tailMats.push(c); }
+        else if (headSet.has(m)) { c.emissive = new THREE.Color(0x000000); c.emissiveIntensity = 1; headMats.push(c); }
         return c;
       });
       node.material = Array.isArray(node.material) ? cloned : cloned[0];
@@ -2045,7 +2049,19 @@ function createBots() {
     const wheelsClone = wheelPaths
       .map((w) => ({ spin: resolveNodePath(clone, w.path), axisLocal: w.axisLocal, radius: w.radius }))
       .filter((w) => w.spin);
-    bots.push({ group, s: 0, offset: 0, wheels: wheelsClone, tailMats });
+    bots.push({ group, s: 0, offset: 0, wheels: wheelsClone, tailMats, headMats });
+  }
+  applyBotLights(); // Scheinwerfer je nach Tag/Nacht setzen
+}
+
+// Scheinwerfer der KI-Fahrzeuge: nachts an (leuchten), tagsüber aus.
+function applyBotLights() {
+  for (const bot of bots) {
+    if (!bot.headMats) continue;
+    for (const m of bot.headMats) {
+      m.emissive.setHex(isNight ? 0xffffff : 0x000000);
+      m.emissiveIntensity = isNight ? 6 : 1;
+    }
   }
 }
 
@@ -2134,10 +2150,13 @@ function updateBots(dt) {
         for (const w of bot.wheels) w.spin.rotateOnAxis(w.axisLocal, (bot.v / w.radius) * dt); // Räder drehen
       }
     }
-    // Eigene Bremslichter des Bots (unabhängig vom Spieler)
-    if (bot.tailMats) for (const m of bot.tailMats) {
-      m.emissive.setHex(braking ? 0xff0000 : 0x000000);
-      m.emissiveIntensity = braking ? 3 : 1;
+    // Eigene Rücklichter des Bots (unabhängig vom Spieler): nachts an, beim Bremsen heller
+    if (bot.tailMats) {
+      const on = isNight || braking;
+      for (const m of bot.tailMats) {
+        m.emissive.setHex(on ? 0xff0000 : 0x000000);
+        m.emissiveIntensity = braking ? 3 : (isNight ? 1.6 : 1);
+      }
     }
     const p = positionBot(bot, dt);
     // Hitbox etwas großzügiger, damit auch Seiten-/Streifkontakt sicher zählt
