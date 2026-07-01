@@ -8,7 +8,8 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', Arial, sans-serif; }
-    canvas { display: block; }
+    /* Alle Farben der 3D-Welt leicht entsättigen (≈8 % grauer) */
+    canvas { display: block; filter: saturate(0.92); }
 
     #ui {
       position: absolute; top: 72px; left: 20px;
