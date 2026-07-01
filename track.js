@@ -248,7 +248,7 @@ export async function createTrack(file) {
   }
 
   // --- Auslaufzone: Gras + Kiesbett + Bande (außerhalb der Curbs; überschneidet die Strecke nicht) ---
-  const GRASS_WIDTH = 50;      // Grasstreifen zwischen Curb-Außenkante und Kiesbett
+  const GRASS_WIDTH = 47;      // Grasstreifen zwischen Curb-Außenkante und Kiesbett (Kies + Bande 3 m näher an der Strecke)
   const GRAVEL_MAX = 15;       // maximale Kiesbett-Breite (offene Auslaufzonen, 2,5× vergrößert)
   const BARRIER_H = 1.1;       // Höhe der rot-weißen Rückwand hinter der Reifenwand
   const STRIPE = 6;            // Blocklänge des klassischen rot-weißen Musters (Meter)
@@ -268,6 +268,7 @@ export async function createTrack(file) {
   const tireMat = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.95 });
   const tireGeo = new THREE.TorusGeometry(TIRE_R, TIRE_TUBE, 6, 8);
   const tireMatrices = [];   // sammelt alle Reifen-Instanzen → eine InstancedMesh am Ende
+  const tireBase = [];       // Grundposition jedes Reifens (für das Schadensmodell in main.js)
   const _tQ = new THREE.Quaternion(), _tP = new THREE.Vector3(), _tA = new THREE.Vector3();
   const _tM = new THREE.Matrix4(), _tZ = new THREE.Vector3(0, 0, 1), _tONE = new THREE.Vector3(1, 1, 1);
 
@@ -377,7 +378,9 @@ export async function createTrack(file) {
       if (clen >= 0.01) {
         const dirx = (oj.x - oi.x) / clen, dirz = (oj.z - oi.z) / clen;
         const cmid = oi.clone().add(oj).multiplyScalar(0.5);
-        colliders.push({ cx: cmid.x, cz: cmid.z, ax: dirx, az: dirz, halfLen: clen / 2 + 0.05, halfWid: 0.12 });
+        // Reifen-Indexbereich dieses Segments für das Schadensmodell festhalten
+        const seg = { cx: cmid.x, cz: cmid.z, ax: dirx, az: dirz, halfLen: clen / 2 + 0.05, halfWid: 0.12, tireFrom: tireMatrices.length };
+        colliders.push(seg);
         // Reifen entlang des Segments verteilen (Reifenachse quer zur Bande, zwei Reihen)
         _tA.set(dirz, 0, -dirx);
         _tQ.setFromUnitVectors(_tZ, _tA);
@@ -388,8 +391,10 @@ export async function createTrack(file) {
             _tP.set(px, ry, pz);
             _tM.compose(_tP, _tQ, _tONE);
             tireMatrices.push(_tM.clone());
+            tireBase.push({ x: px, y: ry, z: pz });
           }
         }
+        seg.tireTo = tireMatrices.length;
       }
     }
     const grassMesh = new THREE.Mesh(mkGeo(grass), grassMat); grassMesh.receiveShadow = true; group.add(grassMesh);
@@ -401,6 +406,7 @@ export async function createTrack(file) {
   }
 
   // Reifenwand als eine InstancedMesh (ein Draw-Call für alle Reifen)
+  let tireWall = null;
   if (tireMatrices.length) {
     const tires = new THREE.InstancedMesh(tireGeo, tireMat, tireMatrices.length);
     for (let i = 0; i < tireMatrices.length; i++) tires.setMatrixAt(i, tireMatrices[i]);
@@ -408,6 +414,7 @@ export async function createTrack(file) {
     tires.castShadow = true; tires.receiveShadow = true;
     tires.frustumCulled = false; // Bande umschließt die gesamte Strecke
     group.add(tires);
+    tireWall = { mesh: tires, base: tireBase }; // fürs Schadensmodell (Positionen sind Gruppen-lokal)
   }
 
   // --- Startplatz: Punkt der Boxengasse auf Höhe der Start/Ziel-Linie ---
@@ -445,5 +452,5 @@ export async function createTrack(file) {
   // gefüllte Garagen-Stellplätze (in Spawn-Koordinaten) – main.js parkt dort den BMW M4
   const garageBays = garageBaysRaw.map((b) => ({ x: b.x - spawn.x, z: b.z - spawn.z, fx: b.fx, fz: b.fz }));
 
-  return { group, pitDirection, colliders, curbData, garageBays };
+  return { group, pitDirection, colliders, curbData, garageBays, tireWall };
 }
