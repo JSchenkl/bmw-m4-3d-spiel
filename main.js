@@ -752,6 +752,7 @@ let isNight = false;
 let headlightsOn = false;
 let taillightsOn = false;
 let braking = false;
+let crashCd = 0;             // Sperrzeit (s) zwischen zwei Crash-Geräuschen
 
 const btnDayNight = document.getElementById('btn-daynight');
 const btnHead = document.getElementById('btn-headlights');
@@ -1313,6 +1314,14 @@ function resolveCollisions() {
       const before = speed;
       const slide = Math.sqrt(Math.max(0, 1 - align * align));
       speed *= slide * 0.9;
+      // Aufprallhärte = Tempo-Anteil senkrecht in die Wand (frontal laut, streifend leise)
+      const impact = Math.abs(before * align);
+      if (impact > 4 && crashCd <= 0) {
+        // Bei Auto-Crash zählt der Tempo-Unterschied, nicht das absolute Tempo
+        const rel = w.v !== undefined ? Math.abs(before - w.v) * Math.abs(align) : impact;
+        engineAudio.crash(Math.min(1, rel / 26));
+        crashCd = 0.22; // kurze Sperre, damit ein Schrammen nicht dauernd knallt
+      }
       // Crash mit einem Auto (Bot): nicht auf 0, sondern auf das Tempo des anderen abbremsen
       if (w.v !== undefined && before > 0) speed = Math.max(speed, Math.min(before, w.v));
       // Schadensmodell der Reifen-Bande: Aufprall drückt die getroffenen Reifen weg
@@ -1351,6 +1360,7 @@ function damageTireWall(w, impactSpeed, push) {
 }
 
 function updateCar(dt) {
+  if (crashCd > 0) crashCd -= dt; // Crash-Sound-Sperre herunterzählen
   // Tastatur-Eingaben
   let throttle = has('KeyW', 'ArrowUp') ? 1 : 0;
   let reverse = has('KeyS', 'ArrowDown') ? 1 : 0;
