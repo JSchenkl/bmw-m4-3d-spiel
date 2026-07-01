@@ -22,10 +22,6 @@ camera.position.set(7, 2.5, 7);
 // Rückspiegel-Kamera (Blick nach hinten), wird in einen kleinen Streifen oben gerendert
 const mirrorCam = new THREE.PerspectiveCamera(72, 5, 0.1, 2000);
 const rearMirrorEl = document.getElementById('rear-mirror');
-const mirrorLeftEl = document.getElementById('mirror-left');
-const mirrorRightEl = document.getElementById('mirror-right');
-const _mWorld = new THREE.Vector3();  // Weltposition eines Außenspiegels (zum Projizieren)
-const _mView = new THREE.Vector3();   // dieselbe Position im Kamera-Raum (vor/hinter der Kamera?)
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -2724,61 +2720,17 @@ renderer.setAnimationLoop(() => {
   updateSunGlare(); // Blenden, wenn man in die Sonne schaut
   renderer.render(scene, camera);
 
-  // Spiegel: nur in der Cockpit-Kamera sichtbar
+  // Rückspiegel: nur in der Cockpit-Kamera sichtbar, Blick gerade nach hinten
   const mirrorOn = cameraMode === 1 && gameStarted && carForward;
   if (rearMirrorEl) rearMirrorEl.style.display = mirrorOn ? 'block' : 'none';
-  if (!mirrorOn) {
-    if (mirrorLeftEl) mirrorLeftEl.style.display = 'none';
-    if (mirrorRightEl) mirrorRightEl.style.display = 'none';
-  } else {
+  if (mirrorOn) {
     const fwdW = carForward.clone().applyAxisAngle(UP, carYaw);
-    // "links" quer zur Fahrtrichtung (in der Ebene): 90° gegen den Uhrzeigersinn um die Hochachse
-    const leftW = new THREE.Vector3(fwdW.z, 0, -fwdW.x);
     const px = carGroup.position.x, py = carGroup.position.y, pz = carGroup.position.z;
-
-    // Rückspiegel: fester Innenspiegel oben, Blick gerade nach hinten
     renderMirror(rearMirrorEl,
       px, py + 1.6, pz,
       px - fwdW.x * 14, py + 0.4, pz - fwdW.z * 14);
-
-    // Seitenspiegel sind an den Außenspiegeln des 3D-Modells verankert: sie bleiben beim
-    // Umsehen an ihrer Weltposition (man muss nach links/rechts schauen, um sie zu sehen).
-    const MFWD = 0.62, MSIDE = 1.05, MH = 1.02; // Position der Außenspiegel relativ zur Fahrzeugmitte
-    // Linker Außenspiegel (Blick nach hinten-links)
-    const lx = px + fwdW.x * MFWD + leftW.x * MSIDE, lz = pz + fwdW.z * MFWD + leftW.z * MSIDE, ly = py + MH;
-    if (placeSideMirror(mirrorLeftEl, lx, ly, lz)) {
-      renderMirror(mirrorLeftEl,
-        lx, ly, lz,
-        lx + (-fwdW.x * 10 + leftW.x * 6), py + 0.4, lz + (-fwdW.z * 10 + leftW.z * 6));
-    }
-    // Rechter Außenspiegel (Blick nach hinten-rechts)
-    const rx = px + fwdW.x * MFWD - leftW.x * MSIDE, rz = pz + fwdW.z * MFWD - leftW.z * MSIDE, ry = py + MH;
-    if (placeSideMirror(mirrorRightEl, rx, ry, rz)) {
-      renderMirror(mirrorRightEl,
-        rx, ry, rz,
-        rx + (-fwdW.x * 10 - leftW.x * 6), py + 0.4, rz + (-fwdW.z * 10 - leftW.z * 6));
-    }
   }
 });
-
-// Verankert einen Seitenspiegel-Rahmen an einer Weltposition: projiziert den Punkt auf den
-// Bildschirm und positioniert das DOM-Element dort. Liegt der Punkt hinter der Kamera oder
-// außerhalb des Bildes → Rahmen ausblenden (Rückgabe false → nicht rendern).
-function placeSideMirror(el, wx, wy, wz) {
-  if (!el) return false;
-  el.style.display = 'block';               // erst einblenden, dann Größe messen
-  const w = el.offsetWidth, h = el.offsetHeight;
-  _mView.set(wx, wy, wz).applyMatrix4(camera.matrixWorldInverse);
-  if (_mView.z > -0.3) { el.style.display = 'none'; return false; } // hinter/neben der Kamera
-  _mWorld.set(wx, wy, wz).project(camera);
-  const vw = window.innerWidth, vh = window.innerHeight;
-  const sx = (_mWorld.x * 0.5 + 0.5) * vw, sy = (1 - (_mWorld.y * 0.5 + 0.5)) * vh;
-  if (sx < -w || sx > vw + w || sy < -h || sy > vh + h) { el.style.display = 'none'; return false; }
-  el.style.left = (sx - w / 2) + 'px';
-  el.style.top = (sy - h / 2) + 'px';
-  el.style.right = 'auto';
-  return true;
-}
 
 // Rendert die Szene aus Sicht eines Spiegels exakt in den sichtbaren Rahmen (DOM-Element).
 function renderMirror(el, camX, camY, camZ, lookX, lookY, lookZ) {
