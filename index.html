@@ -100,20 +100,20 @@
     #race-skip-btn:hover { background: rgba(50,50,60,0.9); border-color: #fff; }
 
     /* Startaufstellung (Grid-Lineup) vor dem Start */
-    #grid-screen {
+    #grid-screen, #result-screen {
       position: absolute; inset: 0; z-index: 64; display: none;
       flex-direction: column; align-items: center; justify-content: center;
       background: radial-gradient(ellipse at center, rgba(8,12,22,0.82), rgba(2,4,8,0.94));
       font-family: 'Segoe UI', Arial, sans-serif; color: #fff;
     }
-    #grid-screen.visible { display: flex; }
-    #grid-screen h2 {
+    #grid-screen.visible, #result-screen.visible { display: flex; }
+    #grid-screen h2, #result-screen h2 {
       margin: 0 0 22px; font-size: 30px; font-weight: 800; letter-spacing: 5px;
       text-transform: uppercase;
       background: linear-gradient(115deg, #2aa6e0, #fff 55%, #e2001a);
       -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    #grid-list {
+    #grid-list, #result-list {
       width: min(440px, 86vw);
       max-height: 56vh; overflow-y: auto;
       display: flex; flex-direction: column; gap: 6px;
@@ -138,7 +138,7 @@
       flex: 0 0 auto; font-variant-numeric: tabular-nums;
       color: rgba(255,255,255,0.9); font-weight: 700;
     }
-    #grid-go {
+    #grid-go, #result-close {
       margin-top: 26px; cursor: pointer;
       padding: 16px 46px; font-size: 20px; font-weight: 800; letter-spacing: 3px; color: #fff;
       font-family: 'Segoe UI', Arial, sans-serif;
@@ -146,7 +146,7 @@
       border: none; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
       transition: transform 0.12s, filter 0.12s;
     }
-    #grid-go:hover { transform: scale(1.05); filter: brightness(1.1); }
+    #grid-go:hover, #result-close:hover { transform: scale(1.05); filter: brightness(1.1); }
 
     /* Im Startmodus ist das Menü nur Deko – nicht bedienbar */
     #ui.start-mode { pointer-events: none; }
@@ -551,6 +551,13 @@
     <h2>Startaufstellung</h2>
     <div id="grid-list"></div>
     <button id="grid-go">Los geht's ▸</button>
+  </div>
+
+  <!-- Ergebnis nach dem Rennen: Platzierung + Rundenzeiten -->
+  <div id="result-screen">
+    <h2>Ergebnis</h2>
+    <div id="result-list"></div>
+    <button id="result-close">Weiter ▸</button>
   </div>
   <div id="credit">
     Modell: „BMW M4 Competition M Package" von SRT Performance ·

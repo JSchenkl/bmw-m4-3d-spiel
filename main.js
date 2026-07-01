@@ -1802,7 +1802,7 @@ function updateTimeAttack(dt) {
   // maxProgress-Guard verhindert Fehl-Überfahrten durch Springen des Fortschritts an der Linie.
   if (hadProgress && prev > total * 0.7 && progress < total * 0.3 && ghost.maxProgress > total * 0.5) {
     if (ghost.timing) {
-      // Abgeschlossene gemessene Runde
+      // Abgeschlossene gemessene Runde (Training/Quali-Zeit + Ghost-Aufzeichnung)
       ghost.lastLap = ghost.lapElapsed;
       const prevBest = ghost.bestLap;
       const improved = ghost.lapElapsed < ghost.bestLap;
@@ -1818,7 +1818,7 @@ function updateTimeAttack(dt) {
       if (!raceMode && improved && isFinite(prevBest)) {
         const delta = (prevBest - ghost.lapElapsed).toFixed(2).replace('.', ',');
         showRaceMsg(`Bestzeit ${fmtTime(ghost.lapElapsed)} — ${delta} s schneller`, '#69f0ae');
-      } else {
+      } else if (!raceMode || race.phase !== 'go') {
         showRaceMsg(`Runde: ${fmtTime(ghost.lapElapsed)}`, '#69f0ae');
       }
       // Rennmodus: erste gültige Runde ist die Quali-Zeit → „Rennen starten" anbieten
@@ -1827,14 +1827,9 @@ function updateTimeAttack(dt) {
         race.phase = 'qualiDone';
         setRaceStartVisible(true);
         setRaceInfo(`Quali: ${fmtTime(race.qualiTime)} — bereit? „Rennen starten" drücken`);
-      } else if (raceMode && race.phase === 'go') {
-        // Rundenzählung: 1. Überfahrt = Startlinie (Runde 1), danach je Runde +1
-        race.crossings++;
-        if (race.crossings > RACE_LAPS) finishRace();        // 5 Runden absolviert
-        else setRaceInfo(`Runde ${race.crossings}/${RACE_LAPS}`);
       }
-    } else {
-      // Erste Linienüberfahrt: Aus-Runde beendet, ab jetzt wird die Zeit gemessen
+    } else if (!(raceMode && race.phase === 'go')) {
+      // Erste Linienüberfahrt (außerhalb des laufenden Rennens): ab jetzt wird die Zeit gemessen
       showRaceMsg('Zeitmessung gestartet!', '#69f0ae');
     }
     ghost.timing = true;
@@ -1842,6 +1837,19 @@ function updateTimeAttack(dt) {
     ghost.recording = [];
     ghost.cursor = 0;
     ghost.maxProgress = 0;
+
+    // Rennrunden zählen – unabhängig von den Track-Limits (Abkürzen/Gras macht die
+    // gefahrene Rundenzeit zwar ungültig fürs Ghost-Car, der Rundenzähler läuft aber weiter).
+    if (raceMode && race.phase === 'go') {
+      if (race.crossings >= 1) {                 // eine echte Runde abgeschlossen (nicht die Startlinie)
+        race.lapTimes.push(race.lapClock);
+        showRaceMsg(`Runde ${race.crossings}: ${fmtTime(race.lapClock)}`, '#69f0ae');
+      }
+      race.lapClock = 0;
+      race.crossings++;                          // 1. Überfahrt = Startlinie (Runde 1), danach je Runde +1
+      if (race.crossings > RACE_LAPS) finishRace();
+      else setRaceInfo(`Runde ${race.crossings}/${RACE_LAPS}`);
+    }
   }
   ghost.prevProgress = progress;
   ghost.hasProgress = true;
@@ -2206,6 +2214,8 @@ const race = {
   penalty: 0,       // verbleibende Strafzeit (Sek), >0 = noch abzusitzen
   skipped: false,   // Quali übersprungen → Start ganz hinten
   crossings: 0,     // Start/Ziel-Überfahrten des Spielers (1. = Startlinie, dann je Runde +1)
+  lapClock: 0,      // Zeit der laufenden Rennrunde (läuft unabhängig von den Track-Limits)
+  lapTimes: [],     // Zeit je abgeschlossener Rennrunde (für die Ergebnisliste)
 };
 const lightsEl = document.getElementById('start-lights');
 const raceStartBtn = document.getElementById('race-start-btn');
@@ -2251,8 +2261,27 @@ function finishRace() {
   const pos = ahead + 1;
   race.phase = 'finished';
   setRaceInfo(`🏁 Rennen beendet — Platz ${pos} von ${BOT_COUNT + 1}`);
-  showRaceMsg(`🏁 Platz ${pos}/${BOT_COUNT + 1}`, '#69f0ae');
+  showResultScreen(pos);
 }
+
+// Ergebnis-Rangliste: Platzierung + Zeit jeder gefahrenen Runde (schnellste hervorgehoben)
+const resultScreenEl = document.getElementById('result-screen');
+const resultListEl = document.getElementById('result-list');
+function showResultScreen(pos) {
+  const laps = race.lapTimes;
+  const best = laps.length ? Math.min(...laps) : Infinity;
+  const totalTime = laps.reduce((a, b) => a + b, 0);
+  let rows = `<div class="grid-row me"><span class="pos">🏁</span><span class="nm">Platz ${pos} von ${BOT_COUNT + 1}</span><span class="tm"></span></div>`;
+  rows += laps.map((t, i) =>
+    `<div class="grid-row${t === best ? ' me' : ''}"><span class="pos">R${i + 1}</span><span class="nm">Runde ${i + 1}${t === best ? ' ⚡' : ''}</span><span class="tm">${fmtTime(t)}</span></div>`
+  ).join('');
+  if (laps.length) rows += `<div class="grid-row"><span class="pos">Σ</span><span class="nm">Gesamt</span><span class="tm">${fmtTime(totalTime)}</span></div>`;
+  resultListEl.innerHTML = rows;
+  resultScreenEl.classList.add('visible');
+}
+document.getElementById('result-close').addEventListener('click', () => {
+  resultScreenEl.classList.remove('visible');
+});
 function renderLights(n) {
   const els = lightsEl.children;
   for (let i = 0; i < els.length; i++) els[i].classList.toggle('on', i < n);
@@ -2262,6 +2291,8 @@ function renderLights(n) {
 function startRaceQuali() {
   race.phase = 'quali';
   race.qualiTime = null;
+  race.crossings = 0; race.lapClock = 0; race.lapTimes = [];
+  if (resultScreenEl) resultScreenEl.classList.remove('visible');
   race.skipped = false;
   race.jumpStart = false;
   race.penalty = 0;
@@ -2279,6 +2310,10 @@ function raceReset() {
   race.skipped = false;
   race.jumpStart = false;
   race.penalty = 0;
+  race.crossings = 0;
+  race.lapClock = 0;
+  race.lapTimes = [];
+  if (resultScreenEl) resultScreenEl.classList.remove('visible');
   setRaceStartVisible(false);
   setRaceSkipVisible(false);
   lightsEl.classList.remove('visible');
@@ -2322,6 +2357,7 @@ function setupGrid() {
 
   if (!bots.length) createBots();
   race.crossings = 0;        // Rundenzähler des Spielers zurücksetzen
+  race.lapClock = 0; race.lapTimes = []; // Rundenzeiten fürs Ergebnis zurücksetzen
   const total = centerline.total;
   entries.forEach((e, i) => {
     const arc = ((gridArc(i) % total) + total) % total;
@@ -2399,6 +2435,7 @@ function updateRace(dt) {
       showRaceMsg('LOS!', '#69f0ae');
     }
   } else if (race.phase === 'go') {
+    race.lapClock += dt; // Zeit der laufenden Rennrunde
     if (race.penalty > 0) {
       if (inPitZone() && Math.abs(speed) < 2) race.penalty = Math.max(0, race.penalty - dt);
     } else if (race.jumpStart) {
