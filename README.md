@@ -33,6 +33,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
 - Scheinwerfer & Rücklichter mit Lichtkegeln
 - Tag-/Nachtmodus
+- **Wetterauswahl** (Sonnenschein / Regen) nach der Modus-Wahl: Regen bedeutet 30 % weniger Grip, ausgeprägtere Wegrutsch-/Dreh-Dynamik, aufgewirbelte Gischt hinter dem Auto sowie Regentropfen und automatische Scheibenwischer auf der Cockpit-Scheibe
 - Motorgeräusch (synthetisierter Reihensechszylinder)
 - Cockpit-Kamera mit Umsehen per Maus
 - Automatik- und Schaltgetriebe (6 Gänge)
