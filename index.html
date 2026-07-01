@@ -383,20 +383,20 @@
       pointer-events: none;
     }
 
-    /* Seitenspiegel – oben bei den Instrumenten (links/rechts neben dem Rückspiegel),
-       in der typischen Außenspiegel-Form (außen abgerundet) */
+    /* Seitenspiegel – per JS an die Außenspiegel-Position des 3D-Modells geheftet
+       (bleiben beim Umsehen an ihrer Weltposition). Typische Außenspiegel-Form (außen abgerundet). */
     .side-mirror {
-      position: fixed; top: 84px;
-      width: min(210px, 17vw); aspect-ratio: 16 / 9;
+      position: fixed;
+      width: min(170px, 14vw); aspect-ratio: 16 / 9;
       z-index: 30; display: none;
       border: 2px solid rgba(255,255,255,0.5);
       box-shadow: 0 4px 16px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(0,0,0,0.6);
       pointer-events: none;
     }
     /* linker Spiegel: außen (links) stärker gerundet */
-    #mirror-left  { left: 3%;  border-radius: 34px 12px 12px 20px; }
+    #mirror-left  { border-radius: 34px 12px 12px 20px; }
     /* rechter Spiegel: außen (rechts) stärker gerundet */
-    #mirror-right { right: 3%; border-radius: 12px 34px 20px 12px; }
+    #mirror-right { border-radius: 12px 34px 20px 12px; }
 
     /* Controller-Auswahl im Startmenü (Kreuztasten wechseln, A bestätigt) */
     .cnav-selected {
