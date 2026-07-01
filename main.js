@@ -131,10 +131,12 @@ let pitDirection = null;     // Fahrtrichtung in der Boxengasse (für die Auto-A
 let trackColliders = [];     // Kollisionsboxen der Mauern und Banden
 let curbData = null;         // Mittellinie + Breiten für die Curb-Neigung
 let garageBays = [];         // gefüllte Garagen-Stellplätze (dort wird ein M4 geparkt)
+let tireWall = null;         // Reifen-Bande (InstancedMesh + Grundpositionen) fürs Schadensmodell
+let tireDmg = null;          // kumulierter Versatz je Reifen (dx,dy,dz) durch Einschläge
 
 function loadTrack(file) {
   return createTrack(file)
-    .then(({ group, pitDirection: dir, colliders, curbData: cd, garageBays: bays }) => {
+    .then(({ group, pitDirection: dir, colliders, curbData: cd, garageBays: bays, tireWall: tw }) => {
       if (trackGroup) scene.remove(trackGroup);
       trackGroup = group;
       scene.add(group);
@@ -142,6 +144,8 @@ function loadTrack(file) {
       trackColliders = colliders;
       curbData = cd;
       garageBays = bays || [];
+      tireWall = tw || null;
+      tireDmg = tireWall ? new Float32Array(tireWall.base.length * 3) : null; // Schäden bei Streckenwechsel zurücksetzen
       buildCenterline(cd);
       // Boxengassen-Szene gehört zur Strecke → beim Wechsel neu aufbauen
       if (pitScene) { scene.remove(pitScene); pitScene = null; pitCrew.length = 0; }
@@ -1310,8 +1314,39 @@ function resolveCollisions() {
       speed *= slide * 0.9;
       // Crash mit einem Auto (Bot): nicht auf 0, sondern auf das Tempo des anderen abbremsen
       if (w.v !== undefined && before > 0) speed = Math.max(speed, Math.min(before, w.v));
+      // Schadensmodell der Reifen-Bande: Aufprall drückt die getroffenen Reifen weg
+      else if (w.tireFrom !== undefined) damageTireWall(w, before, push);
     }
   }
+}
+
+// Reifen-Bande verformen: die Reifen des getroffenen Segments werden nach außen
+// (von der Strecke weg) gedrückt und leicht verstreut – bleibender Schaden bis Streckenwechsel.
+const _dmgMat = new THREE.Matrix4();
+function damageTireWall(w, impactSpeed, push) {
+  if (!tireWall || !tireDmg) return;
+  const sev = Math.min(1.3, Math.abs(impactSpeed) / 22); // 0…1,3 je nach Aufprallhärte
+  if (sev < 0.28) return;                                // sanftes Touchieren beschädigt nichts
+  const ox = -push.nx, oz = -push.nz;                    // nach außen (von der Strecke weg)
+  const tx = -oz, tz = ox;                               // tangential entlang der Bande
+  for (let i = w.tireFrom; i < w.tireTo; i++) {
+    const s = sev * (0.6 + Math.random() * 0.8);
+    const lat = (Math.random() - 0.5);
+    const dx = ox * s * 1.1 + tx * lat * 0.5;
+    const dz = oz * s * 1.1 + tz * lat * 0.5;
+    const dy = -s * 0.22 - Math.random() * 0.1;          // Reifen kippen/sacken ab
+    const b = i * 3;
+    tireDmg[b]     = THREE.MathUtils.clamp(tireDmg[b] + dx, -2.5, 2.5);
+    tireDmg[b + 1] = THREE.MathUtils.clamp(tireDmg[b + 1] + dy, -0.55, 0.2);
+    tireDmg[b + 2] = THREE.MathUtils.clamp(tireDmg[b + 2] + dz, -2.5, 2.5);
+    const base = tireWall.base[i];
+    tireWall.mesh.getMatrixAt(i, _dmgMat);
+    _dmgMat.elements[12] = base.x + tireDmg[b];
+    _dmgMat.elements[13] = base.y + tireDmg[b + 1];
+    _dmgMat.elements[14] = base.z + tireDmg[b + 2];
+    tireWall.mesh.setMatrixAt(i, _dmgMat);
+  }
+  tireWall.mesh.instanceMatrix.needsUpdate = true;
 }
 
 function updateCar(dt) {
@@ -1404,7 +1439,7 @@ function updateCar(dt) {
   // overMul steuert, wie leicht das Heck ausbricht (→ Drehen um die eigene Achse).
   const onGrass = carOnGrass();
   const onGravelSurf = !onGrass && carOnGravel();
-  const surfaceGrip = onGrass ? 0.3 : (onGravelSurf ? 0.55 : 1.0);
+  const surfaceGrip = onGrass ? 0.315 : (onGravelSurf ? 0.55 : 1.0); // Gras bremst ~5 % weniger (0,30 → 0,315)
   // Automatisches Ausbrechen nur auf Gras/Kies – auf der Strecke greift es normal (kein Übersteuer-Zusatz).
   // Auf Gras bewusst dezent, damit es einen nicht zu stark herumdreht.
   const overMul = onGrass ? 0.4 : (onGravelSurf ? 0.3 : 0);
