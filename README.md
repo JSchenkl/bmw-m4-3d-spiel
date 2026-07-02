@@ -27,7 +27,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 
 ## Features
 
-- **BMW M4 GT3 EVO** (Fahrdynamik, Sound & Auspuffflammen des GT3-Rennwagens; 3D-Modell derzeit noch der M4 Competition) und **Mercedes 300SL Gullwing** als 3D-Modelle (GLB)
+- **BMW M4 GT3 EVO** als 3D-Modell (GLB) mit GT3-Fahrdynamik, Rennsound und Auspuffflammen
 - **6 Strecken** aus echten Vermessungsdaten (TUM racetrack-database): **Spa-Francorchamps**, **Hockenheimring**, **Silverstone**, **Monza**, **Circuit Gilles-Villeneuve**, **Interlagos (São Paulo)** – inkl. Gras, Kiesbett und Reifen-Bande
 - **Streckenauswahl** vor der Modus-Wahl (Kreuztasten wechseln die Strecke, mit Streckenkarte von oben, Name, Länge und Land)
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
@@ -49,6 +49,6 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 
 ## Credits
 
-- Modell **BMW M4 Competition M Package** – SRT Performance · [Sketchfab](https://sketchfab.com/3d-models/bmw-m4-competition-m-package-5c0a2dafb1ad408d9fc9eeef9aee531b) · CC-BY 4.0
+- Modell **2022 BMW M4 GT3** – Ddiaz Design · [Sketchfab](https://sketchfab.com/3d-models/2022-bmw-m4-gt3-61695f14da8d4821beda6f0e376c2f73) · CC-BY-NC-SA 4.0
 - Modell **Mercedes-Benz 300SL Gullwing** – vecarz.com
 - Streckendaten Spa-Francorchamps – [TUM racetrack-database](https://github.com/TUMFTM/racetrack-database)
