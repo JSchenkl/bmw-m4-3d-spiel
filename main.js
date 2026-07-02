@@ -235,9 +235,12 @@ const loaderEl = document.getElementById('loader');
 const CARS = [
   {
     id: 'm4',
-    name: 'BMW M4 COMPETITION',
-    short: 'BMW M4',
-    subtitle: 'M Package · 3D Viewer',
+    name: 'BMW M4 GT3 EVO',
+    short: 'BMW M4 GT3',
+    subtitle: 'GT3-Rennwagen · 3D Viewer',
+    // Hinweis: bis ein M4-GT3-EVO-GLB (Werkslackierung 2025) im Repo liegt, wird das
+    // vorhandene M4-Modell angezeigt – Fahrdynamik, Sound und Flammen sind bereits GT3.
+    // Sobald models/bmw_m4_gt3.glb existiert, hier nur den Dateinamen tauschen.
     file: 'models/bmw_m4.glb',
     length: 4.8,            // reale Fahrzeuglänge in Metern
     lightRe: /headlight|redlight|tail|led|light/,
@@ -350,6 +353,71 @@ const taillightMats = [];
 const headlightSpots = new THREE.Group();
 const taillightGlows = new THREE.Group();
 carGroup.add(headlightSpots, taillightGlows);
+
+// ---------- Auspuffflammen (GT3): Feuerstöße aus den Endrohren ----------
+// Beim Hochschalten und bei den Auspuff-Crackles (Gaswegnehmen) schlagen kurze
+// Flammen aus den Endrohren. Sprites mit additivem Feuer-Verlauf, an der carGroup.
+const flameGroup = new THREE.Group();
+carGroup.add(flameGroup);
+const flames = [];        // { sprite, t } – t = Restlebensdauer
+let crackleBurst = 0;     // Restdauer der Crackle-Phase (zufällige Flammen/Pops)
+function makeFlameTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(255,255,235,1)');    // weißglühender Kern
+  grad.addColorStop(0.3, 'rgba(255,190,60,0.95)'); // gelb-orange
+  grad.addColorStop(0.65, 'rgba(255,90,20,0.6)');  // orange-rot
+  grad.addColorStop(1, 'rgba(120,20,5,0)');        // außen transparent
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+let flameTex = null;
+function setupFlames(carCenter, halfLen) {
+  flameGroup.clear(); flames.length = 0;
+  if (!flameTex) flameTex = makeFlameTexture();
+  const side = new THREE.Vector3().crossVectors(UP, carForward).normalize();
+  for (const s of [-0.3, 0.3]) { // zwei Endrohre am Heck
+    const mat = new THREE.SpriteMaterial({
+      map: flameTex, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(carCenter)
+      .addScaledVector(carForward, -(halfLen + 0.12))
+      .addScaledVector(side, s)
+      .setY(0.34);
+    sprite.scale.set(0.01, 0.01, 1);
+    flameGroup.add(sprite);
+    flames.push({ sprite, t: 0 });
+  }
+}
+// Flammenstoß auslösen (strength ≈ 0,5 leichtes Knistern … 1 voller Schaltknall)
+function triggerFlames(strength = 1) {
+  for (const f of flames) {
+    if (Math.random() > 0.85 && strength < 0.9) continue; // Crackles nicht immer aus beiden Rohren
+    f.t = 0.1 + Math.random() * 0.08;
+    f.max = f.t;
+    f.size = (0.3 + Math.random() * 0.35) * strength;
+  }
+}
+function updateFlames(dt) {
+  // Crackle-Phase: während der Restdauer zufällig kleine Flammen nachschieben
+  if (crackleBurst > 0) {
+    crackleBurst -= dt;
+    if (Math.random() < dt * 14) triggerFlames(0.45 + Math.random() * 0.3);
+  }
+  for (const f of flames) {
+    if (f.t <= 0) { f.sprite.material.opacity = 0; continue; }
+    f.t -= dt;
+    const k = Math.max(0, f.t / (f.max || 0.15));         // 1 → 0
+    f.sprite.material.opacity = Math.min(1, k * 1.6);
+    const sc = f.size * (0.7 + 0.6 * (1 - k));            // Flamme wächst kurz auf und verlischt
+    f.sprite.scale.set(sc, sc * (0.8 + Math.random() * 0.3), 1);
+  }
+}
 
 // Mittlere Position aller Dreiecke eines Meshes entlang einer Achse (Weltkoordinaten)
 function meanTriangleCoord(meshes, axis) {
@@ -733,6 +801,8 @@ function loadCar(index) {
         taillightGlows.add(glow);
       }
     }
+
+    setupFlames(carCenter, carHalf.len); // Auspuffflammen an den Endrohren platzieren
 
     carGroup.add(car);
     currentCar = car;
@@ -1128,35 +1198,33 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 // ---------- Fahrsteuerung ----------
 // W = Gas, A/D = Lenken, Leertaste = Bremse, S = Rückwärts
 //
-// Längsdynamik nach echten Daten des BMW M4 Competition xDrive (G82),
-// Quelle: auto-data.net / BMW-Datenblatt:
-//   510 PS (375 kW), 650 Nm, 1775 kg, 0–100 km/h in 3,5 s,
-//   cw = 0,34, Vmax 250 km/h (mit M Driver's Package 290 km/h)
-const MASS = 1775;                 // kg Leergewicht
-const POWER_WHEEL = 375000 * 0.85 * 1.05 * 1.1; // W an den Rädern (~15 % Verlust, +5 % Tuning, +10 % Durchzug)
-const F_TRACTION = 17800 * 1.05;          // N Traktionsgrenze beim Start (+5 % Tuning)
-const ACCEL_BOOST = 1.45;                  // +45 % Beschleunigung – damit der Spieler mit den KIs mithält
-// Power-Oversteer (xDrive AWD, 10 % vorne / 90 % hinten, 650 Nm @ 2750 min⁻¹):
-// Übersteigt der Heck-Anteil (90 %) die Längs-Haftung am Heck, drehen die
-// Hinterräder durch und das Heck bricht aus. Eckdaten: automobile-catalog / auto-data.net
-// (BMW M4 Competition, 3,0-l-R6, 650 Nm, ~1775 kg).
-const DRIVE_REAR = 0.90;                     // 90 % Antrieb hinten, 10 % vorne
-const REAR_GRIP = 0.5 * MASS * 9.81 * 1.05; // max. Längskraft am Heck (~50 % Achslast, μ≈1.05)
+// Längsdynamik nach Eckdaten des BMW M4 GT3 EVO (Rennwagen, P58-Motor):
+//   3,0-l-R6-Biturbo, ~590 PS (BoP), ~1300 kg, sequenzielles 6-Gang-Getriebe (Xtrac),
+//   Rennslicks, große Aero (Schwanenhals-Heckflügel) → Abtrieb wächst mit dem Tempo
+const MASS = 1300;                 // kg (BoP-Mindestgewicht GT3)
+const POWER_WHEEL = 440000 * 0.9;  // W an den Rädern (~590 PS, sequenzielles Getriebe = wenig Verlust)
+const F_TRACTION = 16500;          // N Traktionsgrenze beim Start (Slicks)
+const ACCEL_BOOST = 1.15;          // leichter Boost (ergibt 0–100 ≈ 2,8 s, 0–200 ≈ 9,4 s – wie der echte GT3)
+// Power-Oversteer: Heckantrieb – übersteigt die Antriebskraft die Heck-Haftung,
+// drehen die Hinterräder durch und das Heck bricht aus.
+const DRIVE_REAR = 1.0;                      // GT3 = reiner Hinterradantrieb
+const REAR_GRIP = 0.52 * MASS * 9.81 * 1.30; // max. Längskraft am Heck (Slicks, μ≈1,3)
 const OVERSTEER_GAIN = 0.8;                  // wie stark das Heck bei Schlupf eindreht
-const BRAKE_DECEL = 13.5;          // m/s² (M-Sportbremse +15 %, 100–0 in ~29 m)
+const BRAKE_DECEL = 17.5;          // m/s² Rennbremse + Aero (~1,8 g)
 const RHO_AIR = 1.225;             // kg/m³ Luftdichte
-const CD_AREA = 0.34 * 2.25;       // cw · Stirnfläche (m²)
-const ROLL_RES = 0.012;            // Rollwiderstandsbeiwert
-const VMAX = 290 / 3.6;            // m/s, elektronische Abregelung (M Driver's Package)
+const CD_AREA = 0.47 * 2.2;        // cw · Stirnfläche (m²) – mehr Widerstand durch den großen Flügel
+const ROLL_RES = 0.013;            // Rollwiderstandsbeiwert (Slicks)
+const VMAX = 280 / 3.6;            // m/s Topspeed (BoP-/Getriebe-limitiert)
 const MAX_REVERSE = -20 / 3.6;     // m/s rückwärts
 
-// Querdynamik (Einspurmodell), ebenfalls nach echten Daten:
-//   Radstand 2857 mm (BMW-Datenblatt), max. Querbeschleunigung
-//   1,07 g im Edmunds-Skidpad-Test des M4 Competition
-const WHEELBASE   = 2.857;             // m
-const MAX_LAT_ACC = 1.07 * 9.81;       // m/s² Haftgrenze der Reifen
-const MAX_STEER   = 27.2 * Math.PI / 180; // max. Radeinschlag (rad, 15 % weniger direkt)
-const STEER_RATE  = 2.5;               // Lenkgeschwindigkeit (Volleinschläge pro Sekunde)
+// Querdynamik (Einspurmodell): GT3-Slicks mit ~1,25 g mechanischem Grip;
+// dazu kommt der Aero-Abtrieb, der die Kurvenhaftung mit dem Tempo erhöht (bis >2 g).
+const WHEELBASE   = 2.85;              // m
+const MAX_LAT_ACC = 1.25 * 9.81;       // m/s² mechanische Haftgrenze (Slicks)
+// Abtriebs-Zuschlag aufs Grip-Budget: wächst quadratisch mit dem Tempo (max. +75 %)
+const aeroGrip = (v) => 1 + Math.min(0.75, v * v * 0.00011);
+const MAX_STEER   = 27.2 * Math.PI / 180; // max. Radeinschlag (rad)
+const STEER_RATE  = 3.0;               // Lenkgeschwindigkeit (Rennlenkung, direkter)
 let steerAngle = 0;                    // aktueller Radeinschlag
 
 let speed = 0;
@@ -1167,8 +1235,8 @@ const gearEl = document.getElementById('gear');
 // Manuelles 6-Gang-Getriebe: je Gang ein Drehzahllimit (Gang-Höchsttempo) und ein
 // Zugkraft-Faktor. Niedriger Gang = viel Zugkraft, wenig Topspeed; hoher Gang
 // umgekehrt. Man muss mit RB/E hochschalten, um schneller als das Gang-Limit zu fahren.
-const GEAR_MAX_SPEED = [0, 55, 95, 140, 190, 240, 290].map((v) => v / 3.6); // km/h → m/s
-const GEAR_PULL = [0, 1.0, 0.74, 0.56, 0.46, 0.38, 0.32]; // Zugkraft-Faktor je Gang (höhere Gänge kräftiger → mehr Topspeed-Durchzug)
+const GEAR_MAX_SPEED = [0, 60, 100, 140, 180, 225, 300].map((v) => v / 3.6); // km/h → m/s (GT3-Rennabstufung; 6. Gang lang, Vmax regelt ab)
+const GEAR_PULL = [0, 1.0, 0.76, 0.58, 0.48, 0.40, 0.34]; // Zugkraft-Faktor je Gang (höhere Gänge kräftiger → mehr Topspeed-Durchzug)
 let gear = 1; // 0 = Rückwärtsgang (R), 1…6 = Vorwärtsgänge
 let prevGearSound = 1; // letzter Gang – für den Schaltsound (Hoch-/Runterschalten)
 let autoGearbox = false; // false = Handschaltung, true = Automatikgetriebe
@@ -1489,7 +1557,7 @@ function updateCar(dt) {
     const vmaxGear = GEAR_MAX_SPEED[gear];
     if (v < vmaxGear) {
       const pull = F_TRACTION * GEAR_PULL[gear];
-      const fade = Math.max(0, 1 - Math.pow(v / vmaxGear, 2.2)); // am Limit kein Vortrieb mehr
+      const fade = Math.max(0, 1 - Math.pow(v / vmaxGear, 9)); // Renn-Drehband: Zugkraft bleibt bis kurz vor den Begrenzer voll da
       // weiterhin leistungsbegrenzt (P = F·v), beim Anfahren traktionsbegrenzt
       const fDrive = Math.min(pull, POWER_WHEEL / Math.max(v, 3)) * throttle * fade * ACCEL_BOOST;
       // Überschreitet der Heck-Anteil (90 %) die Heck-Haftung, drehen die Räder durch
@@ -1525,10 +1593,10 @@ function updateCar(dt) {
     let omega = (speed / WHEELBASE) * Math.tan(steerAngle);
 
     // Reibkreis (Kammscher Kreis): das Reifen-Grip-Budget teilt sich auf Längs-
-    // (Gas/Bremse) und Querkräfte auf. Wer in der Kurve Gas gibt oder bremst, hat
-    // weniger Seitenhaftung – je mehr Gas, desto weniger Grip. Zusätzlich sinkt das
-    // Budget mit der Geschwindigkeit (schnelle Kurven = weniger Grip).
-    const speedGrip = THREE.MathUtils.clamp(1 - Math.max(0, v - 12) * 0.013, 0.4, 1);
+    // (Gas/Bremse) und Querkräfte auf. GT3: der mechanische Grip fällt mit dem Tempo
+    // nur leicht ab, der Aero-Abtrieb ERHÖHT die Kurvenhaftung dafür deutlich –
+    // schnelle Kurven haben mehr Grip als langsame (typisches Rennwagen-Verhalten).
+    const speedGrip = THREE.MathUtils.clamp(1 - Math.max(0, v - 15) * 0.005, 0.72, 1) * aeroGrip(v);
     // Beim Gasgeben in der Kurve etwas mehr Grip (+10 % bei Vollgas) – stabilerer Kurvenausgang
     const throttleGrip = 1 + 0.1 * Math.min(1, throttle);
     const aMax = MAX_LAT_ACC * surfaceGrip * speedGrip * throttleGrip; // gesamtes Grip-Budget
@@ -1581,8 +1649,13 @@ function updateCar(dt) {
   // Schaltsound bei Gangwechsel (gilt für Hand- wie Automatikgetriebe; R bleibt stumm)
   if (gear !== prevGearSound) {
     if (gear >= 1 && prevGearSound >= 1) {
-      if (gear > prevGearSound) engineAudio.upshift();
-      else engineAudio.downshift();
+      if (gear > prevGearSound) {
+        engineAudio.upshift();
+        triggerFlames(1);            // Schaltknall → Flammen aus den Endrohren
+      } else {
+        engineAudio.downshift();
+        triggerFlames(0.6);          // Zwischengas → kleinerer Feuerstoß
+      }
     }
     prevGearSound = gear;
   }
@@ -1590,8 +1663,17 @@ function updateCar(dt) {
   // Motorsound: Drehzahl aus dem Tempo im aktuellen Gang ableiten
   const gearForRev = gear >= 1 ? gear : 1;
   const rev = Math.min(1, Math.abs(speed) / GEAR_MAX_SPEED[gearForRev]);
+
+  // Auspuff-Crackles: Gas bei hoher Drehzahl schlagartig wegnehmen → Knistern + Flammen
+  if (prevThrottleIn > 0.55 && throttle < 0.1 && rev > 0.45 && crackleBurst <= 0) {
+    engineAudio.crackle();
+    crackleBurst = 0.45 + Math.random() * 0.3;
+  }
+  prevThrottleIn = throttle;
+
   engineAudio.update(rev, throttle, dt);
 }
+let prevThrottleIn = 0; // Gaspedal des Vorframes (für die Crackle-Erkennung)
 
 // Sonne/Mond samt Schattenbereich folgen dem Auto
 scene.add(sun.target, moon.target);
@@ -1969,7 +2051,7 @@ btnHome.addEventListener('click', () => {
 // Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
 const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
-const BOT_MAX_SPEED = 80.5;     // m/s (~290 km/h) – wie der Spieler-Topspeed
+const BOT_MAX_SPEED = 280 / 3.6; // m/s (~280 km/h) – wie der Spieler-Topspeed (GT3)
 const BOT_MIN_SPEED = 16;       // m/s Mindesttempo in engen Kurven (wie der Spieler dort)
 // (Kurven-Grip der Bots = Spieler-Querhaftung MAX_LAT_ACC, siehe botTargetSpeed)
 const BOT_ACCEL = 8;            // m/s² Längsbeschleunigung am Start
@@ -2005,11 +2087,11 @@ function botTargetSpeed(s) {
   let cosA = d1x * d2x + d1z * d2z; cosA = Math.max(-1, Math.min(1, cosA));
   const kappa = Math.acos(cosA) / L; // Krümmung (Richtungsänderung pro Meter)
   if (kappa < 1e-4) return BOT_MAX_SPEED;
-  // Gleiche Querhaftung wie der Spieler: 1,07 g, inkl. geschwindigkeitsabhängigem
-  // Grip-Abfall (schnelle Kurven = weniger Grip). v² = aLat(v)·Radius, iterativ gelöst.
+  // Gleiche Querhaftung wie der Spieler: 1,25 g mechanisch + Aero-Abtrieb
+  // (schnelle Kurven = MEHR Grip). v² = aLat(v)·Radius, iterativ gelöst.
   let v = 45;
   for (let it = 0; it < 6; it++) {
-    const sg = Math.max(0.4, Math.min(1, 1 - Math.max(0, v - 12) * 0.013)); // wie speedGrip beim Spieler
+    const sg = Math.max(0.72, Math.min(1, 1 - Math.max(0, v - 15) * 0.005)) * aeroGrip(v); // wie speedGrip beim Spieler (inkl. Aero)
     v = 0.5 * v + 0.5 * Math.sqrt((MAX_LAT_ACC * sg * BOT_GRIP) / kappa);
   }
   return Math.max(BOT_MIN_SPEED, Math.min(BOT_MAX_SPEED, v));
@@ -2025,7 +2107,7 @@ function engineAccel(v) {
   const fRoll = v > 0.1 ? MASS * 9.81 * ROLL_RES : 0;
   if (v >= vmax) return -(fDrag + fRoll) / MASS; // im Gang abgeregelt
   const pull = F_TRACTION * GEAR_PULL[g];
-  const fade = Math.max(0, 1 - Math.pow(v / vmax, 2.2));
+  const fade = Math.max(0, 1 - Math.pow(v / vmax, 9)); // wie beim Spieler (Renn-Drehband)
   const fDrive = Math.min(pull, POWER_WHEEL / Math.max(v, 3)) * fade * ACCEL_BOOST;
   const slip = Math.max(0, (fDrive * DRIVE_REAR - REAR_GRIP) / REAR_GRIP);
   const grip = 1 - 0.12 * Math.min(1, slip);
@@ -2650,7 +2732,7 @@ renderer.setAnimationLoop(() => {
   if (gameStarted && raceMode && !gamePaused()) { updateRace(dt); updateBots(dt); }
 
   updateCar(dt);
-  if (!gamePaused()) updateDust(dt);
+  if (!gamePaused()) { updateDust(dt); updateFlames(dt); }
   updateLightsFollow();
 
   // Bei offenem Menü pausiert nur die Fahrphysik & die Rundenuhr (das Auto behält sein Tempo).

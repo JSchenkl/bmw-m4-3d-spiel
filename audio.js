@@ -1,11 +1,12 @@
-// Prozeduraler Motorsound (Web Audio API) im Charakter eines sportlichen
-// Reihensechszylinders (BMW M4, S58). Echte, urheberrechtlich geschützte
-// BMW-Aufnahmen können nicht mitgeliefert werden – der Klang wird daher
-// synthetisiert und reagiert live auf Drehzahl, Gas und Gangwechsel:
-//   • Drehzahl  → Tonhöhe & Klangfarbe
+// Prozeduraler Motorsound (Web Audio API) im Charakter des BMW M4 GT3 EVO
+// (P58-Rennmotor, 3,0-l-R6-Biturbo mit Rennauspuff). Echte, urheberrechtlich
+// geschützte BMW-Aufnahmen können nicht mitgeliefert werden – der Klang wird
+// daher synthetisiert und reagiert live auf Drehzahl, Gas und Gangwechsel:
+//   • Drehzahl  → Tonhöhe & Klangfarbe (höheres Drehband, härter/rauer als das Serienauto)
 //   • Gas       → Lautstärke & Härte
-//   • Hochschalten   → kurze Zündunterbrechung + Auspuffknall
+//   • Hochschalten   → harte Zündunterbrechung + lauter Auspuffknall (sequenzielles Getriebe)
 //   • Runterschalten → Zwischengas-Stoß (Drehzahl springt kurz hoch)
+//   • Gaswegnehmen   → Auspuff-Crackles (Knistern/Knallen aus den Endrohren)
 
 let ctx = null;
 let master, filter, engineGain, noiseGain, noiseFilter;
@@ -17,8 +18,8 @@ let curRev = 0; // geglättete Drehzahl 0…1
 let blip = 0;   // Zwischengas-Hüllkurve (Runterschalten)
 let cut = 0;    // Zündunterbrechungs-Hüllkurve (Hochschalten)
 
-const IDLE_HZ = 50;     // Grundfrequenz im Leerlauf
-const REDLINE_HZ = 235; // Grundfrequenz am Begrenzer
+const IDLE_HZ = 58;     // Grundfrequenz im Leerlauf (Rennmotor läuft höher)
+const REDLINE_HZ = 265; // Grundfrequenz am Begrenzer (P58 dreht höher)
 
 export function setEnabled(on) {
   enabled = on;
@@ -50,12 +51,14 @@ function ensure() {
   engineGain.gain.value = 0;
   engineGain.connect(filter);
 
-  // Harmonische: Sägezähne + Quadrat für den kernigen Reihensechser-Ton, Sinus als Sub
+  // Harmonische: GT3-Rennauspuff – weniger Sub-Brummen, dafür deutlich mehr
+  // Obertöne (Sägezahn/Quadrat) für den harten, metallisch-rauen Rennton
   const harmonics = [
-    { mult: 0.5, gain: 0.40, type: 'sine' },     // sattes Brummen (Auspuff)
-    { mult: 1.0, gain: 0.50, type: 'sawtooth' }, // Grundton
-    { mult: 2.0, gain: 0.30, type: 'sawtooth' },
-    { mult: 3.0, gain: 0.20, type: 'square' },   // metallischer Biss
+    { mult: 0.5, gain: 0.28, type: 'sine' },     // etwas Sub (offener Rennauspuff)
+    { mult: 1.0, gain: 0.55, type: 'sawtooth' }, // Grundton, kräftig
+    { mult: 2.0, gain: 0.42, type: 'sawtooth' }, // aggressive 2. Ordnung
+    { mult: 3.0, gain: 0.30, type: 'square' },   // metallischer Biss
+    { mult: 4.5, gain: 0.16, type: 'square' },   // Kreissägen-Schärfe obenraus
   ];
   for (const h of harmonics) {
     const o = ctx.createOscillator();
@@ -99,24 +102,33 @@ export function update(targetRev, throttle, dt) {
   const fund = IDLE_HZ + (REDLINE_HZ - IDLE_HZ) * rev;
   for (const e of oscs) e.o.frequency.setTargetAtTime(fund * e.mult, t, 0.02);
 
-  const load = 0.35 + 0.65 * throttle;
-  const vol = (0.18 + 0.5 * rev) * load * (1 - 0.85 * cut); // Zündunterbrechung senkt Pegel
-  engineGain.gain.setTargetAtTime(vol, t, 0.03);
-  filter.frequency.setTargetAtTime(500 + 4500 * rev, t, 0.03);
-  noiseGain.gain.setTargetAtTime((0.05 + 0.25 * rev) * load * (1 - cut), t, 0.03);
-  noiseFilter.frequency.setTargetAtTime(700 + 2500 * rev, t, 0.05);
+  const load = 0.4 + 0.6 * throttle;
+  const vol = (0.2 + 0.55 * rev) * load * (1 - 0.9 * cut); // Zündunterbrechung senkt Pegel hart
+  engineGain.gain.setTargetAtTime(vol, t, 0.025);
+  filter.frequency.setTargetAtTime(650 + 6200 * rev, t, 0.025); // Rennauspuff: Filter öffnet weiter
+  noiseGain.gain.setTargetAtTime((0.07 + 0.32 * rev) * load * (1 - cut), t, 0.03);
+  noiseFilter.frequency.setTargetAtTime(900 + 3200 * rev, t, 0.05);
 }
 
 export function upshift() {
   if (!enabled || !ctx) return;
-  cut = 1;            // kurze Zündunterbrechung → "Bup"
-  exhaustPop(0.55);   // Auspuffknall
+  cut = 1;            // harte Zündunterbrechung (sequenzielles Getriebe) → "BANG"
+  exhaustPop(0.75);   // lauter Auspuffknall
 }
 
 export function downshift() {
   if (!enabled || !ctx) return;
   blip = 1;           // Zwischengas → Drehzahl springt kurz hoch
-  exhaustPop(0.3);
+  exhaustPop(0.4);
+}
+
+// Auspuff-Crackles beim Gaswegnehmen: mehrere kleine, versetzte Knaller/Knistern
+export function crackle() {
+  if (!enabled || !ctx) return;
+  const n = 2 + Math.floor(Math.random() * 3); // 2…4 Pops
+  for (let i = 0; i < n; i++) {
+    setTimeout(() => { if (enabled && ctx) exhaustPop(0.2 + Math.random() * 0.3); }, i * (60 + Math.random() * 110));
+  }
 }
 
 // Kurzer Auspuffknall: tiefer Ton + gefilterter Rauschimpuls

@@ -27,23 +27,24 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 
 ## Features
 
-- **BMW M4 Competition** und **Mercedes 300SL Gullwing** als 3D-Modelle (GLB)
+- **BMW M4 GT3 EVO** (Fahrdynamik, Sound & Auspuffflammen des GT3-Rennwagens; 3D-Modell derzeit noch der M4 Competition) und **Mercedes 300SL Gullwing** als 3D-Modelle (GLB)
 - **6 Strecken** aus echten Vermessungsdaten (TUM racetrack-database): **Spa-Francorchamps**, **Hockenheimring**, **Silverstone**, **Monza**, **Circuit Gilles-Villeneuve**, **Interlagos (São Paulo)** – inkl. Gras, Kiesbett und Reifen-Bande
 - **Streckenauswahl** vor der Modus-Wahl (Kreuztasten wechseln die Strecke, mit Streckenkarte von oben, Name, Länge und Land)
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
 - Scheinwerfer & Rücklichter mit Lichtkegeln
 - Tag-/Nachtmodus
-- Motorgeräusch (synthetisierter Reihensechszylinder)
+- Motorgeräusch (synthetisierter GT3-Rennmotor, P58-Charakter) mit Auspuff-Crackles beim Gaswegnehmen
+- **Auspuffflammen** beim Hochschalten und bei den Crackles
 - Cockpit-Kamera mit Umsehen per Maus
-- Automatik- und Schaltgetriebe (6 Gänge)
+- Automatik- und sequenzielles Schaltgetriebe (6 Gänge)
 - Kollisionserkennung (Mauern, Gebäude)
 - Startbildschirm mit Auto-Rotation im Nachtmodus
 
-## Physik
+## Physik (BMW M4 GT3 EVO)
 
-- Längsdynamik: Zugkraft, Leistungsgrenze, Luft- und Rollwiderstand
-- Antriebsverteilung: 10 % vorne / 90 % hinten (xDrive)
-- Querdynamik: Einspurmodell mit Kammschen Kreis
+- Längsdynamik: Zugkraft, Leistungsgrenze, Luft- und Rollwiderstand (~590 PS, ~1300 kg, 0–100 ≈ 2,8 s, Topspeed ≈ 275 km/h)
+- Reiner Hinterradantrieb (GT3)
+- Querdynamik: Einspurmodell mit Kammschem Kreis; **Aero-Abtrieb** erhöht den Kurven-Grip mit dem Tempo (bis > 2 g)
 - Power-Oversteer bei Hinterradschlupf
 
 ## Credits
