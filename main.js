@@ -274,11 +274,11 @@ const STEER_RATIO = 13;   // Lenkrad dreht ~13× stärker als die Vorderräder
 // Alle Maße relativ zum Fahrerauge (zuverlässiger als Fahrzeug-Bruchteile):
 const STEER_WHEEL = {
   debug: false,  // true = herausgelöster Bereich wird ROT eingefärbt (zum Justieren)
-  ahead: 0.42,   // Meter vor dem Auge (Lenkrad-Mitte)
-  drop: 0.05,    // Meter unter dem Auge
-  side: 0.18,    // Meter weiter zur Fahrerseite als das Auge
-  rad: 0.22,     // halbe Box-Größe quer & hoch (Meter)
-  depth: 0.18,   // halbe Box-Tiefe in Längsrichtung (Meter, dünn → Armaturen dahinter bleiben verschont)
+  ahead: 0.40,   // Meter vor dem Auge (Lenkrad-Mitte, GT3-Rennlenkrad)
+  drop: 0.26,    // Meter unter dem Auge (GT3-Lenkrad sitzt tief)
+  side: 0.0,     // zentriert unter dem Fahrerauge
+  rad: 0.20,     // halbe Box-Größe quer & hoch (Meter)
+  depth: 0.14,   // halbe Box-Tiefe in Längsrichtung (Meter, dünn → Armaturen dahinter bleiben verschont)
   tilt: 0.40,    // Neigung der Lenksäule (rad, ~23°)
   sign: 1,       // Drehrichtung des Lenkrads (umdrehen, falls verkehrt herum)
   ratio: 5,      // Lenkrad dreht stärker als die Räder (Volleinschlag ≈ 160°)
@@ -391,14 +391,15 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec) {
 
   // --- rechtes Center-Display: Rückspiegel (RenderTarget-Textur) ---
   const mirMat = new THREE.MeshBasicMaterial({ map: mirrorRT.texture, toneMapped: false });
-  const mir = new THREE.Mesh(new THREE.PlaneGeometry(0.17, 0.095), mirMat);
+  const mir = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.09), mirMat);
   const mirPos = eyeLocal.clone()
     .addScaledVector(fwd, 0.64)
-    .addScaledVector(sideVec, -0.27)   // rechts daneben (Beifahrer-Display)
-    .addScaledVector(UP, -0.27);
+    .addScaledVector(sideVec, -0.275)  // rechts daneben (Beifahrer-Display)
+    .addScaledVector(UP, -0.235);
   mir.position.copy(mirPos);
   mir.lookAt(eyeLocal);
   mir.rotateX(-0.12);                  // wie das echte Display leicht nach hinten geneigt
+  mir.rotateY(0.18);                   // …und leicht mitgedreht wie die Display-Blende
   cockpitScreens.add(mir);
   centerScreenMesh = mir;
 }
@@ -835,10 +836,14 @@ function loadCar(index) {
       sideAxis[widthAxis] = 1;
       const columnAxisWorld = carForward.clone().applyAxisAngle(sideAxis, STEER_WHEEL.tilt).normalize();
 
-      // ALLE Teile prüfen – das Lenkrad besteht aus mehreren Materialien (schwarz, Logo, M-Streifen),
-      // nicht nur aus „interior". Die Box vor dem Fahrer entscheidet, was zum Lenkrad gehört.
+      // Nur Innenraum-/Ausstattungs-Meshes prüfen – NICHT die Karosserie (Paint/Base/…),
+      // sonst rotieren Dach-/Armaturenteile mit, die zufällig die Box schneiden.
       const interiorMeshes = [];
-      car.traverse((n) => { if (n.isMesh && n.geometry.getAttribute('position')) interiorMeshes.push(n); });
+      car.traverse((n) => {
+        if (!n.isMesh || !n.geometry.getAttribute('position')) return;
+        if (!/interior|textured/.test((n.material?.name || '').toLowerCase())) return;
+        interiorMeshes.push(n);
+      });
 
       const _c = new THREE.Vector3();
       const _t = new THREE.Vector3();
