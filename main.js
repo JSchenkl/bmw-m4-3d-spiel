@@ -138,7 +138,17 @@ const TRACKS = [
   },
   { id: 'hockenheim', name: 'Hockenheimring', country: 'Deutschland', length: '4,574 km', file: 'models/hockenheim_track.csv' },
   { id: 'silverstone', name: 'Silverstone', country: 'Großbritannien', length: '5,891 km', file: 'models/silverstone_track.csv' },
-  { id: 'monza', name: 'Autodromo Nazionale Monza', country: 'Italien', length: '5,793 km', file: 'models/monza_track.csv' },
+  // Layout aus dem 3D-Modell „Hanoi Street Circuit" (Dave Bored, CC-BY-4.0) getract;
+  // die Szenerie (Straßen, Gebäude, Stadt) kommt direkt aus dem Modell (flacher Stadtkurs)
+  {
+    id: 'hanoi', name: 'Hanoi Street Circuit', country: 'Vietnam', length: '5,613 km',
+    file: 'models/hanoi_track.csv',
+    scenery: {
+      file: 'models/hanoi/scene.gltf', k: 1.02600301, offX: 1620.4811, offZ: 1104.7361,
+      offY: 1.13, flat: true,
+      pitSpawn: { x: 616.4, z: 1331.2, dx: 0.9983, dz: -0.0589 },
+    },
+  },
   { id: 'montreal', name: 'Circuit Gilles-Villeneuve', country: 'Kanada', length: '4,361 km', file: 'models/montreal_track.csv' },
   { id: 'saopaulo', name: 'Autódromo José Carlos Pace (Interlagos)', country: 'Brasilien', length: '4,309 km', file: 'models/saopaulo_track.csv' },
 ];
@@ -180,10 +190,13 @@ function loadScenery(cfg, parentGroup) {
     const g = new THREE.Group();
     g.add(gltf.scene);
     g.scale.setScalar(cfg.k);
-    g.position.set(cfg.offX, 0, cfg.offZ);
+    g.position.set(cfg.offX, cfg.offY || 0, cfg.offZ);
     parentGroup.add(g);   // erbt die Spawn-Verschiebung der Streckengruppe
     sceneryGroup = g;
     g.updateMatrixWorld(true);
+
+    // Flache Strecken (Stadtkurs): kein Höhenfeld nötig – Straße liegt auf y≈0
+    if (cfg.flat) { console.log('Szenerie geladen (flach)'); return; }
 
     // Höhenfeld aus den Boden-Meshes (Straße/Kies/Gras/Curbs) in Weltkoordinaten
     const groundRe = /road|rmbl|grvl|gbrm|grass|hill|pit/i;
