@@ -1779,6 +1779,12 @@ function updateCar(dt) {
     if (w.steer) w.steer.quaternion.setFromAxisAngle(w.upLocal, steerAngle);
   }
 
+  // Cockpit-Lenkrad dreht mit – proportional zum Lenkeinschlag (analog per Stick),
+  // übersetzt wie ein echtes Lenkrad (~120° Lenkradwinkel bei vollem Einschlag)
+  for (const p of steeringParts) {
+    p.pivot.quaternion.setFromAxisAngle(p.axisLocal, -steerAngle * 4.5);
+  }
+
 
   speedNumEl.textContent = Math.round(Math.abs(speed) * 3.6);
   gearEl.innerHTML = `<span>GANG${autoGearbox ? ' · A' : ''}</span> ${gear === 0 ? 'R' : gear}`;
