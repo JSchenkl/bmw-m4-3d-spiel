@@ -195,7 +195,8 @@
     }
 
     #title {
-      position: absolute; top: 20px; right: 20px;
+      /* unter dem Rückspiegel (der sitzt rechts oben im 16:9-Format) */
+      position: absolute; top: calc(34px + min(380px, 28vw) * 0.5625); right: 20px;
       color: rgba(255,255,255,0.9);
       text-align: right;
       z-index: 10;
@@ -208,8 +209,9 @@
       color: rgba(255,255,255,0.45); font-size: 13px; z-index: 10;
       text-align: center;
     }
+    /* Gang · Schaltblitz · Tempo links (unter dem Menü-Knopf) */
     #hud-top {
-      position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+      position: absolute; top: 72px; left: 20px;
       display: flex; align-items: center; gap: 24px; z-index: 10;
     }
     #speed {
@@ -261,7 +263,7 @@
 
     /* ===== Zeitfahren / Rundenzeiten ===== */
     #laptimer {
-      position: absolute; top: 86px; right: 20px; z-index: 12;
+      position: absolute; top: calc(100px + min(380px, 28vw) * 0.5625); right: 20px; z-index: 12;
       text-align: right; color: rgba(255,255,255,0.92);
       font-family: Consolas, 'Courier New', monospace;
       text-shadow: 0 2px 6px rgba(0,0,0,0.85);
@@ -375,10 +377,10 @@
     }
 
     /* Rückspiegel-Rahmen (das Bild rendert die Engine direkt in diesen Bereich) –
-       links oben, damit Gang/Tempo/Schaltblitz-Anzeige oben mittig frei sichtbar bleibt */
+       rechts oben, im Seitenverhältnis des Bildschirms (16:9) */
     #rear-mirror {
-      position: fixed; top: 72px; left: 20px;
-      width: min(440px, 34vw); aspect-ratio: 5 / 1; z-index: 30; display: none;
+      position: fixed; top: 20px; right: 20px;
+      width: min(380px, 28vw); aspect-ratio: 16 / 9; z-index: 30; display: none;
       border: 2px solid rgba(255,255,255,0.55); border-radius: 10px;
       box-shadow: 0 4px 18px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(0,0,0,0.6);
       pointer-events: none;
