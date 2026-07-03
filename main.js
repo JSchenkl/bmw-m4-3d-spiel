@@ -327,8 +327,9 @@ function updateCurbTilt(dt) {
     const rightWheel = lat - hw;  // rechte Radspur
     const onLeft = leftWheel > curbData.wl[best] - 0.2 && leftWheel < curbData.wl[best] + w;
     const onRight = rightWheel < -(curbData.wr[best] - 0.2) && rightWheel > -(curbData.wr[best] + w);
-    if (onLeft && !onRight) target = CURB_TILT;       // linke Räder hoch → Auto neigt sich
-    else if (onRight && !onLeft) target = -CURB_TILT; // rechte Räder hoch
+    // Vorzeichen passend zur Vorwärtsachse des GT3-Modells (Roll dreht um carForward)
+    if (onLeft && !onRight) target = -CURB_TILT;      // linke Räder hoch → Auto neigt sich nach rechts
+    else if (onRight && !onLeft) target = CURB_TILT;  // rechte Räder hoch → nach links
   }
   carRoll += (target - carRoll) * Math.min(1, dt * 9);
 }
