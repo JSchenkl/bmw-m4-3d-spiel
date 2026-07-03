@@ -123,8 +123,14 @@ function updateSunGlare() {
 
 // ---------- Rennstrecken (echte Vermessungsdaten, TUM racetrack-database) ----------
 const TRACKS = [
-  // Layout aus dem 3D-Modell „Spa Francorchamps 1992 layout" (Dave Love, CC-BY-4.0) extrahiert
-  { id: 'spa92', name: 'Spa-Francorchamps 1992', country: 'Belgien', length: '6,940 km', file: 'models/spa1992_track.csv' },
+  // Layout aus dem 3D-Modell „Spa Francorchamps 1992 layout" (Dave Love, CC-BY-4.0) extrahiert;
+  // die Szenerie (Straße, Gras, Zäune, Gebäude, Höhenprofil!) kommt direkt aus dem Modell.
+  // k/offX/offZ = Transformation Modell-Koordinaten → Spiel-Koordinaten (aus der Extraktion)
+  {
+    id: 'spa92', name: 'Spa-Francorchamps 1992', country: 'Belgien', length: '6,940 km',
+    file: 'models/spa1992_track.csv',
+    scenery: { file: 'spa_francorchamps_1992_layout.glb', k: 0.18095075, offX: 698.586, offZ: 1163.1662 },
+  },
   { id: 'hockenheim', name: 'Hockenheimring', country: 'Deutschland', length: '4,574 km', file: 'models/hockenheim_track.csv' },
   { id: 'silverstone', name: 'Silverstone', country: 'Großbritannien', length: '5,891 km', file: 'models/silverstone_track.csv' },
   { id: 'monza', name: 'Autodromo Nazionale Monza', country: 'Italien', length: '5,793 km', file: 'models/monza_track.csv' },
@@ -148,12 +154,111 @@ let garageBays = [];         // gefüllte Garagen-Stellplätze (dort wird ein M4
 let tireWall = null;         // Reifen-Bande (InstancedMesh + Grundpositionen) fürs Schadensmodell
 let tireDmg = null;          // kumulierter Versatz je Reifen (dx,dy,dz) durch Einschläge
 
+// ---------- Szenerie aus einem 3D-Modell (z. B. Spa 1992) + Höhenfeld ----------
+let sceneryGroup = null;   // das gerenderte Streckenmodell
+let sceneryHeight = null;  // Höhenraster { x0, z0, cell, w, h, data } in Weltkoordinaten
+const groundY = (x, z) => {
+  const f = sceneryHeight;
+  if (!f) return 0;
+  const gx = (x - f.x0) / f.cell, gz = (z - f.z0) / f.cell;
+  const x0 = Math.floor(gx), z0 = Math.floor(gz);
+  if (x0 < 0 || z0 < 0 || x0 >= f.w - 1 || z0 >= f.h - 1) return 0;
+  const fx = gx - x0, fz = gz - z0;
+  const d = f.data;
+  const h00 = d[z0 * f.w + x0], h10 = d[z0 * f.w + x0 + 1];
+  const h01 = d[(z0 + 1) * f.w + x0], h11 = d[(z0 + 1) * f.w + x0 + 1];
+  return (h00 * (1 - fx) + h10 * fx) * (1 - fz) + (h01 * (1 - fx) + h11 * fx) * fz;
+};
+function loadScenery(cfg, parentGroup) {
+  new GLTFLoader().load(cfg.file, (gltf) => {
+    const g = new THREE.Group();
+    g.add(gltf.scene);
+    g.scale.setScalar(cfg.k);
+    g.position.set(cfg.offX, 0, cfg.offZ);
+    parentGroup.add(g);   // erbt die Spawn-Verschiebung der Streckengruppe
+    sceneryGroup = g;
+    g.updateMatrixWorld(true);
+
+    // Höhenfeld aus den Boden-Meshes (Straße/Kies/Gras/Curbs) in Weltkoordinaten
+    const groundRe = /road|rmbl|grvl|gbrm|grass|hill|pit/i;
+    const box = new THREE.Box3();
+    const meshes = [];
+    g.traverse((node) => {
+      if (node.isMesh && groundRe.test(node.material?.name || '')) {
+        meshes.push(node);
+        box.expandByObject(node);
+      }
+    });
+    const cellM = 3;
+    const w = Math.min(1400, Math.ceil((box.max.x - box.min.x) / cellM) + 2);
+    const h = Math.min(1400, Math.ceil((box.max.z - box.min.z) / cellM) + 2);
+    const data = new Float32Array(w * h).fill(NaN);
+    const v = new THREE.Vector3();
+    for (const mesh of meshes) {
+      const geo = mesh.geometry;
+      const pos = geo.getAttribute('position');
+      const idx = geo.index;
+      const count = idx ? idx.count : pos.count;
+      const P = [];
+      for (let i = 0; i < count; i += 3) {
+        for (let j = 0; j < 3; j++) {
+          v.fromBufferAttribute(pos, idx ? idx.getX(i + j) : i + j).applyMatrix4(mesh.matrixWorld);
+          P[j] = { x: (v.x - box.min.x) / cellM, z: (v.z - box.min.z) / cellM, y: v.y };
+        }
+        // Dreieck ins Raster malen (Baryzentrie), pro Zelle die HÖCHSTE Fläche
+        const x0 = Math.max(0, Math.floor(Math.min(P[0].x, P[1].x, P[2].x)));
+        const x1 = Math.min(w - 1, Math.ceil(Math.max(P[0].x, P[1].x, P[2].x)));
+        const z0 = Math.max(0, Math.floor(Math.min(P[0].z, P[1].z, P[2].z)));
+        const z1 = Math.min(h - 1, Math.ceil(Math.max(P[0].z, P[1].z, P[2].z)));
+        const den = (P[1].z - P[2].z) * (P[0].x - P[2].x) + (P[2].x - P[1].x) * (P[0].z - P[2].z);
+        if (!den) continue;
+        for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+          const l1 = ((P[1].z - P[2].z) * (x - P[2].x) + (P[2].x - P[1].x) * (z - P[2].z)) / den;
+          const l2 = ((P[2].z - P[0].z) * (x - P[2].x) + (P[0].x - P[2].x) * (z - P[2].z)) / den;
+          const l3 = 1 - l1 - l2;
+          if (l1 < -0.05 || l2 < -0.05 || l3 < -0.05) continue;
+          const y = l1 * P[0].y + l2 * P[1].y + l3 * P[2].y;
+          const o = z * w + x;
+          if (!(data[o] >= y)) data[o] = y; // NaN oder niedriger → übernehmen
+        }
+      }
+    }
+    // Löcher mit Nachbarwerten füllen (ein paar Glättungs-Durchläufe)
+    for (let pass = 0; pass < 4; pass++) {
+      for (let z = 1; z < h - 1; z++) for (let x = 1; x < w - 1; x++) {
+        const o = z * w + x;
+        if (!Number.isNaN(data[o])) continue;
+        let s = 0, c = 0;
+        for (const q of [o - 1, o + 1, o - w, o + w]) {
+          if (!Number.isNaN(data[q])) { s += data[q]; c++; }
+        }
+        if (c) data[o] = s / c;
+      }
+    }
+    for (let i = 0; i < data.length; i++) if (Number.isNaN(data[i])) data[i] = 0;
+    sceneryHeight = { x0: box.min.x, z0: box.min.z, cell: cellM, w, h, data };
+    // Spawn-Punkt (Ursprung) auf Höhe 0 normieren – Szenerie und Feld gemeinsam absenken
+    const h0 = groundY(0, 0);
+    g.position.y -= h0;
+    for (let i = 0; i < data.length; i++) data[i] -= h0;
+    // Startboxen neu bauen, damit sie dem Höhenprofil folgen
+    if (gridBoxes) { scene.remove(gridBoxes); gridBoxes = null; }
+    console.log('Szenerie geladen, Höhenfeld', w, 'x', h, '– Spawn-Höhe normiert um', h0.toFixed(1), 'm');
+  }, undefined, (err) => console.error('Szenerie konnte nicht geladen werden:', err));
+}
+
 function loadTrack(file) {
-  return createTrack(file)
+  const trackCfg = TRACKS.find((t) => t.file === file);
+  return createTrack(file, { scenery: !!(trackCfg && trackCfg.scenery) })
     .then(({ group, pitDirection: dir, colliders, curbData: cd, garageBays: bays, tireWall: tw }) => {
       if (trackGroup) scene.remove(trackGroup);
       trackGroup = group;
       scene.add(group);
+      // Szenerie-Modell (falls vorhanden) laden; Boden/Sichtteile kommen dann von dort
+      if (sceneryGroup) { sceneryGroup = null; }
+      sceneryHeight = null;
+      ground.visible = !(trackCfg && trackCfg.scenery);
+      if (trackCfg && trackCfg.scenery) loadScenery(trackCfg.scenery, group);
       pitDirection = dir;
       trackColliders = colliders;
       curbData = cd;
@@ -288,6 +393,7 @@ const STEER_WHEEL = {
 
 let carYaw = 0; // aktueller Drehwinkel des Autos um die Hochachse
 let carRoll = 0; // aktuelle Seitenneigung (Roll) – z. B. wenn ein Rad auf dem Curb steht
+let carPitch = 0; // Nick-Winkel am Hang (nur mit Szenerie-Höhenprofil)
 let rearSlip = 0; // geglätteter Heck-Schlupf (0 = Grip, >0 = Räder drehen durch → Heck bricht aus)
 const UP = new THREE.Vector3(0, 1, 0);
 const CURB_TILT = 0.056; // max. Neigung auf dem Randstein (rad, ~3,2°; 20 % flacher)
@@ -299,13 +405,20 @@ const carHalf = { len: 2.4, wid: 0.95 };
 
 // Setzt die Auto-Ausrichtung aus Gierwinkel (Lenken) und Roll (Curb-Neigung).
 // Der Roll dreht um die lokale Längsachse des Autos, der Yaw um die Hochachse.
+const _pitchQ = new THREE.Quaternion();
+const _sideAxis = new THREE.Vector3();
 function applyCarOrientation() {
   _yawQ.setFromAxisAngle(UP, carYaw);
+  carGroup.quaternion.copy(_yawQ);
+  if (carForward && carPitch !== 0) {
+    // Nicken um die Querachse: Steigung → Nase hoch (Vorzeichen s. Rechte-Hand-Regel)
+    _sideAxis.crossVectors(UP, carForward).normalize();
+    _pitchQ.setFromAxisAngle(_sideAxis, -carPitch);
+    carGroup.quaternion.multiply(_pitchQ);
+  }
   if (carForward && carRoll !== 0) {
     _rollQ.setFromAxisAngle(carForward, carRoll);
-    carGroup.quaternion.copy(_yawQ).multiply(_rollQ);
-  } else {
-    carGroup.quaternion.copy(_yawQ);
+    carGroup.quaternion.multiply(_rollQ);
   }
 }
 
@@ -1867,6 +1980,19 @@ function updateCar(dt) {
   // Kollisionen mit Mauern und Gebäuden auflösen
   resolveCollisions();
 
+  // Höhenprofil der Szenerie folgen (z. B. Eau Rouge bergauf) + Nick-Winkel am Hang
+  if (sceneryHeight && carForward) {
+    const px = carGroup.position.x, pz = carGroup.position.z;
+    carGroup.position.y = groundY(px, pz) + 0.05;
+    const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
+    const hA = groundY(px + fwd.x * 2.5, pz + fwd.z * 2.5);
+    const hB = groundY(px - fwd.x * 2.5, pz - fwd.z * 2.5);
+    const target = Math.atan2(hA - hB, 5);
+    carPitch += (target - carPitch) * Math.min(1, dt * 8);
+  } else if (carPitch !== 0) {
+    carPitch = 0;
+  }
+
   // Seitenneigung auf Randsteinen bestimmen und Auto-Ausrichtung (Yaw + Roll) setzen
   updateCurbTilt(dt);
   applyCarOrientation();
@@ -2439,7 +2565,7 @@ function positionBot(bot, dt) {
   const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
   const nx = -dz, nz = dx; // Quernormale für den seitlichen Versatz
   const x = c.x + nx * bot.offset, z = c.z + nz * bot.offset;
-  bot.group.position.set(x, carGroup.position.y, z);
+  bot.group.position.set(x, sceneryHeight ? groundY(x, z) + 0.05 : carGroup.position.y, z);
   // Blickrichtung exponentiell glätten (gegen Rucken)
   const k = dt ? 1 - Math.exp(-9 * dt) : 1;
   if (bot.fx === undefined) { bot.fx = dx; bot.fz = dz; }
@@ -2801,12 +2927,13 @@ let gridBoxes = null;
 function buildGridBoxes() {
   gridBoxes = new THREE.Group();
   const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const y = carGroup.position.y + 0.03, L = 5, W = 2.6, th = 0.16;
+  const L = 5, W = 2.6, th = 0.16;
   const total = centerline.total;
   // eine Linie (flaches weißes Band) bei (cx,cz), ausgerichtet nach ang; len=Länge entlang Strecke, wid=quer
   const line = (cx, cz, ang, len, wid) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(wid, 0.04, len), mat);
-    m.position.set(cx, y, cz); m.rotation.y = ang; gridBoxes.add(m);
+    m.position.set(cx, sceneryHeight ? groundY(cx, cz) + 0.08 : carGroup.position.y + 0.03, cz);
+    m.rotation.y = ang; gridBoxes.add(m);
   };
   for (let i = 0; i <= BOT_COUNT; i++) {
     const arc = ((gridArc(i) % total) + total) % total;
@@ -2940,7 +3067,7 @@ function initDust() {
 }
 function spawnDust(x, z) {
   const i = dustNext; dustNext = (dustNext + 1) % DUST_N;
-  dustPos[i * 3] = x; dustPos[i * 3 + 1] = 0.2; dustPos[i * 3 + 2] = z;
+  dustPos[i * 3] = x; dustPos[i * 3 + 1] = carGroup.position.y + 0.2; dustPos[i * 3 + 2] = z;
   dustVel[i].set((Math.random() - 0.5) * 2, 1.2 + Math.random() * 1.8, (Math.random() - 0.5) * 2);
   dustLife[i] = 0.8 + Math.random() * 0.7;
 }
