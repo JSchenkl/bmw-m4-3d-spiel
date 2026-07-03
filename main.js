@@ -131,6 +131,7 @@ const TRACKS = [
     file: 'models/spa1992_track.csv',
     scenery: {
       file: 'spa_francorchamps_1992_layout.glb', k: 0.18095075, offX: 698.586, offZ: 1163.1662,
+      wallRe: 'twall|grdrl|pinewall|fnc', // Reifenwände, Leitplanken, Waldränder, Zäune
       // Startplatz auf der Boxengassen-Fahrbahn des Modells (diagonal vor den Boxengebäuden),
       // per Straßenraster-Abtastung bestimmt: ~200 m vor Start/Ziel, 35 m links
       pitSpawn: { x: 1123.4, z: 1089.8, dx: 0.2393, dz: -0.9707 },
@@ -185,6 +186,89 @@ const groundY = (x, z) => {
   const h01 = d[(z0 + 1) * f.w + x0], h11 = d[(z0 + 1) * f.w + x0 + 1];
   return (h00 * (1 - fx) + h10 * fx) * (1 - fz) + (h01 * (1 - fx) + h11 * fx) * fz;
 };
+// Kollisionsboxen aus den Wand-/Banden-Meshes der Szenerie: annähernd senkrechte,
+// bodennahe Dreiecke werden in ein 1,5-m-Raster gestempelt und zeilenweise zu
+// Boxen zusammengefasst → das Auto prallt an den ECHTEN Mauern des Modells ab.
+function buildWallColliders(g, cfg) {
+  const re = new RegExp(cfg.wallRe || '.', 'i');
+  const cellW = 1.5;
+  const v = new THREE.Vector3();
+  const cells = new Map(); // "x|z" → true (Zellkoordinaten)
+  let x0 = Infinity, z0 = Infinity;
+  const tris = [];
+  g.traverse((node) => {
+    if (!node.isMesh) return;
+    const name = (node.material?.name || '') + '|' + (node.name || '');
+    if (!re.test(name)) return;
+    const geo = node.geometry;
+    const pos = geo.getAttribute('position');
+    if (!pos) return;
+    const idx = geo.index;
+    const count = idx ? idx.count : pos.count;
+    for (let i = 0; i < count; i += 3) {
+      const P = [];
+      for (let j = 0; j < 3; j++) {
+        v.fromBufferAttribute(pos, idx ? idx.getX(i + j) : i + j).applyMatrix4(node.matrixWorld);
+        P.push({ x: v.x, y: v.y, z: v.z });
+      }
+      // senkrecht? (Flächennormale fast horizontal) + bodennah + hoch genug
+      const ux = P[1].x - P[0].x, uy = P[1].y - P[0].y, uz = P[1].z - P[0].z;
+      const wx = P[2].x - P[0].x, wy = P[2].y - P[0].y, wz = P[2].z - P[0].z;
+      const ny = uz * wx - ux * wz;
+      const nx = uy * wz - uz * wy, nz = ux * wy - uy * wx;
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      if (Math.abs(ny / nl) > 0.4) continue;                       // zu flach → Boden/Dach
+      const yMin = Math.min(P[0].y, P[1].y, P[2].y);
+      const yMax = Math.max(P[0].y, P[1].y, P[2].y);
+      // bodennah relativ zum Höhenfeld (bei flachen Strecken = 0) – Brücken/Schilder oben ignorieren
+      const gY = groundY((P[0].x + P[1].x + P[2].x) / 3, (P[0].z + P[1].z + P[2].z) / 3);
+      if (yMin - gY > 2.5 || yMax - yMin < 0.5) continue;          // schwebend oder zu niedrig
+      tris.push(P);
+      for (const q of P) { x0 = Math.min(x0, q.x); z0 = Math.min(z0, q.z); }
+    }
+  });
+  for (const P of tris) {
+    // Dreieckskanten abtasten und Zellen markieren
+    for (let e = 0; e < 3; e++) {
+      const a = P[e], b = P[(e + 1) % 3];
+      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (cellW * 0.5)));
+      for (let s = 0; s <= steps; s++) {
+        const f = s / steps;
+        const cx = Math.floor((a.x + (b.x - a.x) * f - x0) / cellW);
+        const cz = Math.floor((a.z + (b.z - a.z) * f - z0) / cellW);
+        cells.set(cx + '|' + cz, true);
+      }
+    }
+  }
+  // Zeilenweise zusammenhängende Zellen zu länglichen Boxen mergen
+  const rows = new Map(); // z → sortierte x-Liste
+  for (const key of cells.keys()) {
+    const [cx, cz] = key.split('|').map(Number);
+    if (!rows.has(cz)) rows.set(cz, []);
+    rows.get(cz).push(cx);
+  }
+  let added = 0;
+  for (const [cz, xs] of rows) {
+    xs.sort((a, b) => a - b);
+    let runStart = xs[0], prev = xs[0];
+    const flush = (s, e) => {
+      const wx0 = x0 + s * cellW, wx1 = x0 + (e + 1) * cellW;
+      trackColliders.push({
+        cx: (wx0 + wx1) / 2, cz: z0 + (cz + 0.5) * cellW,
+        ax: 1, az: 0, halfLen: (wx1 - wx0) / 2, halfWid: cellW / 2,
+      });
+      added++;
+    };
+    for (let i = 1; i < xs.length; i++) {
+      if (xs[i] === prev + 1) { prev = xs[i]; continue; }
+      flush(runStart, prev);
+      runStart = prev = xs[i];
+    }
+    flush(runStart, prev);
+  }
+  console.log('Wand-Hitboxen aus der Szenerie:', added, 'Boxen (aus', tris.length, 'Dreiecken)');
+}
+
 function loadScenery(cfg, parentGroup) {
   new GLTFLoader().load(cfg.file, (gltf) => {
     const g = new THREE.Group();
@@ -195,8 +279,13 @@ function loadScenery(cfg, parentGroup) {
     sceneryGroup = g;
     g.updateMatrixWorld(true);
 
-    // Flache Strecken (Stadtkurs): kein Höhenfeld nötig – Straße liegt auf y≈0
-    if (cfg.flat) { console.log('Szenerie geladen (flach)'); return; }
+    // Flache Strecken (Stadtkurs): kein Höhenfeld nötig – Straße liegt auf y≈0;
+    // Wand-Hitboxen direkt bauen (groundY = 0)
+    if (cfg.flat) {
+      buildWallColliders(g, cfg);
+      console.log('Szenerie geladen (flach)');
+      return;
+    }
 
     // Höhenfeld aus den Boden-Meshes (Straße/Kies/Gras/Curbs) in Weltkoordinaten
     const groundRe = /road|rmbl|grvl|gbrm|grass|hill|pit/i;
@@ -262,6 +351,8 @@ function loadScenery(cfg, parentGroup) {
     for (let i = 0; i < data.length; i++) data[i] -= h0;
     // Startboxen neu bauen, damit sie dem Höhenprofil folgen
     if (gridBoxes) { scene.remove(gridBoxes); gridBoxes = null; }
+    // Wand-Hitboxen NACH dem Höhenfeld bauen (Bodennähe-Filter braucht groundY)
+    buildWallColliders(g, cfg);
     console.log('Szenerie geladen, Höhenfeld', w, 'x', h, '– Spawn-Höhe normiert um', h0.toFixed(1), 'm');
   }, undefined, (err) => console.error('Szenerie konnte nicht geladen werden:', err));
 }
@@ -2149,6 +2240,9 @@ function armLap() {
 // True, wenn alle vier Reifen abseits der Strecke sind (jenseits der äußeren
 // Randstein-Kante – also komplett im Grünen/Auslauf, nicht nur auf dem Curb).
 function allWheelsOffTrack(px, pz) {
+  // Szenerie-Strecken: die echte Fahrbahn ist breiter als die extrahierte Linie –
+  // Track-Limits würden ständig fälschlich auslösen und die Zeitmessung abbrechen
+  if (sceneryTrack) return false;
   if (!curbData) return false;
   const P = curbData.pts;
   let best = 0, bestD = Infinity;
