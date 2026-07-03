@@ -390,13 +390,14 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec) {
 
   // --- rechtes Center-Display: Rückspiegel (RenderTarget-Textur) ---
   const mirMat = new THREE.MeshBasicMaterial({ map: mirrorRT.texture, toneMapped: false });
-  const mir = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.118), mirMat);
+  const mir = new THREE.Mesh(new THREE.PlaneGeometry(0.17, 0.095), mirMat);
   const mirPos = eyeLocal.clone()
-    .addScaledVector(fwd, 0.63)
-    .addScaledVector(sideVec, -0.17)   // rechts daneben (Beifahrer-Display)
-    .addScaledVector(UP, -0.24);
+    .addScaledVector(fwd, 0.64)
+    .addScaledVector(sideVec, -0.27)   // rechts daneben (Beifahrer-Display)
+    .addScaledVector(UP, -0.27);
   mir.position.copy(mirPos);
   mir.lookAt(eyeLocal);
+  mir.rotateX(-0.12);                  // wie das echte Display leicht nach hinten geneigt
   cockpitScreens.add(mir);
   centerScreenMesh = mir;
 }
