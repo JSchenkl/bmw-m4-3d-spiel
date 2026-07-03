@@ -22,7 +22,8 @@ const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerH
 camera.position.set(7, 2.5, 7);
 // Rückspiegel-Kamera (Blick nach hinten), wird in einen kleinen Streifen oben gerendert
 const mirrorCam = new THREE.PerspectiveCamera(72, 5, 0.1, 2000);
-const rearMirrorEl = document.getElementById('rear-mirror');
+// Rückspiegel-Bild für das rechte Cockpit-Display (wird jeden Frame hineingerendert)
+const mirrorRT = new THREE.WebGLRenderTarget(512, 288);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -355,6 +356,93 @@ const headlightSpots = new THREE.Group();
 const taillightGlows = new THREE.Group();
 carGroup.add(headlightSpots, taillightGlows);
 
+// ---------- Cockpit-Displays (GT3) ----------
+// Linkes Fahrer-Display (hinter dem Lenkrad): Gang, Drehzahl-LEDs und Tempo.
+// Rechtes Center-Display: Live-Rückspiegelbild. Beide als kleine Flächen knapp
+// vor den Bildschirmen des 3D-Modells, nur aus der Cockpit-Sicht relevant.
+const cockpitScreens = new THREE.Group();
+carGroup.add(cockpitScreens);
+let dashCanvas = null, dashCtx = null, dashTex = null, centerScreenMesh = null;
+let dashPrev = ''; // zuletzt gezeichneter Zustand (nur bei Änderung neu zeichnen)
+const DASH_LED_COLORS = ['#2ecc40', '#74e22b', '#ffdc00', '#ff851b', '#ff2d20'];
+function setupCockpitScreens(eyeLocal, fwd, sideVec) {
+  cockpitScreens.clear();
+  centerScreenMesh = null;
+
+  // --- linkes Fahrer-Display: gezeichnete Anzeige (CanvasTexture) ---
+  if (!dashCanvas) {
+    dashCanvas = document.createElement('canvas');
+    dashCanvas.width = 512; dashCanvas.height = 256;
+    dashCtx = dashCanvas.getContext('2d');
+    dashTex = new THREE.CanvasTexture(dashCanvas);
+    dashTex.colorSpace = THREE.SRGBColorSpace;
+  }
+  dashPrev = ''; // beim (Neu-)Aufbau einmal frisch zeichnen
+  const dashMat = new THREE.MeshBasicMaterial({ map: dashTex, toneMapped: false });
+  const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.12), dashMat);
+  const dashPos = eyeLocal.clone()
+    .addScaledVector(fwd, 0.55)        // knapp hinter dem Lenkrad
+    .addScaledVector(sideVec, 0.16)    // mittig über der Lenksäule
+    .addScaledVector(UP, -0.14);
+  dash.position.copy(dashPos);
+  dash.lookAt(eyeLocal);               // zum Fahrer ausrichten
+  cockpitScreens.add(dash);
+
+  // --- rechtes Center-Display: Rückspiegel (RenderTarget-Textur) ---
+  const mirMat = new THREE.MeshBasicMaterial({ map: mirrorRT.texture, toneMapped: false });
+  const mir = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.146), mirMat);
+  const mirPos = eyeLocal.clone()
+    .addScaledVector(fwd, 0.60)
+    .addScaledVector(sideVec, -0.38)   // rechts vom Fahrer (Mittelkonsole)
+    .addScaledVector(UP, -0.16);
+  mir.position.copy(mirPos);
+  mir.lookAt(eyeLocal);
+  cockpitScreens.add(mir);
+  centerScreenMesh = mir;
+}
+// Fahrer-Display zeichnen: LEDs oben, Gang links (blau), Tempo rechts
+function updateDashScreen() {
+  if (!dashCtx) return;
+  const spd = Math.round(Math.abs(speed) * 3.6);
+  const gearTxt = gear === 0 ? 'R' : String(gear);
+  const forward = Math.abs(speed) > 0.5 && gear >= 1;
+  const frac = forward ? Math.min(1, Math.abs(speed) / GEAR_MAX_SPEED[gear]) : 0;
+  const leds = REV_TH.filter((t) => frac >= t).length;
+  const blink = performance.now() % 260 < 130; // Blink-Phase (nur am Limit relevant)
+  const state = `${gearTxt}|${spd}|${leds}|${frac >= REV_TH[4] ? blink : '-'}`;
+  if (state === dashPrev) return;
+  dashPrev = state;
+
+  const g = dashCtx;
+  g.fillStyle = '#07090c'; g.fillRect(0, 0, 512, 256);
+  g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 6; g.strokeRect(3, 3, 506, 250);
+  // Drehzahl-LEDs (am Limit blinken alle im Takt)
+  const atLimit = frac >= REV_TH[4];
+  for (let i = 0; i < 5; i++) {
+    const lit = atLimit ? blink : i < leds;
+    g.beginPath();
+    g.arc(96 + i * 80, 52, 22, 0, Math.PI * 2);
+    g.fillStyle = lit ? DASH_LED_COLORS[i] : '#1b1e24';
+    g.fill();
+  }
+  // Gang (blau, links)
+  g.fillStyle = '#4da3ff';
+  g.font = "bold 120px Consolas, monospace";
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(gearTxt, 110, 168);
+  g.font = "bold 26px 'Segoe UI', Arial, sans-serif";
+  g.fillStyle = 'rgba(255,255,255,0.5)';
+  g.fillText('GANG', 110, 234);
+  // Tempo (weiß, rechts)
+  g.fillStyle = '#ffffff';
+  g.font = "bold 110px Consolas, monospace";
+  g.fillText(String(spd), 330, 168);
+  g.font = "bold 26px 'Segoe UI', Arial, sans-serif";
+  g.fillStyle = 'rgba(255,255,255,0.5)';
+  g.fillText('km/h', 330, 234);
+  dashTex.needsUpdate = true;
+}
+
 // ---------- Auspuffflammen (GT3): Feuerstöße aus den Endrohren ----------
 // Beim Hochschalten und bei den Auspuff-Crackles (Gaswegnehmen) schlagen kurze
 // Flammen aus den Endrohren. Sprites mit additivem Feuer-Verlauf, an der carGroup.
@@ -527,6 +615,8 @@ function loadCar(index) {
   currentCar = null;
   headlightSpots.clear();
   taillightGlows.clear();
+  cockpitScreens.clear();
+  centerScreenMesh = null;
   wheels.length = 0;
   steeringParts.length = 0;
   headlightMats.length = 0;
@@ -791,6 +881,9 @@ function loadCar(index) {
         mesh.add(pivot);
         steeringParts.push({ pivot, axisLocal: axisL });
       }
+
+      // Cockpit-Displays platzieren (linkes Fahrer-Display + rechtes Rückspiegel-Display)
+      setupCockpitScreens(eye, carForward, sideVec);
     }
 
     // Ausgangszustand der Emission merken
@@ -1044,8 +1137,9 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
     uiPanel.classList.remove('start-mode');
     btnMenu.classList.remove('active');
 
-    // HUD und Steuerelemente einblenden (Steuerungs-Hinweis bleibt nur im Startmenü)
-    document.getElementById('hud-top').style.display = '';
+    // HUD und Steuerelemente einblenden (Spiel startet im Cockpit → dort zeigen die
+    // Fahrzeug-Displays Gang/Drehzahl/Tempo, das DOM-HUD bleibt aus)
+    document.getElementById('hud-top').style.display = 'none';
     document.getElementById('hint').style.display = 'none';
     document.getElementById('title').style.display = '';
     document.getElementById('laptimer').style.display = '';
@@ -1214,6 +1308,8 @@ function applyCameraMode() {
   }
   camera.updateProjectionMatrix();
   applyExposure(); // Cockpit 15 % gedämmt
+  // Im Cockpit zeigen die Fahrzeug-Displays Gang/Drehzahl/Tempo → DOM-HUD nur im Verfolger-Modus
+  if (gameStarted) document.getElementById('hud-top').style.display = cameraMode === 1 ? 'none' : '';
   btnView.textContent = `🎥 Ansicht: ${cameraMode === 1 ? 'Cockpit' : 'Verfolger'}`;
   btnView.classList.toggle('active', cameraMode === 1);
 }
@@ -2878,38 +2974,26 @@ renderer.setAnimationLoop(() => {
     camera.lookAt(_lookAt);
   }
 
+  // Cockpit-Displays: nur in der Ego-Sicht – linkes Display zeichnen,
+  // Rückspiegelbild ins rechte Center-Display rendern (vor dem Hauptbild!)
+  cockpitScreens.visible = cameraMode === 1 && gameStarted;
+  if (cockpitScreens.visible && carForward) {
+    updateDashScreen();
+    if (centerScreenMesh) {
+      const fwdW = carForward.clone().applyAxisAngle(UP, carYaw);
+      const px = carGroup.position.x, py = carGroup.position.y, pz = carGroup.position.z;
+      mirrorCam.position.set(px, py + 1.6, pz); // knapp über dem Dach, Blick nach hinten
+      mirrorCam.up.set(0, 1, 0);
+      mirrorCam.lookAt(px - fwdW.x * 14, py + 0.4, pz - fwdW.z * 14);
+      mirrorCam.aspect = 16 / 9; mirrorCam.updateProjectionMatrix();
+      centerScreenMesh.visible = false;         // eigene Textur nicht mitrendern (Feedback)
+      renderer.setRenderTarget(mirrorRT);
+      renderer.render(scene, mirrorCam);
+      renderer.setRenderTarget(null);
+      centerScreenMesh.visible = true;
+    }
+  }
+
   updateSunGlare(); // Blenden, wenn man in die Sonne schaut
   renderer.render(scene, camera);
-
-  // Rückspiegel: nur in der Cockpit-Kamera sichtbar, Blick gerade nach hinten
-  const mirrorOn = cameraMode === 1 && gameStarted && carForward;
-  if (rearMirrorEl) rearMirrorEl.style.display = mirrorOn ? 'block' : 'none';
-  if (mirrorOn) {
-    const fwdW = carForward.clone().applyAxisAngle(UP, carYaw);
-    const px = carGroup.position.x, py = carGroup.position.y, pz = carGroup.position.z;
-    renderMirror(rearMirrorEl,
-      px, py + 1.6, pz,
-      px - fwdW.x * 14, py + 0.4, pz - fwdW.z * 14);
-  }
 });
-
-// Rendert die Szene aus Sicht eines Spiegels exakt in den sichtbaren Rahmen (DOM-Element).
-function renderMirror(el, camX, camY, camZ, lookX, lookY, lookZ) {
-  if (!el) return;
-  const vw = window.innerWidth, vh = window.innerHeight;
-  const r = el.getBoundingClientRect();
-  const b = 2;                                   // Rahmenbreite (innen rendern)
-  const mw = r.width - 2 * b, mh = r.height - 2 * b;
-  const mx = r.left + b, my = vh - r.bottom + b; // three.js-Viewport: Ursprung unten-links
-  if (mw <= 4 || mh <= 4) return;
-  mirrorCam.position.set(camX, camY, camZ);
-  mirrorCam.up.set(0, 1, 0);
-  mirrorCam.lookAt(lookX, lookY, lookZ);
-  mirrorCam.aspect = mw / mh; mirrorCam.updateProjectionMatrix();
-  renderer.setScissorTest(true);
-  renderer.setViewport(mx, my, mw, mh);
-  renderer.setScissor(mx, my, mw, mh);
-  renderer.render(scene, mirrorCam);
-  renderer.setScissorTest(false);
-  renderer.setViewport(0, 0, vw, vh);
-}
