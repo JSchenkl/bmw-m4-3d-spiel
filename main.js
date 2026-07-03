@@ -45,6 +45,8 @@ const CHASE_FOV = 45;   // Sichtfeld der Verfolgerkamera
 const COCKPIT_FOV = 72; // weiteres Sichtfeld im Cockpit für mehr Immersion
 // Position des Fahrerauges relativ zur Fahrzeugmitte (für Cockpit-Kamera UND Lenkrad-Suche)
 const COCKPIT_EYE = { back: 0.30, side: 0.32, height: 1.12 };
+// Nur die Kamera sitzt etwas tiefer (GT3-Sitzposition); die Lenkrad-Suche bleibt unverändert
+const COCKPIT_CAM_DROP = 0.10;
 // Wiederverwendbare Vektoren (kein new pro Frame)
 const _eye = new THREE.Vector3();
 const _camFwd = new THREE.Vector3();
@@ -2863,7 +2865,7 @@ renderer.setAnimationLoop(() => {
     _eye.copy(carGroup.position)
       .addScaledVector(_camFwd, -COCKPIT_EYE.back)
       .addScaledVector(_camSide, COCKPIT_EYE.side)
-      .addScaledVector(UP, COCKPIT_EYE.height);
+      .addScaledVector(UP, COCKPIT_EYE.height - COCKPIT_CAM_DROP);
     camera.position.copy(_eye);
 
     // Blickrichtung = Fahrtrichtung, um Umseh-Yaw (um Hochachse) und -Pitch (um Seitenachse) gedreht
