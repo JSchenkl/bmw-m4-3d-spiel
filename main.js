@@ -129,7 +129,11 @@ const TRACKS = [
   {
     id: 'spa92', name: 'Spa-Francorchamps 1992', country: 'Belgien', length: '6,940 km',
     file: 'models/spa1992_track.csv',
-    scenery: { file: 'spa_francorchamps_1992_layout.glb', k: 0.18095075, offX: 698.586, offZ: 1163.1662 },
+    scenery: {
+      file: 'spa_francorchamps_1992_layout.glb', k: 0.18095075, offX: 698.586, offZ: 1163.1662,
+      // Startplatz in der Boxengasse des Modells: links der Start/Ziel-Geraden, 60 m vor der Linie
+      pitSpawn: { x: 1169.4, z: 955.7, dx: 0.4677, dz: -0.8839 },
+    },
   },
   { id: 'hockenheim', name: 'Hockenheimring', country: 'Deutschland', length: '4,574 km', file: 'models/hockenheim_track.csv' },
   { id: 'silverstone', name: 'Silverstone', country: 'Großbritannien', length: '5,891 km', file: 'models/silverstone_track.csv' },
@@ -249,7 +253,10 @@ function loadScenery(cfg, parentGroup) {
 
 function loadTrack(file) {
   const trackCfg = TRACKS.find((t) => t.file === file);
-  return createTrack(file, { scenery: !!(trackCfg && trackCfg.scenery) })
+  return createTrack(file, {
+    scenery: !!(trackCfg && trackCfg.scenery),
+    pitSpawn: trackCfg && trackCfg.scenery ? trackCfg.scenery.pitSpawn : undefined,
+  })
     .then(({ group, pitDirection: dir, colliders, curbData: cd, garageBays: bays, tireWall: tw }) => {
       if (trackGroup) scene.remove(trackGroup);
       trackGroup = group;

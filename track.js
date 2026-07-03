@@ -423,8 +423,13 @@ export async function createTrack(file, opts = {}) {
   // --- Startplatz: Punkt der Boxengasse auf Höhe der Start/Ziel-Linie ---
   spawnSeqIdx = Math.min(spawnSeqIdx, seq.length - 1);
   // Spieler startet im freien Stellplatz seiner Garage (Front zur Gasse); Fallback: Boxengasse
-  const spawn = garageSpawn ? garageSpawn.clone() : pitCenter[spawnSeqIdx].clone();
-  const pitDirection = garageSpawnDir ? garageSpawnDir.clone() : pitDirs[spawnSeqIdx].clone();
+  // Startplatz: explizit vorgegebener Boxen-Spawn (Szenerie-Strecken) > Garage > Boxengasse
+  const spawn = opts.pitSpawn
+    ? new THREE.Vector3(opts.pitSpawn.x, 0, opts.pitSpawn.z)
+    : (garageSpawn ? garageSpawn.clone() : pitCenter[spawnSeqIdx].clone());
+  const pitDirection = opts.pitSpawn
+    ? new THREE.Vector3(opts.pitSpawn.dx, 0, opts.pitSpawn.dz).normalize()
+    : (garageSpawnDir ? garageSpawnDir.clone() : pitDirs[spawnSeqIdx].clone());
 
   // Gruppe so verschieben, dass der Startplatz im Ursprung liegt
   group.position.set(-spawn.x, 0, -spawn.z);
