@@ -123,7 +123,8 @@ function updateSunGlare() {
 
 // ---------- Rennstrecken (echte Vermessungsdaten, TUM racetrack-database) ----------
 const TRACKS = [
-  { id: 'spa', name: 'Spa-Francorchamps', country: 'Belgien', length: '7,004 km', file: 'models/spa_track.csv' },
+  // Layout aus dem 3D-Modell „Spa Francorchamps 1992 layout" (Dave Love, CC-BY-4.0) extrahiert
+  { id: 'spa92', name: 'Spa-Francorchamps 1992', country: 'Belgien', length: '6,940 km', file: 'models/spa1992_track.csv' },
   { id: 'hockenheim', name: 'Hockenheimring', country: 'Deutschland', length: '4,574 km', file: 'models/hockenheim_track.csv' },
   { id: 'silverstone', name: 'Silverstone', country: 'Großbritannien', length: '5,891 km', file: 'models/silverstone_track.csv' },
   { id: 'monza', name: 'Autodromo Nazionale Monza', country: 'Italien', length: '5,793 km', file: 'models/monza_track.csv' },
