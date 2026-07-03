@@ -28,7 +28,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 ## Features
 
 - **BMW M4 GT3 EVO** als 3D-Modell (GLB) mit GT3-Fahrdynamik, Rennsound und Auspuffflammen
-- **6 Strecken** aus echten Vermessungsdaten (TUM racetrack-database): **Spa-Francorchamps**, **Hockenheimring**, **Silverstone**, **Monza**, **Circuit Gilles-Villeneuve**, **Interlagos (São Paulo)** – inkl. Gras, Kiesbett und Reifen-Bande
+- **6 Strecken**: **Spa-Francorchamps 1992** (Layout aus einem 3D-Modell extrahiert), **Hockenheimring**, **Silverstone**, **Monza**, **Circuit Gilles-Villeneuve**, **Interlagos (São Paulo)** – inkl. Gras, Kiesbett und Reifen-Bande
 - **Streckenauswahl** vor der Modus-Wahl (Kreuztasten wechseln die Strecke, mit Streckenkarte von oben, Name, Länge und Land)
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
 - Scheinwerfer & Rücklichter mit Lichtkegeln
@@ -52,4 +52,5 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 
 - Modell **2022 BMW M4 GT3** – Ddiaz Design · [Sketchfab](https://sketchfab.com/3d-models/2022-bmw-m4-gt3-61695f14da8d4821beda6f0e376c2f73) · CC-BY-NC-SA 4.0
 - Modell **Mercedes-Benz 300SL Gullwing** – vecarz.com
-- Streckendaten Spa-Francorchamps – [TUM racetrack-database](https://github.com/TUMFTM/racetrack-database)
+- Streckendaten – [TUM racetrack-database](https://github.com/TUMFTM/racetrack-database)
+- Spa-1992-Layout – **Spa Francorchamps 1992 layout** von Dave Love · [Sketchfab](https://sketchfab.com/3d-models/spa-francorchamps-1992-layout-a1223a21df954b9ebf8eb3b7c682eb99) · CC-BY 4.0
