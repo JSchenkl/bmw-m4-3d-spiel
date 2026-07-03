@@ -1,10 +1,18 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createTrack } from './track.js';
 import * as engineAudio from './audio.js';
+
+// Alle Modelle sind meshopt-komprimiert (kleinere Downloads) → Dekoder anhängen
+function newGLTFLoader() {
+  const l = new GLTFLoader();
+  l.setMeshoptDecoder(MeshoptDecoder);
+  return l;
+}
 
 // ---------- Renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -145,7 +153,7 @@ const TRACKS = [
     id: 'hanoi', name: 'Hanoi Street Circuit', country: 'Vietnam', length: '5,613 km',
     file: 'models/hanoi_track.csv',
     scenery: {
-      file: 'models/hanoi/scene.gltf', k: 1.02600301, offX: 1620.4811, offZ: 1104.7361,
+      file: 'models/hanoi/hanoi.glb', k: 1.02600301, offX: 1620.4811, offZ: 1104.7361,
       offY: 1.13, flat: true,
       pitSpawn: { x: 616.4, z: 1331.2, dx: 0.9983, dz: -0.0589 },
     },
@@ -153,8 +161,10 @@ const TRACKS = [
   { id: 'montreal', name: 'Circuit Gilles-Villeneuve', country: 'Kanada', length: '4,361 km', file: 'models/montreal_track.csv' },
   { id: 'saopaulo', name: 'Autódromo José Carlos Pace (Interlagos)', country: 'Brasilien', length: '4,309 km', file: 'models/saopaulo_track.csv' },
 ];
-let selectedTrackIndex = 0;
-let currentTrackId = TRACKS[0].id; // aktuell geladene Strecke (für die Bestzeit-Zuordnung)
+// Startstrecke per URL wählbar (?track=hanoi), Standard ist die erste
+const urlTrack = new URLSearchParams(location.search).get('track');
+let selectedTrackIndex = Math.max(0, TRACKS.findIndex((t) => t.id === urlTrack));
+let currentTrackId = TRACKS[selectedTrackIndex].id; // aktuell geladene Strecke (für die Bestzeit-Zuordnung)
 // Persönliche Bestzeiten je Strecke (in localStorage gespeichert → bleiben erhalten)
 const BEST_KEY = 'bmwm4_bestTimes';
 let bestByTrack = {};
@@ -165,6 +175,8 @@ let trackGroup = null;       // aktuelle Strecken-Gruppe (zum Entfernen beim Wec
 let trackLoadedFile = null;  // zuletzt geladene CSV
 let pitDirection = null;     // Fahrtrichtung in der Boxengasse (für die Auto-Ausrichtung)
 let trackColliders = [];     // Kollisionsboxen der Mauern und Banden
+let colliderGrid = null;     // räumliches Raster über trackColliders (nur bei sehr vielen Boxen)
+const COLL_CELL = 24;        // Rasterweite in Metern
 let curbData = null;         // Mittellinie + Breiten für die Curb-Neigung
 let garageBays = [];         // gefüllte Garagen-Stellplätze (dort wird ein M4 geparkt)
 let tireWall = null;         // Reifen-Bande (InstancedMesh + Grundpositionen) fürs Schadensmodell
@@ -266,11 +278,12 @@ function buildWallColliders(g, cfg) {
     }
     flush(runStart, prev);
   }
+  buildColliderGrid(); // Raster neu, die Szenerie-Banden kamen asynchron dazu
   console.log('Wand-Hitboxen aus der Szenerie:', added, 'Boxen (aus', tris.length, 'Dreiecken)');
 }
 
 function loadScenery(cfg, parentGroup) {
-  new GLTFLoader().load(cfg.file, (gltf) => {
+  newGLTFLoader().load(cfg.file, (gltf) => {
     const g = new THREE.Group();
     g.add(gltf.scene);
     g.scale.setScalar(cfg.k);
@@ -351,7 +364,9 @@ function loadScenery(cfg, parentGroup) {
     for (let i = 0; i < data.length; i++) data[i] -= h0;
     // Startboxen neu bauen, damit sie dem Höhenprofil folgen
     if (gridBoxes) { scene.remove(gridBoxes); gridBoxes = null; }
-    // Wand-Hitboxen NACH dem Höhenfeld bauen (Bodennähe-Filter braucht groundY)
+    // Wand-Hitboxen NACH dem Höhenfeld bauen (Bodennähe-Filter braucht groundY);
+    // vorher matrixWorld auffrischen – die Normierung hat g gerade verschoben!
+    g.updateMatrixWorld(true);
     buildWallColliders(g, cfg);
     console.log('Szenerie geladen, Höhenfeld', w, 'x', h, '– Spawn-Höhe normiert um', h0.toFixed(1), 'm');
   }, undefined, (err) => console.error('Szenerie konnte nicht geladen werden:', err));
@@ -375,6 +390,7 @@ function loadTrack(file) {
       if (trackCfg && trackCfg.scenery) loadScenery(trackCfg.scenery, group);
       pitDirection = dir;
       trackColliders = colliders;
+      buildColliderGrid();
       curbData = cd;
       garageBays = bays || [];
       tireWall = tw || null;
@@ -812,18 +828,33 @@ function splitLightMesh(mesh, axis, mid, frontSign) {
 // Die Erkennung von Lichtern/Rädern/Scheiben läuft über MATERIAL-Namen und
 // funktioniert nach dem Mergen unverändert (Räder werden ohnehin per Dreiecks-
 // Clustering in 4 Räder zerlegt – aus dem einen gemergten Rad-Mesh genauso).
+// Attribut als einfaches Float32-Attribut kopieren. Quantisierte Modelle liefern
+// normalisierte int16-Attribute – auf denen darf applyMatrix4 nicht in-place
+// rechnen (Werte würden auf [-1,1] geklemmt), und mergeGeometries braucht
+// einheitliche, nicht-interleavte Typen.
+function toFloatAttribute(a) {
+  const f = new Float32Array(a.count * a.itemSize);
+  for (let i = 0; i < a.count; i++) {
+    f[i * a.itemSize] = a.getX(i);
+    if (a.itemSize > 1) f[i * a.itemSize + 1] = a.getY(i);
+    if (a.itemSize > 2) f[i * a.itemSize + 2] = a.getZ(i);
+    if (a.itemSize > 3) f[i * a.itemSize + 3] = a.getW(i);
+  }
+  return new THREE.BufferAttribute(f, a.itemSize);
+}
+
 function mergeCarMeshes(car) {
   car.updateMatrixWorld(true);
   const groups = new Map(); // Material → Geometrien (Welt-Transform eingebacken)
   car.traverse((node) => {
     if (!node.isMesh || !node.geometry?.getAttribute('position')) return;
-    let g = node.geometry.index ? node.geometry.toNonIndexed() : node.geometry.clone();
-    g.applyMatrix4(node.matrixWorld);
-    // einheitliche Attribute fürs Mergen: nur position/normal/uv behalten
+    const g = node.geometry.index ? node.geometry.toNonIndexed() : node.geometry;
+    // einheitliche Attribute fürs Mergen: nur position/normal/uv, als Float32
     const ng = new THREE.BufferGeometry();
     for (const name of ['position', 'normal', 'uv']) {
-      if (g.getAttribute(name)) ng.setAttribute(name, g.getAttribute(name));
+      if (g.getAttribute(name)) ng.setAttribute(name, toFloatAttribute(g.getAttribute(name)));
     }
+    ng.applyMatrix4(node.matrixWorld);
     if (!ng.getAttribute('normal')) ng.computeVertexNormals();
     if (!groups.has(node.material)) groups.set(node.material, []);
     groups.get(node.material).push(ng);
@@ -871,7 +902,7 @@ function loadCar(index) {
   pctEl.textContent = 'Lade Modell … 0%';
   loaderEl.classList.remove('hidden');
 
-  new GLTFLoader().load(
+  newGLTFLoader().load(
   cfg.file,
   (gltf) => {
     let car = gltf.scene;
@@ -1825,6 +1856,38 @@ function obbPushOut(a, b) {
 
 let botColliders = []; // bewegliche Hitboxen der Gegner-Bots (jede Frame aktualisiert)
 
+// Räumliches Raster über die Banden-Boxen: Szenerie-Strecken liefern zehntausende
+// Boxen – pro Frame werden dann nur noch die Zellen rund ums Auto geprüft.
+function buildColliderGrid() {
+  if (trackColliders.length < 2000) { colliderGrid = null; return; }
+  colliderGrid = new Map();
+  for (const w of trackColliders) {
+    const r = Math.max(w.halfLen, w.halfWid);
+    const x0 = Math.floor((w.cx - r) / COLL_CELL), x1 = Math.floor((w.cx + r) / COLL_CELL);
+    const z0 = Math.floor((w.cz - r) / COLL_CELL), z1 = Math.floor((w.cz + r) / COLL_CELL);
+    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+      const k = x + '|' + z;
+      let a = colliderGrid.get(k);
+      if (!a) colliderGrid.set(k, a = []);
+      a.push(w);
+    }
+  }
+}
+
+// Banden-Boxen in Autonähe einsammeln (wiederverwendetes Array, keine Allokation)
+const _nearWalls = [];
+function collectNearWalls(cx, cz) {
+  _nearWalls.length = 0;
+  const R = 8; // Auto-Halblänge + Schiebe-Reserve
+  const x0 = Math.floor((cx - R) / COLL_CELL), x1 = Math.floor((cx + R) / COLL_CELL);
+  const z0 = Math.floor((cz - R) / COLL_CELL), z1 = Math.floor((cz + R) / COLL_CELL);
+  for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+    const a = colliderGrid.get(x + '|' + z);
+    if (a) for (const w of a) _nearWalls.push(w);
+  }
+  return _nearWalls;
+}
+
 function resolveCollisions() {
   if (!carForward) return;
   const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
@@ -1834,7 +1897,11 @@ function resolveCollisions() {
     halfLen: carHalf.len, halfWid: carHalf.wid,
   };
 
-  for (const w of trackColliders.concat(botColliders)) {
+  // getrennt iterieren statt concat (keine Kopie pro Frame); mit Raster nur die Nähe
+  const walls = colliderGrid ? collectNearWalls(car.cx, car.cz) : trackColliders;
+  for (let li = 0; li < 2; li++) {
+  const list = li === 0 ? walls : botColliders;
+  for (const w of list) {
     // Grober Abstandstest, bevor das genaue SAT rechnet
     const ddx = w.cx - car.cx, ddz = w.cz - car.cz;
     const reach = car.halfLen + Math.max(w.halfLen, w.halfWid) + 0.5;
@@ -1868,6 +1935,7 @@ function resolveCollisions() {
         : Math.abs(before * align);
       if (impact > 2.5) addDamage((impact - 2.5) * 1.4);
     }
+  }
   }
 }
 
