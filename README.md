@@ -38,6 +38,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - Cockpit-Kamera mit Umsehen per Maus
 - Automatik- und sequenzielles Schaltgetriebe (6 Gänge)
 - Kollisionserkennung (Mauern, Gebäude)
+- **Schadensmodell**: Unfälle kosten Motorleistung, Topspeed und Lenkpräzision; ab ~45 % qualmt der Motor, bei 100 % **Totalschaden** (Motor aus) – Reparatur per Boxenstopp
 - Startbildschirm mit Auto-Rotation im Nachtmodus
 
 ## Physik (BMW M4 GT3 EVO)
