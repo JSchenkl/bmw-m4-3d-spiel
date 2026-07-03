@@ -35,7 +35,7 @@ function buildStrip(left, right, y, closed) {
   return geo;
 }
 
-export async function createTrack(file) {
+export async function createTrack(file, opts = {}) {
   const text = await (await fetch(file)).text();
   const rows = text.split('\n')
     .map((l) => l.trim())
@@ -63,6 +63,9 @@ export async function createTrack(file) {
   const total = s[n - 1] + pts[0].distanceTo(pts[n - 1]);
 
   const group = new THREE.Group();
+  // Szenerie-Modus: Optik kommt aus einem 3D-Modell – eigene Sichtteile weglassen,
+  // Physik (Kollisionen, Mittellinie, Boxengassen-Logik) aber normal aufbauen
+  const addVisual = (obj) => { if (!opts.scenery) group.add(obj); };
 
   // Kollisionsboxen (2D, auf den Boden projiziert) für Mauern und Gebäude:
   // { cx, cz: Mittelpunkt, ax, az: Einheitsvektor der Längsachse, halfLen, halfWid }
@@ -74,14 +77,14 @@ export async function createTrack(file) {
   const asphaltMat = new THREE.MeshStandardMaterial({ color: 0x3c3c40, roughness: 0.95, side: THREE.DoubleSide });
   const asphalt = new THREE.Mesh(buildStrip(leftEdge, rightEdge, ASPHALT_Y, true), asphaltMat);
   asphalt.receiveShadow = true;
-  group.add(asphalt);
+  addVisual(asphalt);
 
   // --- Weiße Randlinien ---
   const lineMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.8, side: THREE.DoubleSide });
   const leftIn = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], wLeft[i] - 0.35));
   const rightIn = pts.map((p, i) => p.clone().addScaledVector(leftNs[i], -(wRight[i] - 0.35)));
-  group.add(new THREE.Mesh(buildStrip(leftEdge, leftIn, LINE_Y, true), lineMat));
-  group.add(new THREE.Mesh(buildStrip(rightIn, rightEdge, LINE_Y, true), lineMat));
+  addVisual(new THREE.Mesh(buildStrip(leftEdge, leftIn, LINE_Y, true), lineMat));
+  addVisual(new THREE.Mesh(buildStrip(rightIn, rightEdge, LINE_Y, true), lineMat));
 
   // --- Rot-weiße Curbs entlang der GESAMTEN Strecke (beidseitig) ---
   const CURB_WIDTH = 1.3;
@@ -121,13 +124,13 @@ export async function createTrack(file) {
       color: curbColors[key], roughness: 0.75, side: THREE.DoubleSide,
     }));
     mesh.receiveShadow = true;
-    group.add(mesh);
+    addVisual(mesh);
   }
 
   // --- Start/Ziel-Linie (am Datenpunkt 0) ---
   const sfA = [leftEdge[0], rightEdge[0]].map((p) => p.clone().addScaledVector(tangents[0], -2));
   const sfB = [leftEdge[0], rightEdge[0]].map((p) => p.clone().addScaledVector(tangents[0], 2));
-  group.add(new THREE.Mesh(
+  addVisual(new THREE.Mesh(
     buildStrip([sfA[0], sfB[0]], [sfA[1], sfB[1]], LINE_Y + 0.01, false),
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, side: THREE.DoubleSide })
   ));
@@ -163,7 +166,7 @@ export async function createTrack(file) {
   const pitMat = new THREE.MeshStandardMaterial({ color: 0x2e2e33, roughness: 0.95, side: THREE.DoubleSide });
   const pit = new THREE.Mesh(buildStrip(pitLeft, pitRight, PIT_Y, false), pitMat);
   pit.receiveShadow = true;
-  group.add(pit);
+  addVisual(pit);
 
   // --- Boxengaragen: offene Häuser mit je 2 Stellplätzen, außen grau, innen weiß ---
   // In jedem Stellplatz parkt ein BMW M4 (Spielerauto, in main.js geklont) –
@@ -184,7 +187,7 @@ export async function createTrack(file) {
   let garageSpawn = null, garageSpawnDir = null;
   const garageBaysRaw = [];                            // gefüllte Stellplätze (Welt vor Verschiebung)
 
-  for (const k of houseKs) {
+  for (const k of (opts.scenery ? [] : houseKs)) { // Szenerie-Modus: Modell bringt eigene Gebäude mit
     const i = seq[k];
     const t = tangents[i], nrm = leftNs[i];
     const angle = Math.atan2(t.x, t.z);                // lokal: z entlang Gasse, x quer
@@ -193,7 +196,7 @@ export async function createTrack(file) {
       const p = P(u, D);
       const m = new THREE.Mesh(new THREE.BoxGeometry(sd, h, sa), mat); // x=quer(sd), z=entlang(sa)
       m.position.set(p.x, y, p.z); m.rotation.y = angle;
-      m.castShadow = false; m.receiveShadow = true; group.add(m); // kein Schatten → Innenraum hell
+      m.castShadow = false; m.receiveShadow = true; addVisual(m); // kein Schatten → Innenraum hell
     };
     // graue Außenstruktur
     addBox(0, D_back - WALL / 2, GA_H / 2, houseW, WALL, GA_H, garageGreyMat);                 // Rückwand
@@ -239,7 +242,7 @@ export async function createTrack(file) {
     wall.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
     wall.castShadow = true;
     wall.receiveShadow = true;
-    group.add(wall);
+    addVisual(wall);
     colliders.push({
       cx: mid.x, cz: mid.z,
       ax: (b.x - a.x) / len, az: (b.z - a.z) / len,
@@ -397,11 +400,11 @@ export async function createTrack(file) {
         seg.tireTo = tireMatrices.length;
       }
     }
-    const grassMesh = new THREE.Mesh(mkGeo(grass), grassMat); grassMesh.receiveShadow = true; group.add(grassMesh);
-    const gMesh = new THREE.Mesh(mkGeo(gravel), gravelMat); gMesh.receiveShadow = true; group.add(gMesh);
+    const grassMesh = new THREE.Mesh(mkGeo(grass), grassMat); grassMesh.receiveShadow = true; addVisual(grassMesh);
+    const gMesh = new THREE.Mesh(mkGeo(gravel), gravelMat); gMesh.receiveShadow = true; addVisual(gMesh);
     for (const part of [[backRed, backRedMat], [backWhite, backWhiteMat]]) {
       const backMesh = new THREE.Mesh(mkGeo(part[0]), part[1]);
-      backMesh.castShadow = true; backMesh.receiveShadow = true; group.add(backMesh);
+      backMesh.castShadow = true; backMesh.receiveShadow = true; addVisual(backMesh);
     }
   }
 
@@ -413,7 +416,7 @@ export async function createTrack(file) {
     tires.instanceMatrix.needsUpdate = true;
     tires.castShadow = true; tires.receiveShadow = true;
     tires.frustumCulled = false; // Bande umschließt die gesamte Strecke
-    group.add(tires);
+    addVisual(tires);
     tireWall = { mesh: tires, base: tireBase }; // fürs Schadensmodell (Positionen sind Gruppen-lokal)
   }
 
