@@ -379,22 +379,22 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec) {
   }
   dashPrev = ''; // beim (Neu-)Aufbau einmal frisch zeichnen
   const dashMat = new THREE.MeshBasicMaterial({ map: dashTex, toneMapped: false });
-  const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.12), dashMat);
+  const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.20, 0.10), dashMat);
   const dashPos = eyeLocal.clone()
-    .addScaledVector(fwd, 0.55)        // knapp hinter dem Lenkrad
-    .addScaledVector(sideVec, 0.16)    // mittig über der Lenksäule
-    .addScaledVector(UP, -0.14);
+    .addScaledVector(fwd, 0.60)        // auf dem Fahrer-Display hinter dem Lenkrad
+    .addScaledVector(sideVec, 0.01)
+    .addScaledVector(UP, -0.24);
   dash.position.copy(dashPos);
   dash.lookAt(eyeLocal);               // zum Fahrer ausrichten
   cockpitScreens.add(dash);
 
   // --- rechtes Center-Display: Rückspiegel (RenderTarget-Textur) ---
   const mirMat = new THREE.MeshBasicMaterial({ map: mirrorRT.texture, toneMapped: false });
-  const mir = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.146), mirMat);
+  const mir = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.118), mirMat);
   const mirPos = eyeLocal.clone()
-    .addScaledVector(fwd, 0.60)
-    .addScaledVector(sideVec, -0.38)   // rechts vom Fahrer (Mittelkonsole)
-    .addScaledVector(UP, -0.16);
+    .addScaledVector(fwd, 0.63)
+    .addScaledVector(sideVec, -0.17)   // rechts daneben (Beifahrer-Display)
+    .addScaledVector(UP, -0.24);
   mir.position.copy(mirPos);
   mir.lookAt(eyeLocal);
   cockpitScreens.add(mir);
