@@ -381,9 +381,11 @@ export async function createTrack(file, opts = {}) {
       if (clen >= 0.01) {
         const dirx = (oj.x - oi.x) / clen, dirz = (oj.z - oi.z) / clen;
         const cmid = oi.clone().add(oj).multiplyScalar(0.5);
-        // Reifen-Indexbereich dieses Segments für das Schadensmodell festhalten
+        // Reifen-Indexbereich dieses Segments für das Schadensmodell festhalten.
+        // Szenerie-Modus: KEINE Banden-Hitboxen – die prozedural berechneten Positionen
+        // passen nicht zu den echten Mauern/Leitplanken des 3D-Modells.
         const seg = { cx: cmid.x, cz: cmid.z, ax: dirx, az: dirz, halfLen: clen / 2 + 0.05, halfWid: 0.12, tireFrom: tireMatrices.length };
-        colliders.push(seg);
+        if (!opts.scenery) colliders.push(seg);
         // Reifen entlang des Segments verteilen (Reifenachse quer zur Bande, zwei Reihen)
         _tA.set(dirz, 0, -dirx);
         _tQ.setFromUnitVectors(_tZ, _tA);

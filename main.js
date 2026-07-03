@@ -160,6 +160,7 @@ let tireWall = null;         // Reifen-Bande (InstancedMesh + Grundpositionen) f
 let tireDmg = null;          // kumulierter Versatz je Reifen (dx,dy,dz) durch Einschläge
 
 // ---------- Szenerie aus einem 3D-Modell (z. B. Spa 1992) + Höhenfeld ----------
+let sceneryTrack = false;  // aktuelle Strecke nutzt ein Szenerie-Modell (Kies/Gras-Zonen aus)
 let sceneryGroup = null;   // das gerenderte Streckenmodell
 let sceneryHeight = null;  // Höhenraster { x0, z0, cell, w, h, data } in Weltkoordinaten
 const groundY = (x, z) => {
@@ -265,7 +266,8 @@ function loadTrack(file) {
       // Szenerie-Modell (falls vorhanden) laden; Boden/Sichtteile kommen dann von dort
       if (sceneryGroup) { sceneryGroup = null; }
       sceneryHeight = null;
-      ground.visible = !(trackCfg && trackCfg.scenery);
+      sceneryTrack = !!(trackCfg && trackCfg.scenery);
+      ground.visible = !sceneryTrack;
       if (trackCfg && trackCfg.scenery) loadScenery(trackCfg.scenery, group);
       pitDirection = dir;
       trackColliders = colliders;
@@ -3030,6 +3032,8 @@ function _carNearPitLane(px, pz) {
 }
 
 function carOnGrass() {
+  // Szenerie-Strecken: Kies-/Gras-Zonen des Generators passen nicht zum Modell → keine Grip-Zonen
+  if (sceneryTrack) return false;
   if (!curbData) return false;
   const px = carGroup.position.x, pz = carGroup.position.z;
   if (_carNearPitLane(px, pz)) return false;
@@ -3044,6 +3048,7 @@ function carOnGrass() {
 }
 
 function carOnGravel() {
+  if (sceneryTrack) return false; // s. carOnGrass()
   if (!curbData) return false;
   const px = carGroup.position.x, pz = carGroup.position.z;
   if (_carNearPitLane(px, pz)) return false;
