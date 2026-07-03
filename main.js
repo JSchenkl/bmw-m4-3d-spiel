@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createTrack } from './track.js';
 import * as engineAudio from './audio.js';
@@ -238,15 +239,13 @@ const CARS = [
     name: 'BMW M4 GT3 EVO',
     short: 'BMW M4 GT3',
     subtitle: 'GT3-Rennwagen · 3D Viewer',
-    // Hinweis: bis ein M4-GT3-EVO-GLB (Werkslackierung 2025) im Repo liegt, wird das
-    // vorhandene M4-Modell angezeigt – Fahrdynamik, Sound und Flammen sind bereits GT3.
-    // Sobald models/bmw_m4_gt3.glb existiert, hier nur den Dateinamen tauschen.
-    file: 'models/bmw_m4.glb',
-    length: 4.8,            // reale Fahrzeuglänge in Metern
-    lightRe: /headlight|redlight|tail|led|light/,
-    redRe: /redlight|tail/,
-    rimRe: /rim/,
-    windowRe: /windows/,
+    // „2022 BMW M4 GT3" von Ddiaz Design (Sketchfab, CC-BY-NC-SA-4.0)
+    file: 'models/2022_bmw_m4_gt3.glb',
+    length: 5.02,           // reale Fahrzeuglänge in Metern (M4 GT3 inkl. Flügel)
+    lightRe: /light|red_glass/,   // LightA-Material (Front + Heck) und rotes Rücklicht-Glas
+    redRe: /red_glass/,           // rotes Glas sitzt am Heck → bestimmt die Fahrtrichtung
+    rimRe: /wheel/,               // Wheel1A-Material = Felgen/Reifen
+    windowRe: /window_material/,  // nur die Scheiben (RED_GLASS ausgenommen)
     forward: null,          // Fahrtrichtung wird aus den Rücklichtern bestimmt
   },
 ];
@@ -477,6 +476,43 @@ function splitLightMesh(mesh, axis, mid, frontSign) {
   };
 }
 
+// Meshes gleichen Materials zu je einem Mesh zusammenfassen. Das GT3-Modell besteht
+// aus ~2260 Einzel-Meshes (= Draw-Calls) – gemergt sind es nur noch ~21. Ohne diesen
+// Schritt bricht die Framerate ein, sobald die 5 Bot-Klone dazukommen.
+// Die Erkennung von Lichtern/Rädern/Scheiben läuft über MATERIAL-Namen und
+// funktioniert nach dem Mergen unverändert (Räder werden ohnehin per Dreiecks-
+// Clustering in 4 Räder zerlegt – aus dem einen gemergten Rad-Mesh genauso).
+function mergeCarMeshes(car) {
+  car.updateMatrixWorld(true);
+  const groups = new Map(); // Material → Geometrien (Welt-Transform eingebacken)
+  car.traverse((node) => {
+    if (!node.isMesh || !node.geometry?.getAttribute('position')) return;
+    let g = node.geometry.index ? node.geometry.toNonIndexed() : node.geometry.clone();
+    g.applyMatrix4(node.matrixWorld);
+    // einheitliche Attribute fürs Mergen: nur position/normal/uv behalten
+    const ng = new THREE.BufferGeometry();
+    for (const name of ['position', 'normal', 'uv']) {
+      if (g.getAttribute(name)) ng.setAttribute(name, g.getAttribute(name));
+    }
+    if (!ng.getAttribute('normal')) ng.computeVertexNormals();
+    if (!groups.has(node.material)) groups.set(node.material, []);
+    groups.get(node.material).push(ng);
+  });
+  const merged = new THREE.Group();
+  for (const [material, geos] of groups) {
+    // Teile ohne UV mit Null-UVs auffüllen, damit alle Attribute übereinstimmen
+    const withUv = geos.some((g) => g.getAttribute('uv'));
+    for (const g of geos) {
+      if (withUv && !g.getAttribute('uv')) {
+        g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
+      }
+    }
+    const mg = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+    if (mg) merged.add(new THREE.Mesh(mg, material));
+  }
+  return merged;
+}
+
 function loadCar(index) {
   const cfg = CARS[index];
 
@@ -506,7 +542,11 @@ function loadCar(index) {
   new GLTFLoader().load(
   cfg.file,
   (gltf) => {
-    const car = gltf.scene;
+    let car = gltf.scene;
+    // Viel-Mesh-Modelle (z. B. GT3: ~2260 Meshes) nach Material zusammenfassen
+    let meshCount = 0;
+    car.traverse((n) => { if (n.isMesh) meshCount++; });
+    if (meshCount > 200) car = mergeCarMeshes(car);
 
     // --- Normalisieren: zentrieren, auf Boden stellen, auf reale Größe skalieren ---
     let box = new THREE.Box3().setFromObject(car);
