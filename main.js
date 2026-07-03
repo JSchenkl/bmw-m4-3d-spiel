@@ -131,8 +131,9 @@ const TRACKS = [
     file: 'models/spa1992_track.csv',
     scenery: {
       file: 'spa_francorchamps_1992_layout.glb', k: 0.18095075, offX: 698.586, offZ: 1163.1662,
-      // Startplatz in der Boxengasse des Modells: links der Start/Ziel-Geraden, 60 m vor der Linie
-      pitSpawn: { x: 1169.4, z: 955.7, dx: 0.4677, dz: -0.8839 },
+      // Startplatz auf der Boxengassen-Fahrbahn des Modells (diagonal vor den Boxengebäuden),
+      // per Straßenraster-Abtastung bestimmt: ~200 m vor Start/Ziel, 35 m links
+      pitSpawn: { x: 1123.4, z: 1089.8, dx: 0.2393, dz: -0.9707 },
     },
   },
   { id: 'hockenheim', name: 'Hockenheimring', country: 'Deutschland', length: '4,574 km', file: 'models/hockenheim_track.csv' },
