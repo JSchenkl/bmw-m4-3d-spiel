@@ -277,8 +277,8 @@ const STEER_WHEEL = {
   ahead: 0.40,   // Meter vor dem Auge (Lenkrad-Mitte, GT3-Rennlenkrad)
   drop: 0.26,    // Meter unter dem Auge (GT3-Lenkrad sitzt tief)
   side: 0.0,     // zentriert unter dem Fahrerauge
-  rad: 0.20,     // halbe Box-Größe quer & hoch (Meter)
-  depth: 0.14,   // halbe Box-Tiefe in Längsrichtung (Meter, dünn → Armaturen dahinter bleiben verschont)
+  rad: 0.17,     // halbe Box-Größe quer & hoch (Meter) – knapp ums Lenkrad
+  depth: 0.07,   // halbe Box-Tiefe (Meter): nur die Lenkradebene, Konsole/Verkleidung dahinter bleiben stehen
   tilt: 0.40,    // Neigung der Lenksäule (rad, ~23°)
   sign: 1,       // Drehrichtung des Lenkrads (umdrehen, falls verkehrt herum)
   ratio: 5,      // Lenkrad dreht stärker als die Räder (Volleinschlag ≈ 160°)
