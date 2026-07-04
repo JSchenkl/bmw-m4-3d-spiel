@@ -154,7 +154,9 @@ const TRACKS = [
     file: 'models/hanoi_track.csv',
     scenery: {
       file: 'models/hanoi/hanoi.glb', k: 1.02600301, offX: 1620.4811, offZ: 1104.7361,
-      offY: 1.13, flat: true,
+      // Höhenfeld wie bei Spa (Fahrbahn liegt 1,15–1,45 m hoch, nicht auf 0!);
+      // maxH schließt Gebäudedächer/Brücken vom Bodenraster aus
+      offY: 1.13, maxH: 3,
       pitSpawn: { x: 616.4, z: 1331.2, dx: 0.9983, dz: -0.0589 },
     },
   },
@@ -326,6 +328,8 @@ function loadScenery(cfg, parentGroup) {
           v.fromBufferAttribute(pos, idx ? idx.getX(i + j) : i + j).applyMatrix4(mesh.matrixWorld);
           P[j] = { x: (v.x - box.min.x) / cellM, z: (v.z - box.min.z) / cellM, y: v.y };
         }
+        // Dächer/Brücken nicht ins Bodenraster übernehmen (Stadtkurse: maxH gesetzt)
+        if (cfg.maxH !== undefined && Math.min(P[0].y, P[1].y, P[2].y) > cfg.maxH) continue;
         // Dreieck ins Raster malen (Baryzentrie), pro Zelle die HÖCHSTE Fläche
         const x0 = Math.max(0, Math.floor(Math.min(P[0].x, P[1].x, P[2].x)));
         const x1 = Math.min(w - 1, Math.ceil(Math.max(P[0].x, P[1].x, P[2].x)));
@@ -401,7 +405,6 @@ function loadTrack(file) {
       if (gridBoxes) { scene.remove(gridBoxes); gridBoxes = null; } // Startboxen neu aufbauen
       alignCarToPitlane();
       trackLoadedFile = file;
-      repairCar(); // neue Strecke = frisches Auto
       // Strecke gewechselt: Ghost-/Rundenmessung zurücksetzen, Bestzeit dieser Strecke laden
       currentTrackId = fileToTrackId(file) || currentTrackId;
       if (ghost.mesh) { scene.remove(ghost.mesh); disposeGhostMaterials(); ghost.mesh = null; }
@@ -657,8 +660,7 @@ function updateDashScreen() {
   const frac = forward ? Math.min(1, Math.abs(speed) / GEAR_MAX_SPEED[gear]) : 0;
   const leds = REV_TH.filter((t) => frac >= t).length;
   const blink = performance.now() % 260 < 130; // Blink-Phase (nur am Limit relevant)
-  const dmg = Math.round(carDamage);
-  const state = `${gearTxt}|${spd}|${leds}|${frac >= REV_TH[4] ? blink : '-'}|${dmg}`;
+  const state = `${gearTxt}|${spd}|${leds}|${frac >= REV_TH[4] ? blink : '-'}`;
   if (state === dashPrev) return;
   dashPrev = state;
 
@@ -689,13 +691,6 @@ function updateDashScreen() {
   g.font = "bold 26px 'Segoe UI', Arial, sans-serif";
   g.fillStyle = 'rgba(255,255,255,0.5)';
   g.fillText('km/h', 330, 234);
-  // Schadensbalken am unteren Rand (erst ab 1 % sichtbar)
-  if (dmg >= 1) {
-    g.fillStyle = 'rgba(255,255,255,0.12)';
-    g.fillRect(12, 244, 488, 8);
-    g.fillStyle = dmg >= 60 ? '#ff5252' : (dmg >= 30 ? '#ff8a50' : '#ffd54a');
-    g.fillRect(12, 244, 488 * (dmg / 100), 8);
-  }
   dashTex.needsUpdate = true;
 }
 
@@ -1679,80 +1674,6 @@ function autoShiftGear(keyFwd, keyRev) {
 // Gang: Je näher am Gang-Höchsttempo, desto mehr Lichter. Leuchtet das 5. (rote)
 // Licht und blinkt alles, ist die perfekte Drehzahl zum HOCHSCHALTEN erreicht.
 // Sind die Touren zu niedrig (nur die grünen blinken), ist RUNTERSCHALTEN dran.
-// ---------- Schadensmodell ----------
-// Kollisionen beschädigen das Auto (0…100 %). Der Schaden wirkt realistisch aufs
-// Fahren: weniger Motorleistung & Topspeed (Aero-/Motorschaden), schwammigere
-// Lenkung (Achsschaden). Ab 100 % = TOTALSCHADEN → Motor aus, nur noch ausrollen.
-// Reparatur: „Zurück in die Boxengasse" (Menü) oder neuer Rennstart.
-let carDamage = 0;
-let dmgMsgStep = 0; // letzte gemeldete Schadensstufe (gegen Meldungs-Spam)
-const damageEl = document.getElementById('damage');
-function addDamage(amount) {
-  if (amount <= 0 || carDamage >= 100) return;
-  carDamage = Math.min(100, carDamage + amount);
-  if (carDamage >= 100 && dmgMsgStep < 100) {
-    dmgMsgStep = 100;
-    showPenaltyMsg('💥 TOTALSCHADEN — „Zurück in die Boxengasse" (Menü) repariert das Auto');
-  } else if (carDamage >= 60 && dmgMsgStep < 60) {
-    dmgMsgStep = 60;
-    showRaceMsg('⚠ Schwerer Schaden — Leistung & Lenkung stark beeinträchtigt', '#ff8a50');
-  } else if (carDamage >= 30 && dmgMsgStep < 30) {
-    dmgMsgStep = 30;
-    showRaceMsg('⚠ Leichter Schaden — Leistung reduziert', '#ffd54a');
-  }
-}
-function repairCar() {
-  carDamage = 0;
-  dmgMsgStep = 0;
-}
-// Schadens-Faktoren fürs Fahrverhalten (1 = unbeschädigt)
-const dmgPowerFactor = () => (carDamage >= 100 ? 0 : 1 - 0.55 * (carDamage / 100)); // bis −55 % Leistung
-const dmgSpeedFactor = () => 1 - 0.25 * (carDamage / 100);                          // bis −25 % Topspeed
-const dmgSteerFactor = () => 1 - 0.35 * (carDamage / 100);                          // bis −35 % Lenkwinkel
-
-// Rauch aus dem Motorraum bei schwerem Schaden
-const SMOKE_N = 130;
-let smokePoints = null, smokePos = null;
-const smokeVel = [], smokeLife = [];
-let smokeNext = 0, smokeAcc = 0;
-function initSmoke() {
-  smokePos = new Float32Array(SMOKE_N * 3);
-  for (let i = 0; i < SMOKE_N; i++) { smokePos[i * 3 + 1] = -9999; smokeVel.push(new THREE.Vector3()); smokeLife.push(0); }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(smokePos, 3));
-  const mat = new THREE.PointsMaterial({ color: 0x777a80, size: 1.1, transparent: true, opacity: 0.4, depthWrite: false });
-  smokePoints = new THREE.Points(geo, mat);
-  smokePoints.frustumCulled = false;
-  scene.add(smokePoints);
-}
-function updateSmoke(dt) {
-  if (!smokePoints) initSmoke();
-  // ab ~45 % Schaden qualmt der Motor, mit dem Schaden zunehmend dichter
-  if (carDamage > 45 && carForward && gameStarted) {
-    const rate = (carDamage - 40) / 12; // Partikel pro Sekunde ansteigend
-    smokeAcc += rate * dt;
-    const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
-    while (smokeAcc >= 1) {
-      smokeAcc -= 1;
-      const i = smokeNext; smokeNext = (smokeNext + 1) % SMOKE_N;
-      smokePos[i * 3] = carGroup.position.x + fwd.x * carHalf.len * 0.7 + (Math.random() - 0.5) * 0.5;
-      smokePos[i * 3 + 1] = carGroup.position.y + 0.9;
-      smokePos[i * 3 + 2] = carGroup.position.z + fwd.z * carHalf.len * 0.7 + (Math.random() - 0.5) * 0.5;
-      smokeVel[i].set((Math.random() - 0.5) * 0.6, 1.0 + Math.random() * 1.2, (Math.random() - 0.5) * 0.6);
-      smokeLife[i] = 1.0 + Math.random() * 0.8;
-    }
-  }
-  for (let i = 0; i < SMOKE_N; i++) {
-    if (smokeLife[i] <= 0) continue;
-    smokeLife[i] -= dt;
-    if (smokeLife[i] <= 0) { smokePos[i * 3 + 1] = -9999; continue; }
-    smokePos[i * 3] += smokeVel[i].x * dt;
-    smokePos[i * 3 + 1] += smokeVel[i].y * dt;
-    smokePos[i * 3 + 2] += smokeVel[i].z * dt;
-  }
-  smokePoints.geometry.attributes.position.needsUpdate = true;
-}
-
 const revLights = [...document.querySelectorAll('#revlights i')];
 const REV_TH = [0.45, 0.6, 0.72, 0.83, 0.9]; // Drehzahl-Anteil, ab dem Licht 1…5 angeht
 
@@ -1925,15 +1846,8 @@ function resolveCollisions() {
       speed *= slide * 0.9;
       // Crash mit einem Auto (Bot): nicht auf 0, sondern auf das Tempo des anderen abbremsen
       if (w.v !== undefined && before > 0) speed = Math.max(speed, Math.min(before, w.v));
-      // Schadensmodell der Reifen-Bande: Aufprall drückt die getroffenen Reifen weg
+      // Reifen-Bande: Aufprall drückt die getroffenen Reifen weg (nur Optik)
       else if (w.tireFrom !== undefined) damageTireWall(w, before, push);
-
-      // Fahrzeugschaden: Härte = Tempoanteil senkrecht in die Wand (frontal schwer,
-      // streifend leicht); bei Auto-Kontakt zählt der Tempo-Unterschied zum Gegner.
-      const impact = w.v !== undefined
-        ? Math.abs(before - w.v) * Math.abs(align)
-        : Math.abs(before * align);
-      if (impact > 2.5) addDamage((impact - 2.5) * 1.4);
     }
   }
   }
@@ -2090,7 +2004,7 @@ function updateCar(dt) {
       const pull = F_TRACTION * GEAR_PULL[gear];
       const fade = Math.max(0, 1 - Math.pow(v / vmaxGear, 9)); // Renn-Drehband: Zugkraft bleibt bis kurz vor den Begrenzer voll da
       // weiterhin leistungsbegrenzt (P = F·v), beim Anfahren traktionsbegrenzt
-      const fDrive = Math.min(pull, POWER_WHEEL / Math.max(v, 3)) * throttle * fade * ACCEL_BOOST * dmgPowerFactor();
+      const fDrive = Math.min(pull, POWER_WHEEL / Math.max(v, 3)) * throttle * fade * ACCEL_BOOST;
       // Überschreitet der Heck-Anteil (90 %) die Heck-Haftung, drehen die Räder durch
       slipTarget = Math.max(0, (fDrive * DRIVE_REAR - REAR_GRIP) / REAR_GRIP);
       const grip = 1 - 0.12 * Math.min(1, slipTarget); // durchdrehende Reifen ziehen etwas schlechter
@@ -2103,7 +2017,7 @@ function updateCar(dt) {
   } else if (reverseInput) {
     accel = speed > 0
       ? -(BRAKE_DECEL * 0.6)                               // erst abbremsen …
-      : -(Math.min(F_TRACTION, POWER_WHEEL / 5) - fDrag - fRoll) / MASS * 0.25 * reverseInput * dmgPowerFactor(); // … dann rückwärts (Totalschaden: Motor aus)
+      : -(Math.min(F_TRACTION, POWER_WHEEL / 5) - fDrag - fRoll) / MASS * 0.25 * reverseInput; // … dann rückwärts
   } else {
     // Ausrollen: nur Fahrwiderstände + leichte Motorbremse
     const d = (fDrag + fRoll) / MASS + 0.6;
@@ -2111,10 +2025,10 @@ function updateCar(dt) {
   }
 
   speed += accel * dt;
-  speed = Math.min(Math.max(speed, MAX_REVERSE), VMAX * dmgSpeedFactor()); // Abregelung (Schaden senkt Topspeed)
+  speed = Math.min(Math.max(speed, MAX_REVERSE), VMAX); // Abregelung
 
   // Lenkwinkel weich zum Zieleinschlag führen; Achsschaden macht die Lenkung schwammiger
-  const steerTarget = steer * MAX_STEER * dmgSteerFactor();
+  const steerTarget = steer * MAX_STEER;
   const rate = (steer === 0 ? STEER_RATE * 2 : STEER_RATE) * MAX_STEER * dt;
   steerAngle += THREE.MathUtils.clamp(steerTarget - steerAngle, -rate, rate);
 
@@ -2194,13 +2108,6 @@ function updateCar(dt) {
 
   speedNumEl.textContent = Math.round(Math.abs(speed) * 3.6);
   gearEl.innerHTML = `<span>GANG${autoGearbox ? ' · A' : ''}</span> ${gear === 0 ? 'R' : gear}`;
-  if (damageEl) {
-    damageEl.style.display = carDamage >= 1 ? '' : 'none';
-    damageEl.innerHTML = carDamage >= 100
-      ? '<span>SCHADEN</span> 💥 TOTAL'
-      : `<span>SCHADEN</span> ${Math.round(carDamage)}%`;
-    damageEl.style.color = carDamage >= 60 ? '#ff5252' : (carDamage >= 30 ? '#ff8a50' : '#ffd54a');
-  }
   updateRevLights(speed);
 
   // Schaltsound bei Gangwechsel (gilt für Hand- wie Automatikgetriebe; R bleibt stumm)
@@ -2560,7 +2467,6 @@ btnPit.addEventListener('click', () => {
   prevGearSound = 1;
    alignCarToPitlane();                 // in Fahrtrichtung der Boxengasse ausrichten
   prevCarPos.copy(carGroup.position);  // keinen Kamerasprung erzeugen
-  if (carDamage > 0) { repairCar(); showRaceMsg('🔧 Auto repariert', '#69f0ae'); } // Boxenstopp = Reparatur
   armLap();                            // frische, gemessene Runde ab der Box
   updateLapHud();
 });
@@ -2573,7 +2479,7 @@ btnHome.addEventListener('click', () => {
   removeBots();
   raceReset();
 
-  // Auto an den Startplatz, Tempo/Gang zurück, Schaden reparieren
+  // Auto an den Startplatz, Tempo/Gang zurück
   repairCar();
   carGroup.position.set(0, 0.05, 0);
   speed = 0; steerAngle = 0; carRoll = 0; gear = 1; autoReverse = false; prevGearSound = 1;  alignCarToPitlane();
@@ -3000,7 +2906,6 @@ function setupGrid() {
   const entries = computeGridEntries();
 
   if (!bots.length) createBots();
-  repairCar();               // Rennstart mit unbeschädigtem Auto
   race.crossings = 0;        // Rundenzähler des Spielers zurücksetzen
   race.lapClock = 0; race.lapTimes = []; // Rundenzeiten fürs Ergebnis zurücksetzen
   const total = centerline.total;
@@ -3299,7 +3204,7 @@ renderer.setAnimationLoop(() => {
   if (gameStarted && raceMode && !gamePaused()) { updateRace(dt); updateBots(dt); }
 
   updateCar(dt);
-  if (!gamePaused()) { updateDust(dt); updateFlames(dt); updateSmoke(dt); }
+  if (!gamePaused()) { updateDust(dt); updateFlames(dt); }
   updateLightsFollow();
 
   // Bei offenem Menü pausiert nur die Fahrphysik & die Rundenuhr (das Auto behält sein Tempo).
