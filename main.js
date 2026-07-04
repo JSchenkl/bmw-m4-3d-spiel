@@ -1094,10 +1094,13 @@ function loadCar(index) {
       boxHalf.y = STEER_WHEEL.rad;
       const region = new THREE.Box3(center.clone().sub(boxHalf), center.clone().add(boxHalf));
 
-      // Drehachse = Lenksäule: Fahrtrichtung, um die Querachse nach unten geneigt
-      const sideAxis = new THREE.Vector3();
-      sideAxis[widthAxis] = 1;
-      const columnAxisWorld = carForward.clone().applyAxisAngle(sideAxis, STEER_WHEEL.tilt).normalize();
+      // Drehachse = Lenksäule: Fahrtrichtung, um tilt nach UNTEN geneigt (senkrecht
+      // zur Lenkradebene). Direkt aus Fahrtrichtung+UP gebaut – applyAxisAngle um die
+      // Querachse kippte je nach Welt-Ausrichtung des Autos in die falsche Richtung.
+      const columnAxisWorld = carForward.clone()
+        .multiplyScalar(Math.cos(STEER_WHEEL.tilt))
+        .addScaledVector(UP, -Math.sin(STEER_WHEEL.tilt))
+        .normalize();
 
       // Nur Innenraum-/Ausstattungs-Meshes prüfen – NICHT die Karosserie (Paint/Base/…),
       // sonst rotieren Dach-/Armaturenteile mit, die zufällig die Box schneiden.
@@ -1110,6 +1113,8 @@ function loadCar(index) {
 
       const _c = new THREE.Vector3();
       const _t = new THREE.Vector3();
+      const wheelPts = [];      // Welt-Schwerpunkte der Lenkrad-Dreiecke (für die Achse)
+      const pendingParts = [];  // Pivots, deren Achse nach der Ebenen-Messung gesetzt wird
       for (const mesh of interiorMeshes) {
         const geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
         const pos = geo.getAttribute('position');
@@ -1122,7 +1127,7 @@ function loadCar(index) {
             _c.add(_t);
           }
           _c.multiplyScalar(1 / 3);
-          if (region.containsPoint(_c)) grabbedIdx.push(i, i + 1, i + 2);
+          if (region.containsPoint(_c)) { grabbedIdx.push(i, i + 1, i + 2); wheelPts.push(_c.clone()); }
           else keptIdx.push(i, i + 1, i + 2);
         }
         if (!grabbedIdx.length) continue;
@@ -1135,21 +1140,64 @@ function loadCar(index) {
         };
         mesh.geometry = makeGeo(keptIdx); // der Rest des Innenraums bleibt stehen
 
-        const invW = mesh.matrixWorld.clone().invert();
-        const centerL = center.clone().applyMatrix4(invW);
-        const axisL = columnAxisWorld.clone().transformDirection(invW).normalize();
-
         const mat = STEER_WHEEL.debug
           ? new THREE.MeshStandardMaterial({ color: 0xff1010, emissive: 0xaa0000, emissiveIntensity: 1 })
           : mesh.material;
         const wheelMesh = new THREE.Mesh(makeGeo(grabbedIdx), mat);
         wheelMesh.castShadow = true;
-        wheelMesh.position.copy(centerL).negate(); // Geometrie bleibt am Platz, dreht aber um den Pivot
+        // Pivot-Position wird NACH der Ebenen-Messung gesetzt (echtes Lenkrad-Zentrum)
+        pendingParts.push({ mesh, invW: mesh.matrixWorld.clone().invert(), wheelMesh });
+      }
+
+      // Echte Drehachse = Normale der Lenkradebene, per PCA aus den herausgelösten
+      // Dreiecken: Die Richtung mit der KLEINSTEN Streuung steht senkrecht auf dem
+      // (annähernd flachen) Lenkrad – exakt die Lenksäulen-Achse dieses Modells.
+      const wheelCenter = center.clone(); // Fallback: konfigurierter Schätzwert
+      if (wheelPts.length > 30) {
+        const m = new THREE.Vector3();
+        for (const p of wheelPts) m.add(p);
+        m.multiplyScalar(1 / wheelPts.length);
+        wheelCenter.copy(m); // echtes Zentrum: Schwerpunkt der Lenkrad-Dreiecke
+        let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
+        for (const p of wheelPts) {
+          const dx = p.x - m.x, dy = p.y - m.y, dz = p.z - m.z;
+          xx += dx * dx; xy += dx * dy; xz += dx * dz;
+          yy += dy * dy; yz += dy * dz; zz += dz * dz;
+        }
+        // Potenz-Iteration auf (Spur·I − C) liefert den Eigenvektor zum kleinsten
+        // Eigenwert der Kovarianz C; Startvektor = grobe Säulenrichtung
+        const tr = xx + yy + zz;
+        const v = columnAxisWorld.clone();
+        const t = new THREE.Vector3();
+        for (let it = 0; it < 80; it++) {
+          t.set(
+            (tr - xx) * v.x - xy * v.y - xz * v.z,
+            -xy * v.x + (tr - yy) * v.y - yz * v.z,
+            -xz * v.x - yz * v.y + (tr - zz) * v.z,
+          );
+          if (t.lengthSq() < 1e-12) break;
+          v.copy(t.normalize());
+        }
+        if (v.dot(carForward) < 0) v.negate(); // einheitlich nach vorn orientieren
+        console.log('Lenkrad-Achse: PCA', v.toArray().map((x) => x.toFixed(3)).join(','),
+          '| erwartet', columnAxisWorld.toArray().map((x) => x.toFixed(3)).join(','),
+          '| dot', v.dot(columnAxisWorld).toFixed(3), '| Dreiecke', wheelPts.length);
+        // nur übernehmen, wenn plausibel (±45° um die erwartete Säulenrichtung)
+        if (v.dot(columnAxisWorld) > 0.7) columnAxisWorld.copy(v);
+      }
+      // Pivots ins gemessene Lenkrad-Zentrum setzen: Geometrie bleibt am Platz,
+      // dreht aber exakt um die Säulenachse DURCH das Zentrum (kein Herumkreisen)
+      for (const p of pendingParts) {
+        const centerL = wheelCenter.clone().applyMatrix4(p.invW);
+        p.wheelMesh.position.copy(centerL).negate();
         const pivot = new THREE.Object3D();
         pivot.position.copy(centerL);
-        pivot.add(wheelMesh);
-        mesh.add(pivot);
-        steeringParts.push({ pivot, axisLocal: axisL });
+        pivot.add(p.wheelMesh);
+        p.mesh.add(pivot);
+        steeringParts.push({
+          pivot,
+          axisLocal: columnAxisWorld.clone().transformDirection(p.invW).normalize(),
+        });
       }
 
       // Cockpit-Displays platzieren (linkes Fahrer-Display + rechtes Rückspiegel-Display)
