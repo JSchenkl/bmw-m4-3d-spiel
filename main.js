@@ -372,7 +372,14 @@ function loadScenery(cfg, parentGroup) {
     // vorher matrixWorld auffrischen – die Normierung hat g gerade verschoben!
     g.updateMatrixWorld(true);
     buildWallColliders(g, cfg);
-    console.log('Szenerie geladen, Höhenfeld', w, 'x', h, '– Spawn-Höhe normiert um', h0.toFixed(1), 'm');
+    // Grünfläche rund um die Szenerie wieder einblenden – ein Stück UNTER dem
+    // tiefsten Streckenpunkt, damit sie nirgends durch Fahrbahn/Gelände stößt
+    let yLow = 0;
+    for (let i = 0; i < data.length; i++) if (data[i] < yLow) yLow = data[i];
+    ground.position.y = yLow - 18;
+    ground.visible = true;
+    console.log('Szenerie geladen, Höhenfeld', w, 'x', h, '– Spawn-Höhe normiert um', h0.toFixed(1), 'm,',
+      'Grünfläche auf', (yLow - 18).toFixed(1), 'm');
   }, undefined, (err) => console.error('Szenerie konnte nicht geladen werden:', err));
 }
 
@@ -390,7 +397,8 @@ function loadTrack(file) {
       if (sceneryGroup) { sceneryGroup = null; }
       sceneryHeight = null;
       sceneryTrack = !!(trackCfg && trackCfg.scenery);
-      ground.visible = !sceneryTrack;
+      ground.visible = !sceneryTrack; // Szenerie: erst nach der Höhenmessung wieder einblenden
+      ground.position.y = 0;
       if (trackCfg && trackCfg.scenery) loadScenery(trackCfg.scenery, group);
       pitDirection = dir;
       trackColliders = colliders;
