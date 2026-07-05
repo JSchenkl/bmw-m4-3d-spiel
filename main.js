@@ -159,7 +159,8 @@ const TRACKS = [
       // Höhenfeld wie bei Spa (Fahrbahn liegt 1,15–1,45 m hoch, nicht auf 0!);
       // maxH schließt Gebäudedächer/Brücken vom Bodenraster aus
       offY: 1.13, maxH: 3,
-      pitSpawn: { x: 616.4, z: 1331.2, dx: 0.9983, dz: -0.0589 },
+      // Startplatz exakt auf der extrahierten Rennlinie (Mitte der Fahrbahn)
+      pitSpawn: { x: 616.2, z: 1332.9, dx: 0.9909, dz: -0.1345 },
     },
   },
   { id: 'montreal', name: 'Circuit Gilles-Villeneuve', country: 'Kanada', length: '4,361 km', file: 'models/montreal_track.csv' },
@@ -2582,7 +2583,6 @@ btnHome.addEventListener('click', () => {
   raceReset();
 
   // Auto an den Startplatz, Tempo/Gang zurück
-  repairCar();
   carGroup.position.set(0, 0.05, 0);
   speed = 0; steerAngle = 0; carRoll = 0; gear = 1; autoReverse = false; prevGearSound = 1;  alignCarToPitlane();
   prevCarPos.copy(carGroup.position);
