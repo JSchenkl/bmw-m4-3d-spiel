@@ -56,7 +56,7 @@ const COCKPIT_FOV = 72; // weiteres Sichtfeld im Cockpit für mehr Immersion
 const COCKPIT_EYE = { back: 0.30, side: 0.32, height: 1.12 };
 // Nur die Kamera sitzt etwas tiefer und weiter hinten (GT3-Sitzposition);
 // die Lenkrad-Suche bleibt unverändert
-const COCKPIT_CAM_DROP = 0.13;
+const COCKPIT_CAM_DROP = 0.10;
 const COCKPIT_CAM_BACK = 0.05;
 // Wiederverwendbare Vektoren (kein new pro Frame)
 const _eye = new THREE.Vector3();
@@ -1256,6 +1256,9 @@ function loadCar(index) {
 
       // Cockpit-Displays platzieren (linkes Fahrer-Display + rechtes Rückspiegel-Display)
       setupCockpitScreens(eye, carForward, sideVec);
+
+      // Rennfahrer einsetzen: Hände greifen die gemessene Lenkrad-Felge
+      buildDriver(eye, carForward, sideVec, wheelCenter, columnAxisWorld);
     }
 
     // Ausgangszustand der Emission merken
@@ -1737,6 +1740,16 @@ const MAX_STEER   = 27.2 * Math.PI / 180; // max. Radeinschlag (rad)
 const STEER_RATE  = 3.0;               // Lenkgeschwindigkeit (Rennlenkung, direkter)
 let steerAngle = 0;                    // aktueller Radeinschlag
 
+// ---------- Driftphysik ----------
+// Schwimmwinkel: die Nase zeigt weiter in die Kurve als die tatsächliche
+// Fahrtrichtung – Schlupf (Gas am Limit) leitet den Drift ein, mit Grip
+// fängt sich das Auto wieder und schießt in Richtung der Nase davon.
+let driftAngle = 0;
+const DRIFT_GAIN = 0.55;    // wie stark Schlupf die Nase eindreht
+const DRIFT_MAX = 0.6;      // ~34° maximaler Schwimmwinkel
+const DRIFT_RECOVER = 2.6;  // wie schnell sich das Auto fängt (1/s, mit Grip skaliert)
+const DRIFT_SCRUB = 4.5;    // Tempoverlust durch Querrutschen (m/s² bei vollem Winkel)
+
 let speed = 0;
 const keys = new Set();
 const speedNumEl = document.getElementById('speed-num');
@@ -1776,6 +1789,150 @@ function autoShiftGear(keyFwd, keyRev) {
 // Gang: Je näher am Gang-Höchsttempo, desto mehr Lichter. Leuchtet das 5. (rote)
 // Licht und blinkt alles, ist die perfekte Drehzahl zum HOCHSCHALTEN erreicht.
 // Sind die Touren zu niedrig (nur die grünen blinken), ist RUNTERSCHALTEN dran.
+// ---------- Rennfahrer (BMW-Rennanzug) ----------
+// Prozedural gebauter Fahrer: Helm, Torso im BMW-M-Anzug, Beine und zwei
+// IK-Arme, deren Hände die Lenkrad-Felge an 9 und 3 Uhr greifen und jeder
+// Lenkbewegung folgen. Im Cockpit sieht man nur Arme + Hände (Helm/Torso
+// würden in der Kamera stecken), außen den kompletten Fahrer.
+let driverRig = null;
+
+function segMesh(r1, r2, mat) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, 1, 10), mat);
+  m.castShadow = true;
+  return m;
+}
+function placeSeg(mesh, a, b) {
+  const dir = b.clone().sub(a);
+  const len = Math.max(0.001, dir.length());
+  mesh.position.copy(a).addScaledVector(dir, 0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+  mesh.scale.set(1, len, 1);
+}
+
+function buildDriver(eye, fwd, side, wCenter, wAxis) {
+  if (driverRig) { carGroup.remove(driverRig.group); driverRig = null; }
+  const suit = new THREE.MeshStandardMaterial({ color: 0xf2f2f4, roughness: 0.8 });
+  const blue = new THREE.MeshStandardMaterial({ color: 0x1e5fd6, roughness: 0.8 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xd0311e, roughness: 0.8 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x16181c, roughness: 0.9 });
+  const visor = new THREE.MeshStandardMaterial({ color: 0x0a0c10, roughness: 0.15, metalness: 0.7 });
+
+  const bq = new THREE.Quaternion().setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(side.clone(), UP.clone(), fwd.clone()),
+  );
+  const g = new THREE.Group();
+
+  // Torso (weißer Anzug mit M-Farbbändern), sitzt unter/hinter dem Auge
+  const torsoC = eye.clone().addScaledVector(fwd, -0.10).addScaledVector(UP, -0.42);
+  const torso = new THREE.Group();
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.52, 0.28), suit);
+  chest.castShadow = true;
+  const bandB = new THREE.Mesh(new THREE.BoxGeometry(0.425, 0.07, 0.285), blue);
+  bandB.position.y = 0.12;
+  const bandR = new THREE.Mesh(new THREE.BoxGeometry(0.425, 0.05, 0.285), red);
+  bandR.position.y = 0.045;
+  torso.add(chest, bandB, bandR);
+  torso.position.copy(torsoC);
+  torso.quaternion.copy(bq);
+  g.add(torso);
+
+  // Helm (weiß, dunkles Visier, M-Streifen oben)
+  const helmet = new THREE.Group();
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.135, 20, 14), suit);
+  dome.castShadow = true;
+  const vis = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.085, 0.06), visor);
+  vis.position.set(0, 0.01, 0.105);
+  const hb = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.135, 0.22), blue);
+  hb.position.set(0.025, 0.065, 0);
+  const hr = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.135, 0.22), red);
+  hr.position.set(-0.025, 0.065, 0);
+  helmet.add(dome, vis, hb, hr);
+  helmet.position.copy(eye).addScaledVector(fwd, -0.04).addScaledVector(UP, -0.02);
+  helmet.quaternion.copy(bq);
+  g.add(helmet);
+
+  // Beine (dunkel, Richtung Pedale)
+  const legs = new THREE.Group();
+  for (const sgn of [1, -1]) {
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.42), dark);
+    thigh.castShadow = true;
+    thigh.position.copy(torsoC)
+      .addScaledVector(UP, -0.34)
+      .addScaledVector(fwd, 0.24)
+      .addScaledVector(side, sgn * 0.11);
+    thigh.quaternion.copy(bq);
+    thigh.rotateX(-0.35);
+    legs.add(thigh);
+  }
+  g.add(legs);
+
+  // Arme: Oberarm + Unterarm (Anzug) + Handschuh-Hände, per IK ans Lenkrad
+  const rig = {
+    group: g, torso, helmet, legs, bq,
+    center: wCenter.clone(), axis: wAxis.clone().normalize(),
+    u: new THREE.Vector3().crossVectors(UP, wAxis).normalize(), // zeigt zur Fahrer-LINKEN
+    gripR: 0.155, L1: 0.30, L2: 0.32,
+    sL: torsoC.clone().addScaledVector(side, 0.235).addScaledVector(UP, 0.22),
+    sR: torsoC.clone().addScaledVector(side, -0.235).addScaledVector(UP, 0.22),
+    side: side.clone(),
+  };
+  for (const s of ['L', 'R']) {
+    rig['upper' + s] = segMesh(0.044, 0.05, suit);
+    rig['fore' + s] = segMesh(0.036, 0.043, suit);
+    rig['hand' + s] = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.075, 0.12), dark);
+    rig['hand' + s].castShadow = true;
+    g.add(rig['upper' + s], rig['fore' + s], rig['hand' + s]);
+  }
+  carGroup.add(g);
+  driverRig = rig;
+  updateDriver();
+}
+
+// Arme/Hände jeden Frame ans (gedrehte) Lenkrad setzen; Torso lehnt leicht mit
+const _dT = new THREE.Vector3();
+const _dDir = new THREE.Vector3();
+const _dPole = new THREE.Vector3();
+const _dE = new THREE.Vector3();
+const _dTang = new THREE.Vector3();
+const _dRad = new THREE.Vector3();
+const _dM = new THREE.Matrix4();
+const _dLean = new THREE.Quaternion();
+function updateDriver() {
+  const r = driverRig;
+  if (!r) return;
+  // Helm/Torso/Beine nur außen zeigen – im Cockpit steckt die Kamera im Helm
+  const outside = cameraMode !== 1;
+  r.helmet.visible = r.torso.visible = r.legs.visible = outside;
+
+  const theta = -steerAngle * (135 / 27.2); // exakt wie die Lenkrad-Drehung
+  for (const s of ['L', 'R']) {
+    const sgn = s === 'L' ? 1 : -1;
+    // Griffpunkt: 9 bzw. 3 Uhr auf der Felge, mit dem Lenkrad mitgedreht
+    _dRad.copy(r.u).multiplyScalar(sgn).applyAxisAngle(r.axis, theta);
+    _dT.copy(r.center).addScaledVector(_dRad, r.gripR);
+    const S = s === 'L' ? r.sL : r.sR;
+    // Zwei-Knochen-IK (Ellbogen zeigt nach unten-außen)
+    _dDir.copy(_dT).sub(S);
+    const d = Math.min(_dDir.length(), (r.L1 + r.L2) * 0.999);
+    _dDir.normalize();
+    const cosA = THREE.MathUtils.clamp((r.L1 * r.L1 + d * d - r.L2 * r.L2) / (2 * r.L1 * d), -1, 1);
+    const a1 = Math.acos(cosA);
+    _dPole.copy(UP).multiplyScalar(-1).addScaledVector(r.side, sgn * 0.55);
+    _dPole.addScaledVector(_dDir, -_dPole.dot(_dDir)).normalize();
+    _dE.copy(S).addScaledVector(_dDir, Math.cos(a1) * r.L1).addScaledVector(_dPole, Math.sin(a1) * r.L1);
+    placeSeg(r['upper' + s], S, _dE);
+    placeSeg(r['fore' + s], _dE, _dT);
+    // Hand umschließt die Felge: x = Felgen-Tangente, y = radial, z = Lenkachse
+    _dTang.crossVectors(r.axis, _dRad).normalize();
+    _dM.makeBasis(_dTang, _dRad, r.axis);
+    r['hand' + s].position.copy(_dT);
+    r['hand' + s].quaternion.setFromRotationMatrix(_dM);
+  }
+  // Oberkörper lehnt sich leicht in die Lenkbewegung
+  _dLean.setFromAxisAngle(UP, steerAngle * 0.5);
+  r.torso.quaternion.copy(_dLean).multiply(r.bq);
+}
+
 const revLights = [...document.querySelectorAll('#revlights i')];
 const REV_TH = [0.45, 0.6, 0.72, 0.83, 0.9]; // Drehzahl-Anteil, ab dem Licht 1…5 angeht
 
@@ -2163,15 +2320,31 @@ function updateCar(dt) {
     const overshoot = OVERSTEER_GAIN * overMul * Math.min(slide, 2) * Math.min(1, Math.abs(speed) / 6);
     omega += Math.sign(steerAngle) * Math.sign(speed) * overshoot;
 
+    // Driftphysik (auch auf Asphalt): Antriebs-Schlupf und Rutschen am Limit
+    // drehen die NASE zusätzlich ein – die Fahrtrichtung folgt nur verzögert,
+    // das Heck steht sichtbar quer (Gegenlenken über das normale Lenken)
+    const driftKick = DRIFT_GAIN * Math.min(slide, 2.5) * Math.min(1, Math.abs(speed) / 8);
+    omega += Math.sign(steerAngle) * Math.sign(speed) * driftKick;
+    driftAngle += Math.sign(steerAngle) * Math.sign(speed) * (driftKick + overshoot) * dt;
+
     carYaw += omega * dt;
   }
 
   // Heck-Schlupf glätten
   rearSlip += (slipTarget - rearSlip) * Math.min(1, dt * 8);
 
-  // Bewegung in Blickrichtung der Fahrzeugfront
+  // Schwimmwinkel begrenzen und abbauen (das Auto fängt sich mit dem Grip);
+  // Querrutschen schrubbt Tempo weg
+  driftAngle = THREE.MathUtils.clamp(driftAngle, -DRIFT_MAX, DRIFT_MAX);
+  driftAngle -= driftAngle * Math.min(1, dt * DRIFT_RECOVER * surfaceGrip);
+  if (Math.abs(driftAngle) > 0.02 && Math.abs(speed) > 0.5) {
+    speed -= Math.sign(speed) * (Math.abs(driftAngle) / DRIFT_MAX) * DRIFT_SCRUB * dt;
+  }
+
+  // Bewegung entlang der FAHRTRICHTUNG: beim Drift hängt sie der Nase um den
+  // Schwimmwinkel hinterher (Auto fährt quer)
   if (speed !== 0 && carForward) {
-    const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
+    const fwd = carForward.clone().applyAxisAngle(UP, carYaw - driftAngle);
     carGroup.position.addScaledVector(fwd, speed * dt);
   }
 
@@ -2207,6 +2380,7 @@ function updateCar(dt) {
     // Volleinschlag (27,2° Radwinkel) ≈ 135° Lenkradwinkel
     p.pivot.quaternion.setFromAxisAngle(p.axisLocal, -steerAngle * (135 / 27.2));
   }
+  updateDriver(); // Fahrer-Arme folgen dem Lenkrad
 
 
   speedNumEl.textContent = Math.round(Math.abs(speed) * 3.6);
@@ -2564,6 +2738,7 @@ btnPit.addEventListener('click', () => {
   carGroup.position.set(0, 0.05, 0);
   speed = 0;
   steerAngle = 0;
+  driftAngle = 0;
   carRoll = 0;
   gear = 1;
   autoReverse = false;
@@ -2584,7 +2759,7 @@ btnHome.addEventListener('click', () => {
 
   // Auto an den Startplatz, Tempo/Gang zurück
   carGroup.position.set(0, 0.05, 0);
-  speed = 0; steerAngle = 0; carRoll = 0; gear = 1; autoReverse = false; prevGearSound = 1;  alignCarToPitlane();
+  speed = 0; steerAngle = 0; driftAngle = 0; carRoll = 0; gear = 1; autoReverse = false; prevGearSound = 1;  alignCarToPitlane();
   prevCarPos.copy(carGroup.position);
 
   // Ton stumm – beim nächsten Start wieder ab erstem Knopfdruck
@@ -3021,7 +3196,7 @@ function setupGrid() {
       _hd.set(c.tx, 0, c.tz);
       setHeading(_hd);
       prevCarPos.copy(carGroup.position);
-      speed = 0; gear = 1; autoReverse = false; prevGearSound = 1;
+      speed = 0; driftAngle = 0; gear = 1; autoReverse = false; prevGearSound = 1;
     } else {
       const bot = bots[e.who];
       bot.s = arc; bot.offset = gridOffset(i);    // Startaufstellung gestaffelt
@@ -3271,6 +3446,16 @@ function updateDust(dt) {
   if (carOnGravel() && Math.abs(speed) > 4) {
     for (let k = 0; k < 3; k++) spawnDust(carGroup.position.x + (Math.random() - 0.5) * 1.6, carGroup.position.z + (Math.random() - 0.5) * 1.6);
     speed -= Math.sign(speed) * Math.min(Math.abs(speed), 12 * dt); // Kies bremst
+  }
+  // Reifenqualm beim Driften: hinter dem Heck aufwirbeln
+  if (Math.abs(driftAngle) > 0.12 && Math.abs(speed) > 8 && carForward) {
+    const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
+    for (let k = 0; k < 2; k++) {
+      spawnDust(
+        carGroup.position.x - fwd.x * carHalf.len * 0.8 + (Math.random() - 0.5) * 1.2,
+        carGroup.position.z - fwd.z * carHalf.len * 0.8 + (Math.random() - 0.5) * 1.2,
+      );
+    }
   }
   for (let i = 0; i < DUST_N; i++) {
     if (dustLife[i] <= 0) continue;
