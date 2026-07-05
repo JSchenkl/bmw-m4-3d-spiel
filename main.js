@@ -54,8 +54,10 @@ const CHASE_FOV = 45;   // Sichtfeld der Verfolgerkamera
 const COCKPIT_FOV = 72; // weiteres Sichtfeld im Cockpit für mehr Immersion
 // Position des Fahrerauges relativ zur Fahrzeugmitte (für Cockpit-Kamera UND Lenkrad-Suche)
 const COCKPIT_EYE = { back: 0.30, side: 0.32, height: 1.12 };
-// Nur die Kamera sitzt etwas tiefer (GT3-Sitzposition); die Lenkrad-Suche bleibt unverändert
-const COCKPIT_CAM_DROP = 0.10;
+// Nur die Kamera sitzt etwas tiefer und weiter hinten (GT3-Sitzposition);
+// die Lenkrad-Suche bleibt unverändert
+const COCKPIT_CAM_DROP = 0.13;
+const COCKPIT_CAM_BACK = 0.05;
 // Wiederverwendbare Vektoren (kein new pro Frame)
 const _eye = new THREE.Vector3();
 const _camFwd = new THREE.Vector3();
@@ -2201,7 +2203,8 @@ function updateCar(dt) {
   // Cockpit-Lenkrad dreht mit – proportional zum Lenkeinschlag (analog per Stick),
   // übersetzt wie ein echtes Lenkrad (~120° Lenkradwinkel bei vollem Einschlag)
   for (const p of steeringParts) {
-    p.pivot.quaternion.setFromAxisAngle(p.axisLocal, -steerAngle * 4.5);
+    // Volleinschlag (27,2° Radwinkel) ≈ 135° Lenkradwinkel
+    p.pivot.quaternion.setFromAxisAngle(p.axisLocal, -steerAngle * (135 / 27.2));
   }
 
 
@@ -3392,7 +3395,7 @@ renderer.setAnimationLoop(() => {
     _camSide.crossVectors(UP, _camFwd).normalize();
     // Augposition: Fahrersitz – etwas hinter der Fahrzeugmitte, seitlich versetzt, auf Sitzhöhe
     _eye.copy(carGroup.position)
-      .addScaledVector(_camFwd, -COCKPIT_EYE.back)
+      .addScaledVector(_camFwd, -COCKPIT_EYE.back - COCKPIT_CAM_BACK)
       .addScaledVector(_camSide, COCKPIT_EYE.side)
       .addScaledVector(UP, COCKPIT_EYE.height - COCKPIT_CAM_DROP);
     camera.position.copy(_eye);
