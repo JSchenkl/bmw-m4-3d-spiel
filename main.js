@@ -1112,68 +1112,56 @@ function loadCar(index) {
 
       // Nur Innenraum-/Ausstattungs-Meshes prüfen – NICHT die Karosserie (Paint/Base/…),
       // sonst rotieren Dach-/Armaturenteile mit, die zufällig die Box schneiden.
-      const interiorMeshes = [];
+      // „coloured“/„badge“ gehören mit dazu: die GT3-Lenkrad-GRIFFE und das Emblem
+      // bestehen daraus (der enge Zylinder in Durchgang 2 hält fremde Teile draußen).
+      const interiorMeshes = [];  // fürs endgültige Greifen (inkl. Griffe/Emblem)
+      const plateMeshes = [];     // nur fürs Vermessen der Lenkradebene (Platte)
       car.traverse((n) => {
         if (!n.isMesh || !n.geometry.getAttribute('position')) return;
-        if (!/interior|textured/.test((n.material?.name || '').toLowerCase())) return;
+        const mat = (n.material?.name || '').toLowerCase();
+        if (!/interior|textured|coloured|badge/.test(mat)) return;
         interiorMeshes.push(n);
+        if (/interior|textured/.test(mat)) plateMeshes.push(n);
       });
 
       const _c = new THREE.Vector3();
       const _t = new THREE.Vector3();
-      const wheelPts = [];      // Welt-Schwerpunkte der Lenkrad-Dreiecke (für die Achse)
-      const pendingParts = [];  // Pivots, deren Achse nach der Ebenen-Messung gesetzt wird
-      for (const mesh of interiorMeshes) {
-        const geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
-        const pos = geo.getAttribute('position');
-        const keptIdx = [];
-        const grabbedIdx = [];
-        for (let i = 0; i < pos.count; i += 3) {
-          _c.set(0, 0, 0);
-          for (let j = 0; j < 3; j++) {
-            _t.fromBufferAttribute(pos, i + j).applyMatrix4(mesh.matrixWorld);
-            _c.add(_t);
+      // Dreiecks-Schwerpunkte gegen ein Prädikat klassifizieren (ohne die Meshes zu ändern)
+      const classify = (test, meshes) => {
+        const perMesh = [];
+        const pts = [];
+        for (const mesh of meshes) {
+          const geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
+          const pos = geo.getAttribute('position');
+          const keptIdx = [];
+          const grabbedIdx = [];
+          for (let i = 0; i < pos.count; i += 3) {
+            _c.set(0, 0, 0);
+            for (let j = 0; j < 3; j++) {
+              _t.fromBufferAttribute(pos, i + j).applyMatrix4(mesh.matrixWorld);
+              _c.add(_t);
+            }
+            _c.multiplyScalar(1 / 3);
+            if (test(_c)) { grabbedIdx.push(i, i + 1, i + 2); pts.push(_c.clone()); }
+            else keptIdx.push(i, i + 1, i + 2);
           }
-          _c.multiplyScalar(1 / 3);
-          if (region.containsPoint(_c)) { grabbedIdx.push(i, i + 1, i + 2); wheelPts.push(_c.clone()); }
-          else keptIdx.push(i, i + 1, i + 2);
+          if (grabbedIdx.length) perMesh.push({ mesh, geo, keptIdx, grabbedIdx });
         }
-        if (!grabbedIdx.length) continue;
+        return { perMesh, pts };
+      };
 
-        const makeGeo = (idx) => {
-          const out = new THREE.BufferGeometry();
-          for (const name of Object.keys(geo.attributes)) out.setAttribute(name, geo.attributes[name]);
-          out.setIndex(idx);
-          return out;
-        };
-        mesh.geometry = makeGeo(keptIdx); // der Rest des Innenraums bleibt stehen
-
-        const mat = STEER_WHEEL.debug
-          ? new THREE.MeshStandardMaterial({ color: 0xff1010, emissive: 0xaa0000, emissiveIntensity: 1 })
-          : mesh.material;
-        const wheelMesh = new THREE.Mesh(makeGeo(grabbedIdx), mat);
-        wheelMesh.castShadow = true;
-        // Pivot-Position wird NACH der Ebenen-Messung gesetzt (echtes Lenkrad-Zentrum)
-        pendingParts.push({ mesh, invW: mesh.matrixWorld.clone().invert(), wheelMesh });
-      }
-
-      // Echte Drehachse = Normale der Lenkradebene, per PCA aus den herausgelösten
-      // Dreiecken: Die Richtung mit der KLEINSTEN Streuung steht senkrecht auf dem
-      // (annähernd flachen) Lenkrad – exakt die Lenksäulen-Achse dieses Modells.
-      const wheelCenter = center.clone(); // Fallback: konfigurierter Schätzwert
-      if (wheelPts.length > 30) {
+      // Lenkradebene aus Punkten messen: Schwerpunkt + Normale (PCA, kleinste
+      // Hauptkomponente per Potenz-Iteration auf (Spur·I − C))
+      const measurePlane = (pts) => {
         const m = new THREE.Vector3();
-        for (const p of wheelPts) m.add(p);
-        m.multiplyScalar(1 / wheelPts.length);
-        wheelCenter.copy(m); // echtes Zentrum: Schwerpunkt der Lenkrad-Dreiecke
+        for (const p of pts) m.add(p);
+        m.multiplyScalar(1 / pts.length);
         let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
-        for (const p of wheelPts) {
+        for (const p of pts) {
           const dx = p.x - m.x, dy = p.y - m.y, dz = p.z - m.z;
           xx += dx * dx; xy += dx * dy; xz += dx * dz;
           yy += dy * dy; yz += dy * dz; zz += dz * dz;
         }
-        // Potenz-Iteration auf (Spur·I − C) liefert den Eigenvektor zum kleinsten
-        // Eigenwert der Kovarianz C; Startvektor = grobe Säulenrichtung
         const tr = xx + yy + zz;
         const v = columnAxisWorld.clone();
         const t = new THREE.Vector3();
@@ -1187,24 +1175,79 @@ function loadCar(index) {
           v.copy(t.normalize());
         }
         if (v.dot(carForward) < 0) v.negate(); // einheitlich nach vorn orientieren
-        console.log('Lenkrad-Achse: PCA', v.toArray().map((x) => x.toFixed(3)).join(','),
-          '| erwartet', columnAxisWorld.toArray().map((x) => x.toFixed(3)).join(','),
-          '| dot', v.dot(columnAxisWorld).toFixed(3), '| Dreiecke', wheelPts.length);
-        // nur übernehmen, wenn plausibel (±45° um die erwartete Säulenrichtung)
-        if (v.dot(columnAxisWorld) > 0.7) columnAxisWorld.copy(v);
+        return { m, v };
+      };
+
+      // Durchgang 1: Box am Schätzwert → echtes Zentrum + Achse messen (Platte).
+      // Durchgang 2: ZYLINDER um die gemessene Achse durch das Zentrum – Radius
+      // fasst Platte + Griffe, der Achsbereich reicht zum Fahrer hin weiter
+      // (die Griffe wölben sich zum Fahrer und lagen außerhalb der Box).
+      const wheelCenter = center.clone(); // Fallback: konfigurierter Schätzwert
+      let grab = classify((p) => region.containsPoint(p), plateMeshes);
+      if (grab.pts.length > 30) {
+        const p1 = measurePlane(grab.pts);
+        if (p1.v.dot(columnAxisWorld) > 0.7) columnAxisWorld.copy(p1.v);
+        wheelCenter.copy(p1.m);
+        const axis = columnAxisWorld;
+        const rel = new THREE.Vector3();
+        grab = classify((p) => {
+          rel.copy(p).sub(wheelCenter);
+          const s = rel.dot(axis);                 // axial: + nach vorn, − zum Fahrer
+          if (s < -0.20 || s > 0.08) return false; // Griffe hinten mitnehmen, Säule vorn nicht
+          return rel.lengthSq() - s * s <= 0.22 * 0.22; // radial: Platte + Griffe
+        }, interiorMeshes);
+        console.log('Lenkrad: Achse', columnAxisWorld.toArray().map((x) => x.toFixed(3)).join(','),
+          '| Zentrum', wheelCenter.toArray().map((x) => x.toFixed(2)).join(','),
+          '| Dreiecke', grab.pts.length);
+        if (STEER_WHEEL.debug) {
+          // Welche Materialien liegen im Lenkrad-Zylinder? (Griffe evtl. ausgefiltert)
+          const counts = new Map();
+          car.traverse((n) => {
+            if (!n.isMesh || !n.geometry.getAttribute('position')) return;
+            const g2 = n.geometry.index ? n.geometry.toNonIndexed() : n.geometry;
+            const pos2 = g2.getAttribute('position');
+            let c = 0;
+            for (let i = 0; i < pos2.count; i += 3) {
+              _c.set(0, 0, 0);
+              for (let j = 0; j < 3; j++) { _t.fromBufferAttribute(pos2, i + j).applyMatrix4(n.matrixWorld); _c.add(_t); }
+              _c.multiplyScalar(1 / 3);
+              rel.copy(_c).sub(wheelCenter);
+              const s = rel.dot(axis);
+              if (s >= -0.20 && s <= 0.08 && rel.lengthSq() - s * s <= 0.22 * 0.22) c++;
+            }
+            if (c) counts.set(n.material?.name || '?', (counts.get(n.material?.name || '?') || 0) + c);
+          });
+          console.log('Lenkrad-Zylinder je Material:', JSON.stringify([...counts.entries()]));
+        }
       }
-      // Pivots ins gemessene Lenkrad-Zentrum setzen: Geometrie bleibt am Platz,
-      // dreht aber exakt um die Säulenachse DURCH das Zentrum (kein Herumkreisen)
-      for (const p of pendingParts) {
-        const centerL = wheelCenter.clone().applyMatrix4(p.invW);
-        p.wheelMesh.position.copy(centerL).negate();
+
+      for (const part of grab.perMesh) {
+        const makeGeo = (idx) => {
+          const out = new THREE.BufferGeometry();
+          for (const name of Object.keys(part.geo.attributes)) out.setAttribute(name, part.geo.attributes[name]);
+          out.setIndex(idx);
+          return out;
+        };
+        part.mesh.geometry = makeGeo(part.keptIdx); // der Rest des Innenraums bleibt stehen
+
+        const mat = STEER_WHEEL.debug
+          ? new THREE.MeshStandardMaterial({ color: 0xff1010, emissive: 0xaa0000, emissiveIntensity: 1 })
+          : part.mesh.material;
+        const wheelMesh = new THREE.Mesh(makeGeo(part.grabbedIdx), mat);
+        wheelMesh.castShadow = true;
+
+        // Pivot im gemessenen Lenkrad-Zentrum: Geometrie bleibt am Platz, dreht
+        // aber exakt um die Säulenachse DURCH das Zentrum (kein Herumkreisen)
+        const invW = part.mesh.matrixWorld.clone().invert();
+        const centerL = wheelCenter.clone().applyMatrix4(invW);
+        wheelMesh.position.copy(centerL).negate();
         const pivot = new THREE.Object3D();
         pivot.position.copy(centerL);
-        pivot.add(p.wheelMesh);
-        p.mesh.add(pivot);
+        pivot.add(wheelMesh);
+        part.mesh.add(pivot);
         steeringParts.push({
           pivot,
-          axisLocal: columnAxisWorld.clone().transformDirection(p.invW).normalize(),
+          axisLocal: columnAxisWorld.clone().transformDirection(invW).normalize(),
         });
       }
 
