@@ -1790,24 +1790,9 @@ function autoShiftGear(keyFwd, keyRev) {
 // Licht und blinkt alles, ist die perfekte Drehzahl zum HOCHSCHALTEN erreicht.
 // Sind die Touren zu niedrig (nur die grünen blinken), ist RUNTERSCHALTEN dran.
 // ---------- Rennfahrer (BMW-Rennanzug) ----------
-// Prozedural gebauter Fahrer: Helm, Torso im BMW-M-Anzug, Beine und zwei
-// IK-Arme, deren Hände die Lenkrad-Felge an 9 und 3 Uhr greifen und jeder
-// Lenkbewegung folgen. Im Cockpit sieht man nur Arme + Hände (Helm/Torso
-// würden in der Kamera stecken), außen den kompletten Fahrer.
+// Prozedural gebauter Fahrer: Helm, Torso im BMW-M-Anzug und Beine.
+// Nur in der Außenansicht sichtbar – im Cockpit steckt die Kamera im Helm.
 let driverRig = null;
-
-function segMesh(r1, r2, mat) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, 1, 10), mat);
-  m.castShadow = true;
-  return m;
-}
-function placeSeg(mesh, a, b) {
-  const dir = b.clone().sub(a);
-  const len = Math.max(0.001, dir.length());
-  mesh.position.copy(a).addScaledVector(dir, 0.5);
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-  mesh.scale.set(1, len, 1);
-}
 
 function buildDriver(eye, fwd, side, wCenter, wAxis) {
   if (driverRig) { carGroup.remove(driverRig.group); driverRig = null; }
@@ -1866,69 +1851,20 @@ function buildDriver(eye, fwd, side, wCenter, wAxis) {
   }
   g.add(legs);
 
-  // Arme: Oberarm + Unterarm (Anzug) + Handschuh-Hände, per IK ans Lenkrad
-  const rig = {
-    group: g, torso, helmet, legs, bq,
-    center: wCenter.clone(), axis: wAxis.clone().normalize(),
-    u: new THREE.Vector3().crossVectors(UP, wAxis).normalize(), // zeigt zur Fahrer-LINKEN
-    gripR: 0.155, L1: 0.30, L2: 0.32,
-    sL: torsoC.clone().addScaledVector(side, 0.235).addScaledVector(UP, 0.22),
-    sR: torsoC.clone().addScaledVector(side, -0.235).addScaledVector(UP, 0.22),
-    side: side.clone(),
-  };
-  for (const s of ['L', 'R']) {
-    rig['upper' + s] = segMesh(0.044, 0.05, suit);
-    rig['fore' + s] = segMesh(0.036, 0.043, suit);
-    rig['hand' + s] = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.075, 0.12), dark);
-    rig['hand' + s].castShadow = true;
-    g.add(rig['upper' + s], rig['fore' + s], rig['hand' + s]);
-  }
+  const rig = { group: g, torso, helmet, legs, bq };
   carGroup.add(g);
   driverRig = rig;
   updateDriver();
 }
 
-// Arme/Hände jeden Frame ans (gedrehte) Lenkrad setzen; Torso lehnt leicht mit
-const _dT = new THREE.Vector3();
-const _dDir = new THREE.Vector3();
-const _dPole = new THREE.Vector3();
-const _dE = new THREE.Vector3();
-const _dTang = new THREE.Vector3();
-const _dRad = new THREE.Vector3();
-const _dM = new THREE.Matrix4();
+// Fahrer-Sichtbarkeit je Kamera + Oberkörper lehnt leicht in die Lenkbewegung
 const _dLean = new THREE.Quaternion();
 function updateDriver() {
   const r = driverRig;
   if (!r) return;
-  // Helm/Torso/Beine nur außen zeigen – im Cockpit steckt die Kamera im Helm
+  // kompletter Fahrer nur außen – im Cockpit steckt die Kamera im Helm
   const outside = cameraMode !== 1;
   r.helmet.visible = r.torso.visible = r.legs.visible = outside;
-
-  const theta = -steerAngle * (135 / 27.2); // exakt wie die Lenkrad-Drehung
-  for (const s of ['L', 'R']) {
-    const sgn = s === 'L' ? 1 : -1;
-    // Griffpunkt: 9 bzw. 3 Uhr auf der Felge, mit dem Lenkrad mitgedreht
-    _dRad.copy(r.u).multiplyScalar(sgn).applyAxisAngle(r.axis, theta);
-    _dT.copy(r.center).addScaledVector(_dRad, r.gripR);
-    const S = s === 'L' ? r.sL : r.sR;
-    // Zwei-Knochen-IK (Ellbogen zeigt nach unten-außen)
-    _dDir.copy(_dT).sub(S);
-    const d = Math.min(_dDir.length(), (r.L1 + r.L2) * 0.999);
-    _dDir.normalize();
-    const cosA = THREE.MathUtils.clamp((r.L1 * r.L1 + d * d - r.L2 * r.L2) / (2 * r.L1 * d), -1, 1);
-    const a1 = Math.acos(cosA);
-    _dPole.copy(UP).multiplyScalar(-1).addScaledVector(r.side, sgn * 0.55);
-    _dPole.addScaledVector(_dDir, -_dPole.dot(_dDir)).normalize();
-    _dE.copy(S).addScaledVector(_dDir, Math.cos(a1) * r.L1).addScaledVector(_dPole, Math.sin(a1) * r.L1);
-    placeSeg(r['upper' + s], S, _dE);
-    placeSeg(r['fore' + s], _dE, _dT);
-    // Hand umschließt die Felge: x = Felgen-Tangente, y = radial, z = Lenkachse
-    _dTang.crossVectors(r.axis, _dRad).normalize();
-    _dM.makeBasis(_dTang, _dRad, r.axis);
-    r['hand' + s].position.copy(_dT);
-    r['hand' + s].quaternion.setFromRotationMatrix(_dM);
-  }
-  // Oberkörper lehnt sich leicht in die Lenkbewegung
   _dLean.setFromAxisAngle(UP, steerAngle * 0.5);
   r.torso.quaternion.copy(_dLean).multiply(r.bq);
 }
