@@ -175,6 +175,8 @@ const TRACKS = [
       // Höhenfeld wie bei Spa (Fahrbahn liegt 1,15–1,45 m hoch, nicht auf 0!);
       // maxH schließt Gebäudedächer/Brücken vom Bodenraster aus
       offY: 1.13, maxH: 3,
+      // flacher Stadtkurs: Buckel (Brücken/Objekte) über der Fahrbahn kappen
+      heightClamp: 1.8,
       // nur Wände 8–45 m von der Ideallinie behalten (wie Austin): näher = fälschlich
       // auf der Fahrbahn (Bordsteine/Straßenmarkierungen), weiter = ferne Gebäude/Deko
       wallCorridor: [8, 45],
@@ -378,6 +380,15 @@ function loadScenery(cfg, parentGroup) {
         }
         // Dächer/Brücken nicht ins Bodenraster übernehmen (Stadtkurse: maxH gesetzt)
         if (cfg.maxH !== undefined && Math.min(P[0].y, P[1].y, P[2].y) > cfg.maxH) continue;
+        // NUR annähernd waagerechte Flächen (Boden) übernehmen – senkrechte Wände/Banden
+        // dürfen NICHT ins Höhenfeld, sonst heben ihre Oberkanten das Auto an.
+        {
+          const ux = (P[1].x - P[0].x) * cellM, uy = P[1].y - P[0].y, uz = (P[1].z - P[0].z) * cellM;
+          const wxx = (P[2].x - P[0].x) * cellM, wyy = P[2].y - P[0].y, wzz = (P[2].z - P[0].z) * cellM;
+          const nx = uy * wzz - uz * wyy, ny = uz * wxx - ux * wzz, nz = ux * wyy - uy * wxx;
+          const nl = Math.hypot(nx, ny, nz) || 1;
+          if (Math.abs(ny) / nl < 0.5) continue;   // steiler als ~60° → Wand, überspringen
+        }
         // Dreieck ins Raster malen (Baryzentrie), pro Zelle die HÖCHSTE Fläche
         const x0 = Math.max(0, Math.floor(Math.min(P[0].x, P[1].x, P[2].x)));
         const x1 = Math.min(w - 1, Math.ceil(Math.max(P[0].x, P[1].x, P[2].x)));
@@ -409,6 +420,39 @@ function loadScenery(cfg, parentGroup) {
       }
     }
     for (let i = 0; i < data.length; i++) if (Number.isNaN(data[i])) data[i] = 0;
+    // Entspitzen: einzelne Zellen, die deutlich über dem Median ihrer Nachbarschaft
+    // liegen (Wand-Oberkanten, Schilder, Objekte, die als Boden durchrutschten),
+    // auf das Nachbar-Niveau ziehen – sonst katapultieren sie das Auto hoch.
+    // 1) Einzel-Ausreißer entspitzen (Wand-Oberkanten etc.)
+    const SPIKE = 2.0;
+    for (let pass = 0; pass < 6; pass++) {
+      const src = Float32Array.from(data);
+      let fixed = 0;
+      for (let z = 1; z < h - 1; z++) for (let x = 1; x < w - 1; x++) {
+        const o = z * w + x;
+        const nb = [src[o-1], src[o+1], src[o-w], src[o+w], src[o-w-1], src[o-w+1], src[o+w-1], src[o+w+1]].sort((a, b) => a - b);
+        const med = (nb[3] + nb[4]) / 2;
+        if (src[o] - med > SPIKE) { data[o] = med; fixed++; }
+      }
+      if (!fixed) break;
+    }
+    // 2) Nur bei flachen Strecken (cfg.heightClamp gesetzt, z. B. Hanoi): breite Buckel
+    //    (Brücken/Objekte über der Fahrbahn) gegen ein stark geglättetes Basisniveau kappen.
+    //    Höhenstrecken (COTA-Berg!) brauchen das NICHT – dort würde es die echten Hügel
+    //    verflachen; die Entspitzung oben reicht.
+    if (cfg.heightClamp !== undefined) {
+      const MAXBUMP = cfg.heightClamp, R = 20;
+      const blur = Float32Array.from(data), tmp = new Float32Array(w * h);
+      for (let it = 0; it < 2; it++) {
+        for (let z = 0; z < h; z++) { let acc = 0; const row = z * w;
+          for (let x = 0; x < w; x++) { acc += blur[row + x]; if (x > R) acc -= blur[row + x - R - 1];
+            tmp[row + x] = acc / Math.min(x + 1, R + 1); } }
+        for (let x = 0; x < w; x++) { let acc = 0;
+          for (let z = 0; z < h; z++) { acc += tmp[z * w + x]; if (z > R) acc -= tmp[(z - R - 1) * w + x];
+            blur[z * w + x] = acc / Math.min(z + 1, R + 1); } }
+      }
+      for (let i = 0; i < data.length; i++) if (data[i] > blur[i] + MAXBUMP) data[i] = blur[i] + MAXBUMP;
+    }
     sceneryHeight = { x0: box.min.x, z0: box.min.z, cell: cellM, w, h, data };
     // Spawn-Punkt (Ursprung) auf Höhe 0 normieren – Szenerie und Feld gemeinsam absenken
     const h0 = groundY(0, 0);
