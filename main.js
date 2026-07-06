@@ -175,6 +175,9 @@ const TRACKS = [
       // Höhenfeld wie bei Spa (Fahrbahn liegt 1,15–1,45 m hoch, nicht auf 0!);
       // maxH schließt Gebäudedächer/Brücken vom Bodenraster aus
       offY: 1.13, maxH: 3,
+      // nur Wände 8–45 m von der Ideallinie behalten (wie Austin): näher = fälschlich
+      // auf der Fahrbahn (Bordsteine/Straßenmarkierungen), weiter = ferne Gebäude/Deko
+      wallCorridor: [8, 45],
       // Startplatz auf die Fahrbahn gerückt: die Rennlinie verläuft hier am Nordrand
       // nahe dem Gehweg, ~12 m nach rechts liegt der Startplatz mitten auf der Straße
       pitSpawn: { x: 616.9, z: 1344.9, dx: 0.9909, dz: -0.1345 },
@@ -1773,9 +1776,9 @@ const MAX_REVERSE = -20 / 3.6;     // m/s rückwärts
 // Querdynamik (Einspurmodell): GT3-Slicks mit ~1,25 g mechanischem Grip;
 // dazu kommt der Aero-Abtrieb, der die Kurvenhaftung mit dem Tempo erhöht (bis >2 g).
 const WHEELBASE   = 2.85;              // m
-const MAX_LAT_ACC = 1.25 * 9.81;       // m/s² mechanische Haftgrenze (Slicks)
-// Abtriebs-Zuschlag aufs Grip-Budget: wächst quadratisch mit dem Tempo (max. +75 %)
-const aeroGrip = (v) => 1 + Math.min(0.75, v * v * 0.00011);
+const MAX_LAT_ACC = 1.05 * 9.81;       // m/s² mechanische Haftgrenze – bewusst niedriger (weniger Grip in langsamen Kurven)
+// Abtriebs-Zuschlag aufs Grip-Budget: wächst quadratisch mit dem Tempo (max. +45 %; weniger Grip in schnellen Kurven)
+const aeroGrip = (v) => 1 + Math.min(0.45, v * v * 0.00008);
 const MAX_STEER   = 27.2 * Math.PI / 180; // max. Radeinschlag (rad)
 const STEER_RATE  = 3.0;               // Lenkgeschwindigkeit (Rennlenkung, direkter)
 let steerAngle = 0;                    // aktueller Radeinschlag
