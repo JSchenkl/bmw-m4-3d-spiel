@@ -290,15 +290,21 @@ function buildWallColliders(g, cfg) {
     return Math.sqrt(bd);
   };
   let added = 0, skipped = 0;
-  for (const [cz, xs] of rows) {
+  for (const [cz, xsAll] of rows) {
+    // Korridor-Filter je EINZELNER Zelle (nicht erst auf der fertigen Box): sonst
+    // reicht eine lange Box mit weit entferntem Mittelpunkt mit ihrer Kante bis auf
+    // die Ideallinie. Ausgeschlossene Zellen unterbrechen den Lauf.
+    const mcz = z0 + (cz + 0.5) * cellW;
+    const xs = clGrid
+      ? xsAll.filter((cx) => { const d = distToLine(x0 + (cx + 0.5) * cellW, mcz); if (d >= clMin && d <= clMax) return true; skipped++; return false; })
+      : xsAll;
+    if (!xs.length) continue;
     xs.sort((a, b) => a - b);
     let runStart = xs[0], prev = xs[0];
     const flush = (s, e) => {
       const wx0 = x0 + s * cellW, wx1 = x0 + (e + 1) * cellW;
-      const mcx = (wx0 + wx1) / 2, mcz = z0 + (cz + 0.5) * cellW;
-      if (clGrid) { const d = distToLine(mcx, mcz); if (d < clMin || d > clMax) { skipped++; return; } }
       trackColliders.push({
-        cx: mcx, cz: mcz,
+        cx: (wx0 + wx1) / 2, cz: mcz,
         ax: 1, az: 0, halfLen: (wx1 - wx0) / 2, halfWid: cellW / 2,
       });
       added++;

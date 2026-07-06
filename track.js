@@ -243,7 +243,9 @@ export async function createTrack(file, opts = {}) {
     wall.castShadow = true;
     wall.receiveShadow = true;
     addVisual(wall);
-    colliders.push({
+    // Kollisionsmauer nur bei CSV-Strecken – Szenerie-Strecken bringen ihre eigene
+    // Boxenmauer im Modell mit; die prozedurale läge sonst (unsichtbar) auf der Strecke
+    if (!opts.scenery) colliders.push({
       cx: mid.x, cz: mid.z,
       ax: (b.x - a.x) / len, az: (b.z - a.z) / len,
       halfLen: len / 2 + 0.05, halfWid: 0.2,
