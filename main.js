@@ -165,30 +165,10 @@ const TRACKS = [
       pitSpawn: { x: -712.3, z: 638.6, dx: 0.7946, dz: 0.6071 },
     },
   },
-  // Layout aus dem 3D-Modell „Hanoi Street Circuit" (Dave Bored, CC-BY-4.0) getract;
-  // die Szenerie (Straßen, Gebäude, Stadt) kommt direkt aus dem Modell (flacher Stadtkurs)
-  {
-    id: 'hanoi', name: 'Hanoi Street Circuit', country: 'Vietnam', length: '5,613 km',
-    file: 'models/hanoi_track.csv',
-    scenery: {
-      file: 'models/hanoi/hanoi.glb', k: 1.02600301, offX: 1620.4811, offZ: 1104.7361,
-      // Höhenfeld wie bei Spa (Fahrbahn liegt 1,15–1,45 m hoch, nicht auf 0!);
-      // maxH schließt Gebäudedächer/Brücken vom Bodenraster aus
-      offY: 1.13, maxH: 3,
-      // flacher Stadtkurs: Buckel (Brücken/Objekte) über der Fahrbahn kappen
-      heightClamp: 1.8,
-      // nur Wände 8–45 m von der Ideallinie behalten (wie Austin): näher = fälschlich
-      // auf der Fahrbahn (Bordsteine/Straßenmarkierungen), weiter = ferne Gebäude/Deko
-      wallCorridor: [8, 45],
-      // Startplatz auf die Fahrbahn gerückt: die Rennlinie verläuft hier am Nordrand
-      // nahe dem Gehweg, ~12 m nach rechts liegt der Startplatz mitten auf der Straße
-      pitSpawn: { x: 616.9, z: 1344.9, dx: 0.9909, dz: -0.1345 },
-    },
-  },
   { id: 'montreal', name: 'Circuit Gilles-Villeneuve', country: 'Kanada', length: '4,361 km', file: 'models/montreal_track.csv' },
   { id: 'saopaulo', name: 'Autódromo José Carlos Pace (Interlagos)', country: 'Brasilien', length: '4,309 km', file: 'models/saopaulo_track.csv' },
 ];
-// Startstrecke per URL wählbar (?track=hanoi), Standard ist die erste
+// Startstrecke per URL wählbar (?track=austin), Standard ist die erste
 const urlTrack = new URLSearchParams(location.search).get('track');
 let selectedTrackIndex = Math.max(0, TRACKS.findIndex((t) => t.id === urlTrack));
 let currentTrackId = TRACKS[selectedTrackIndex].id; // aktuell geladene Strecke (für die Bestzeit-Zuordnung)
@@ -436,7 +416,7 @@ function loadScenery(cfg, parentGroup) {
       }
       if (!fixed) break;
     }
-    // 2) Nur bei flachen Strecken (cfg.heightClamp gesetzt, z. B. Hanoi): breite Buckel
+    // 2) Nur bei flachen Strecken (cfg.heightClamp gesetzt): breite Buckel
     //    (Brücken/Objekte über der Fahrbahn) gegen ein stark geglättetes Basisniveau kappen.
     //    Höhenstrecken (COTA-Berg!) brauchen das NICHT – dort würde es die echten Hügel
     //    verflachen; die Entspitzung oben reicht.
@@ -3390,7 +3370,9 @@ renderer.setAnimationLoop(() => {
 
   // Boxengasse einmal aufbauen, sobald Auto + Strecke geladen sind; Crew animieren
   if (!pitScene && currentCar && centerline && carForward) buildPitScene();
-  if (!gridBoxes && centerline) buildGridBoxes();
+  // Aufgemalte Startgitter-Markierungen nur auf den CSV-Strecken – die Szenerie-
+  // Strecken (Austin, Spa) bringen ihre eigene Start/Ziel-Markierung mit
+  if (!gridBoxes && centerline && !sceneryTrack) buildGridBoxes();
   if (pitScene) updatePitScene(dt);
 
   // Rennablauf (Ampel/Strafe) + Bots, vor dem Auto, damit die Kollision aktuelle Positionen nutzt
