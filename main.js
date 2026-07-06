@@ -148,7 +148,20 @@ const TRACKS = [
     },
   },
   { id: 'hockenheim', name: 'Hockenheimring', country: 'Deutschland', length: '4,574 km', file: 'models/hockenheim_track.csv' },
-  { id: 'silverstone', name: 'Silverstone', country: 'Großbritannien', length: '5,891 km', file: 'models/silverstone_track.csv' },
+  // Szenerie aus dem 3D-Modell „Austin Circuit of the Americas 2012 layout" (Dave Love, CC-BY-4.0);
+  // Rennlinie aus der TUM racetrack-database (Austin), per Ähnlichkeitstransformation aufs Modell gelegt.
+  {
+    id: 'austin', name: 'Circuit of the Americas', country: 'USA', length: '5,513 km',
+    file: 'models/austin_track.csv',
+    scenery: {
+      file: 'models/austin/austin.glb', k: 1.011103, offX: 0, offZ: 0,
+      // Höhenprofil aus dem Modell (T1 geht bergauf!); Fahrbahn liegt bei Y≈-143…-113,
+      // maxH=-105 hält Tribünen/Gebäude aus dem Bodenraster
+      maxH: -105,
+      wallRe: 'cota', // alle Meshes (Banden, Mauern) → senkrechte, bodennahe Flächen werden Kollisionen
+      pitSpawn: { x: -712.3, z: 638.6, dx: 0.7946, dz: 0.6071 },
+    },
+  },
   // Layout aus dem 3D-Modell „Hanoi Street Circuit" (Dave Bored, CC-BY-4.0) getract;
   // die Szenerie (Straßen, Gebäude, Stadt) kommt direkt aus dem Modell (flacher Stadtkurs)
   {
