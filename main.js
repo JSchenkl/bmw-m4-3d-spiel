@@ -159,6 +159,9 @@ const TRACKS = [
       // maxH=-105 hält Tribünen/Gebäude aus dem Bodenraster
       maxH: -105,
       wallRe: 'cota', // alle Meshes (Banden, Mauern) → senkrechte, bodennahe Flächen werden Kollisionen
+      // nur Wände 11–60 m von der Ideallinie behalten: näher = fälschlich auf der Strecke
+      // (Curbs/Gebäudefronten), weiter weg = ferner Modell-Rand/Deko
+      wallCorridor: [11, 60],
       pitSpawn: { x: -712.3, z: 638.6, dx: 0.7946, dz: 0.6071 },
     },
   },
@@ -172,8 +175,9 @@ const TRACKS = [
       // Höhenfeld wie bei Spa (Fahrbahn liegt 1,15–1,45 m hoch, nicht auf 0!);
       // maxH schließt Gebäudedächer/Brücken vom Bodenraster aus
       offY: 1.13, maxH: 3,
-      // Startplatz exakt auf der extrahierten Rennlinie (Mitte der Fahrbahn)
-      pitSpawn: { x: 616.2, z: 1332.9, dx: 0.9909, dz: -0.1345 },
+      // Startplatz auf die Fahrbahn gerückt: die Rennlinie verläuft hier am Nordrand
+      // nahe dem Gehweg, ~12 m nach rechts liegt der Startplatz mitten auf der Straße
+      pitSpawn: { x: 616.9, z: 1344.9, dx: 0.9909, dz: -0.1345 },
     },
   },
   { id: 'montreal', name: 'Circuit Gilles-Villeneuve', country: 'Kanada', length: '4,361 km', file: 'models/montreal_track.csv' },
@@ -277,14 +281,39 @@ function buildWallColliders(g, cfg) {
     if (!rows.has(cz)) rows.set(cz, []);
     rows.get(cz).push(cx);
   }
-  let added = 0;
+  // Korridor-Filter (nur wenn cfg.wallCorridor=[min,max] gesetzt, z. B. Austin):
+  // Boxen ZU NAH an der Ideallinie liegen auf der Strecke (Curbs/Gebäudefronten →
+  // falsche Wände), Boxen ZU WEIT weg sind Deko/Modell-Rand. Beides verwerfen.
+  let clGrid = null, clMin = 0, clMax = Infinity;
+  if (cfg.wallCorridor && centerline && centerline.P) {
+    clMin = cfg.wallCorridor[0]; clMax = cfg.wallCorridor[1];
+    clGrid = new Map();
+    const CL = 25;
+    for (const p of centerline.P) {
+      const k = Math.floor(p.x / CL) + '|' + Math.floor(p.z / CL);
+      let a = clGrid.get(k); if (!a) clGrid.set(k, a = []); a.push(p);
+    }
+    clGrid._cl = CL;
+  }
+  const distToLine = (x, z) => {
+    const CL = clGrid._cl, cx = Math.floor(x / CL), cz2 = Math.floor(z / CL);
+    let bd = Infinity;
+    for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+      const a = clGrid.get((cx + dx) + '|' + (cz2 + dz)); if (!a) continue;
+      for (const p of a) { const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z); if (d < bd) bd = d; }
+    }
+    return Math.sqrt(bd);
+  };
+  let added = 0, skipped = 0;
   for (const [cz, xs] of rows) {
     xs.sort((a, b) => a - b);
     let runStart = xs[0], prev = xs[0];
     const flush = (s, e) => {
       const wx0 = x0 + s * cellW, wx1 = x0 + (e + 1) * cellW;
+      const mcx = (wx0 + wx1) / 2, mcz = z0 + (cz + 0.5) * cellW;
+      if (clGrid) { const d = distToLine(mcx, mcz); if (d < clMin || d > clMax) { skipped++; return; } }
       trackColliders.push({
-        cx: (wx0 + wx1) / 2, cz: z0 + (cz + 0.5) * cellW,
+        cx: mcx, cz: mcz,
         ax: 1, az: 0, halfLen: (wx1 - wx0) / 2, halfWid: cellW / 2,
       });
       added++;
@@ -297,7 +326,7 @@ function buildWallColliders(g, cfg) {
     flush(runStart, prev);
   }
   buildColliderGrid(); // Raster neu, die Szenerie-Banden kamen asynchron dazu
-  console.log('Wand-Hitboxen aus der Szenerie:', added, 'Boxen (aus', tris.length, 'Dreiecken)');
+  console.log('Wand-Hitboxen aus der Szenerie:', added, 'Boxen (aus', tris.length, 'Dreiecken)', clGrid ? `(${skipped} außerhalb Korridor verworfen)` : '');
 }
 
 function loadScenery(cfg, parentGroup) {
@@ -1751,15 +1780,6 @@ const MAX_STEER   = 27.2 * Math.PI / 180; // max. Radeinschlag (rad)
 const STEER_RATE  = 3.0;               // Lenkgeschwindigkeit (Rennlenkung, direkter)
 let steerAngle = 0;                    // aktueller Radeinschlag
 
-// ---------- Driftphysik ----------
-// Schwimmwinkel: die Nase zeigt weiter in die Kurve als die tatsächliche
-// Fahrtrichtung – Schlupf (Gas am Limit) leitet den Drift ein, mit Grip
-// fängt sich das Auto wieder und schießt in Richtung der Nase davon.
-let driftAngle = 0;
-const DRIFT_GAIN = 0.22;    // wie stark Schlupf die Nase eindreht (dezenter, mehr Grip)
-const DRIFT_MAX = 0.28;     // ~16° maximaler Schwimmwinkel – rutscht nicht mehr so weit weg
-const DRIFT_RECOVER = 5.0;  // wie schnell sich das Auto fängt (1/s, mit Grip skaliert)
-const DRIFT_SCRUB = 3.5;    // Tempoverlust durch Querrutschen (m/s² bei vollem Winkel)
 
 let speed = 0;
 const keys = new Set();
@@ -2187,31 +2207,15 @@ function updateCar(dt) {
     const overshoot = OVERSTEER_GAIN * overMul * Math.min(slide, 2) * Math.min(1, Math.abs(speed) / 6);
     omega += Math.sign(steerAngle) * Math.sign(speed) * overshoot;
 
-    // Driftphysik (auch auf Asphalt): erst deutlicher Schlupf lässt die Nase
-    // leicht eindrehen – die Fahrtrichtung folgt verzögert. Dezent gehalten,
-    // damit das Auto nicht schon bei leichtem Übertreiben wegrutscht.
-    const driftKick = DRIFT_GAIN * Math.max(0, Math.min(slide, 2.5) - 0.4) * Math.min(1, Math.abs(speed) / 10);
-    omega += Math.sign(steerAngle) * Math.sign(speed) * driftKick;
-    driftAngle += Math.sign(steerAngle) * Math.sign(speed) * (driftKick + overshoot) * dt;
-
     carYaw += omega * dt;
   }
 
   // Heck-Schlupf glätten
   rearSlip += (slipTarget - rearSlip) * Math.min(1, dt * 8);
 
-  // Schwimmwinkel begrenzen und abbauen (das Auto fängt sich mit dem Grip);
-  // Querrutschen schrubbt Tempo weg
-  driftAngle = THREE.MathUtils.clamp(driftAngle, -DRIFT_MAX, DRIFT_MAX);
-  driftAngle -= driftAngle * Math.min(1, dt * DRIFT_RECOVER * surfaceGrip);
-  if (Math.abs(driftAngle) > 0.02 && Math.abs(speed) > 0.5) {
-    speed -= Math.sign(speed) * (Math.abs(driftAngle) / DRIFT_MAX) * DRIFT_SCRUB * dt;
-  }
-
-  // Bewegung entlang der FAHRTRICHTUNG: beim Drift hängt sie der Nase um den
-  // Schwimmwinkel hinterher (Auto fährt quer)
+  // Bewegung in Fahrtrichtung der Fahrzeugfront
   if (speed !== 0 && carForward) {
-    const fwd = carForward.clone().applyAxisAngle(UP, carYaw - driftAngle);
+    const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
     carGroup.position.addScaledVector(fwd, speed * dt);
   }
 
@@ -2604,7 +2608,6 @@ btnPit.addEventListener('click', () => {
   carGroup.position.set(0, 0.05, 0);
   speed = 0;
   steerAngle = 0;
-  driftAngle = 0;
   carRoll = 0;
   gear = 1;
   autoReverse = false;
@@ -2625,7 +2628,7 @@ btnHome.addEventListener('click', () => {
 
   // Auto an den Startplatz, Tempo/Gang zurück
   carGroup.position.set(0, 0.05, 0);
-  speed = 0; steerAngle = 0; driftAngle = 0; carRoll = 0; gear = 1; autoReverse = false; prevGearSound = 1;  alignCarToPitlane();
+  speed = 0; steerAngle = 0; carRoll = 0; gear = 1; autoReverse = false; prevGearSound = 1;  alignCarToPitlane();
   prevCarPos.copy(carGroup.position);
 
   // Ton stumm – beim nächsten Start wieder ab erstem Knopfdruck
@@ -3062,7 +3065,7 @@ function setupGrid() {
       _hd.set(c.tx, 0, c.tz);
       setHeading(_hd);
       prevCarPos.copy(carGroup.position);
-      speed = 0; driftAngle = 0; gear = 1; autoReverse = false; prevGearSound = 1;
+      speed = 0; gear = 1; autoReverse = false; prevGearSound = 1;
     } else {
       const bot = bots[e.who];
       bot.s = arc; bot.offset = gridOffset(i);    // Startaufstellung gestaffelt
@@ -3312,16 +3315,6 @@ function updateDust(dt) {
   if (carOnGravel() && Math.abs(speed) > 4) {
     for (let k = 0; k < 3; k++) spawnDust(carGroup.position.x + (Math.random() - 0.5) * 1.6, carGroup.position.z + (Math.random() - 0.5) * 1.6);
     speed -= Math.sign(speed) * Math.min(Math.abs(speed), 12 * dt); // Kies bremst
-  }
-  // Reifenqualm beim Driften: hinter dem Heck aufwirbeln
-  if (Math.abs(driftAngle) > 0.12 && Math.abs(speed) > 8 && carForward) {
-    const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
-    for (let k = 0; k < 2; k++) {
-      spawnDust(
-        carGroup.position.x - fwd.x * carHalf.len * 0.8 + (Math.random() - 0.5) * 1.2,
-        carGroup.position.z - fwd.z * carHalf.len * 0.8 + (Math.random() - 0.5) * 1.2,
-      );
-    }
   }
   for (let i = 0; i < DUST_N; i++) {
     if (dustLife[i] <= 0) continue;
