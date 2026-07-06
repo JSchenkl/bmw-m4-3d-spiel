@@ -1257,8 +1257,6 @@ function loadCar(index) {
       // Cockpit-Displays platzieren (linkes Fahrer-Display + rechtes Rückspiegel-Display)
       setupCockpitScreens(eye, carForward, sideVec);
 
-      // Rennfahrer einsetzen: Hände greifen die gemessene Lenkrad-Felge
-      buildDriver(eye, carForward, sideVec, wheelCenter, columnAxisWorld);
     }
 
     // Ausgangszustand der Emission merken
@@ -1745,10 +1743,10 @@ let steerAngle = 0;                    // aktueller Radeinschlag
 // Fahrtrichtung – Schlupf (Gas am Limit) leitet den Drift ein, mit Grip
 // fängt sich das Auto wieder und schießt in Richtung der Nase davon.
 let driftAngle = 0;
-const DRIFT_GAIN = 0.55;    // wie stark Schlupf die Nase eindreht
-const DRIFT_MAX = 0.6;      // ~34° maximaler Schwimmwinkel
-const DRIFT_RECOVER = 2.6;  // wie schnell sich das Auto fängt (1/s, mit Grip skaliert)
-const DRIFT_SCRUB = 4.5;    // Tempoverlust durch Querrutschen (m/s² bei vollem Winkel)
+const DRIFT_GAIN = 0.22;    // wie stark Schlupf die Nase eindreht (dezenter, mehr Grip)
+const DRIFT_MAX = 0.28;     // ~16° maximaler Schwimmwinkel – rutscht nicht mehr so weit weg
+const DRIFT_RECOVER = 5.0;  // wie schnell sich das Auto fängt (1/s, mit Grip skaliert)
+const DRIFT_SCRUB = 3.5;    // Tempoverlust durch Querrutschen (m/s² bei vollem Winkel)
 
 let speed = 0;
 const keys = new Set();
@@ -1789,86 +1787,6 @@ function autoShiftGear(keyFwd, keyRev) {
 // Gang: Je näher am Gang-Höchsttempo, desto mehr Lichter. Leuchtet das 5. (rote)
 // Licht und blinkt alles, ist die perfekte Drehzahl zum HOCHSCHALTEN erreicht.
 // Sind die Touren zu niedrig (nur die grünen blinken), ist RUNTERSCHALTEN dran.
-// ---------- Rennfahrer (BMW-Rennanzug) ----------
-// Prozedural gebauter Fahrer: Helm, Torso im BMW-M-Anzug und Beine.
-// Nur in der Außenansicht sichtbar – im Cockpit steckt die Kamera im Helm.
-let driverRig = null;
-
-function buildDriver(eye, fwd, side, wCenter, wAxis) {
-  if (driverRig) { carGroup.remove(driverRig.group); driverRig = null; }
-  const suit = new THREE.MeshStandardMaterial({ color: 0xf2f2f4, roughness: 0.8 });
-  const blue = new THREE.MeshStandardMaterial({ color: 0x1e5fd6, roughness: 0.8 });
-  const red = new THREE.MeshStandardMaterial({ color: 0xd0311e, roughness: 0.8 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x16181c, roughness: 0.9 });
-  const visor = new THREE.MeshStandardMaterial({ color: 0x0a0c10, roughness: 0.15, metalness: 0.7 });
-
-  const bq = new THREE.Quaternion().setFromRotationMatrix(
-    new THREE.Matrix4().makeBasis(side.clone(), UP.clone(), fwd.clone()),
-  );
-  const g = new THREE.Group();
-
-  // Torso (weißer Anzug mit M-Farbbändern), sitzt unter/hinter dem Auge
-  const torsoC = eye.clone().addScaledVector(fwd, -0.10).addScaledVector(UP, -0.42);
-  const torso = new THREE.Group();
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.52, 0.28), suit);
-  chest.castShadow = true;
-  const bandB = new THREE.Mesh(new THREE.BoxGeometry(0.425, 0.07, 0.285), blue);
-  bandB.position.y = 0.12;
-  const bandR = new THREE.Mesh(new THREE.BoxGeometry(0.425, 0.05, 0.285), red);
-  bandR.position.y = 0.045;
-  torso.add(chest, bandB, bandR);
-  torso.position.copy(torsoC);
-  torso.quaternion.copy(bq);
-  g.add(torso);
-
-  // Helm (weiß, dunkles Visier, M-Streifen oben)
-  const helmet = new THREE.Group();
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.135, 20, 14), suit);
-  dome.castShadow = true;
-  const vis = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.085, 0.06), visor);
-  vis.position.set(0, 0.01, 0.105);
-  const hb = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.135, 0.22), blue);
-  hb.position.set(0.025, 0.065, 0);
-  const hr = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.135, 0.22), red);
-  hr.position.set(-0.025, 0.065, 0);
-  helmet.add(dome, vis, hb, hr);
-  helmet.position.copy(eye).addScaledVector(fwd, -0.04).addScaledVector(UP, -0.02);
-  helmet.quaternion.copy(bq);
-  g.add(helmet);
-
-  // Beine (dunkel, Richtung Pedale)
-  const legs = new THREE.Group();
-  for (const sgn of [1, -1]) {
-    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.42), dark);
-    thigh.castShadow = true;
-    thigh.position.copy(torsoC)
-      .addScaledVector(UP, -0.34)
-      .addScaledVector(fwd, 0.24)
-      .addScaledVector(side, sgn * 0.11);
-    thigh.quaternion.copy(bq);
-    thigh.rotateX(-0.35);
-    legs.add(thigh);
-  }
-  g.add(legs);
-
-  const rig = { group: g, torso, helmet, legs, bq };
-  carGroup.add(g);
-  driverRig = rig;
-  updateDriver();
-}
-
-// Fahrer-Sichtbarkeit je Kamera + Oberkörper lehnt leicht in die Lenkbewegung
-const _dLean = new THREE.Quaternion();
-function updateDriver() {
-  const r = driverRig;
-  if (!r) return;
-  // kompletter Fahrer nur außen – im Cockpit steckt die Kamera im Helm
-  const outside = cameraMode !== 1;
-  r.helmet.visible = r.torso.visible = r.legs.visible = outside;
-  _dLean.setFromAxisAngle(UP, steerAngle * 0.5);
-  r.torso.quaternion.copy(_dLean).multiply(r.bq);
-}
-
 const revLights = [...document.querySelectorAll('#revlights i')];
 const REV_TH = [0.45, 0.6, 0.72, 0.83, 0.9]; // Drehzahl-Anteil, ab dem Licht 1…5 angeht
 
@@ -2256,10 +2174,10 @@ function updateCar(dt) {
     const overshoot = OVERSTEER_GAIN * overMul * Math.min(slide, 2) * Math.min(1, Math.abs(speed) / 6);
     omega += Math.sign(steerAngle) * Math.sign(speed) * overshoot;
 
-    // Driftphysik (auch auf Asphalt): Antriebs-Schlupf und Rutschen am Limit
-    // drehen die NASE zusätzlich ein – die Fahrtrichtung folgt nur verzögert,
-    // das Heck steht sichtbar quer (Gegenlenken über das normale Lenken)
-    const driftKick = DRIFT_GAIN * Math.min(slide, 2.5) * Math.min(1, Math.abs(speed) / 8);
+    // Driftphysik (auch auf Asphalt): erst deutlicher Schlupf lässt die Nase
+    // leicht eindrehen – die Fahrtrichtung folgt verzögert. Dezent gehalten,
+    // damit das Auto nicht schon bei leichtem Übertreiben wegrutscht.
+    const driftKick = DRIFT_GAIN * Math.max(0, Math.min(slide, 2.5) - 0.4) * Math.min(1, Math.abs(speed) / 10);
     omega += Math.sign(steerAngle) * Math.sign(speed) * driftKick;
     driftAngle += Math.sign(steerAngle) * Math.sign(speed) * (driftKick + overshoot) * dt;
 
@@ -2316,7 +2234,6 @@ function updateCar(dt) {
     // Volleinschlag (27,2° Radwinkel) ≈ 135° Lenkradwinkel
     p.pivot.quaternion.setFromAxisAngle(p.axisLocal, -steerAngle * (135 / 27.2));
   }
-  updateDriver(); // Fahrer-Arme folgen dem Lenkrad
 
 
   speedNumEl.textContent = Math.round(Math.abs(speed) * 3.6);
