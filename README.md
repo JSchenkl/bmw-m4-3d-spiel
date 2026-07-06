@@ -28,7 +28,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 ## Features
 
 - **BMW M4 GT3 EVO** als 3D-Modell (GLB) mit GT3-Fahrdynamik, Rennsound und Auspuffflammen
-- **6 Strecken**: **Spa-Francorchamps 1992** (komplette 3D-Szenerie samt Höhenprofil aus einem Modell – Eau Rouge geht wirklich bergauf!), **Hockenheimring**, **Silverstone**, **Hanoi Street Circuit** (3D-Stadt-Szenerie aus einem Modell), **Circuit Gilles-Villeneuve**, **Interlagos (São Paulo)** – inkl. Gras, Kiesbett und Reifen-Bande
+- **6 Strecken**: **Spa-Francorchamps 1992** (komplette 3D-Szenerie samt Höhenprofil aus einem Modell – Eau Rouge geht wirklich bergauf!), **Hockenheimring**, **Circuit of the Americas** (Austin, komplette 3D-Szenerie mit Höhenprofil – T1 geht bergauf!), **Hanoi Street Circuit** (3D-Stadt-Szenerie aus einem Modell), **Circuit Gilles-Villeneuve**, **Interlagos (São Paulo)** – inkl. Gras, Kiesbett und Reifen-Bande
 - **Streckenauswahl** vor der Modus-Wahl (Kreuztasten wechseln die Strecke, mit Streckenkarte von oben, Name, Länge und Land)
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
 - Scheinwerfer & Rücklichter mit Lichtkegeln
@@ -54,3 +54,4 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - Streckendaten – [TUM racetrack-database](https://github.com/TUMFTM/racetrack-database)
 - Hanoi-Modell – **Hanoi Street Circuit** von Dave Bored · [Sketchfab](https://sketchfab.com/3d-models/read-description-hanoi-street-circuit-fd942c0f4fc044f4bd5f8091ead9f540) · CC-BY 4.0
 - Spa-1992-Layout – **Spa Francorchamps 1992 layout** von Dave Love · [Sketchfab](https://sketchfab.com/3d-models/spa-francorchamps-1992-layout-a1223a21df954b9ebf8eb3b7c682eb99) · CC-BY 4.0
+- Austin-Layout – **Austin Circuit of the Americas 2012 layout** von Dave Love · [Sketchfab](https://sketchfab.com/3d-models/austin-circuit-of-the-americas-2012-layout-5fb6c4716f3c4ff2bd056bf72cd1a102) · CC-BY 4.0
