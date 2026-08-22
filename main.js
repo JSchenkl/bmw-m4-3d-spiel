@@ -1212,6 +1212,9 @@ function loadCar(index, onDone, onError) {
       }
     });
 
+    // Durchgang 1: Dreiecke jedes Rad-Meshes nach Fahrzeug-Quadrant bündeln.
+    const wheelParts = [];              // { mesh, geo, clusters }
+    const radiusByQuadrant = new Map(); // Quadrant → größter Halbmesser (= Reifen)
     for (const mesh of wheelMeshes) {
       const geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
       const posAttr = geo.getAttribute('position');
@@ -1236,11 +1239,26 @@ function loadCar(index, onDone, onError) {
         cl.box.union(triBox);
       }
 
+      wheelParts.push({ mesh, geo, clusters });
+
+      // Liegen Felge, Bremsscheibe und Reifen eines Rades in getrennten Meshes
+      // (eigene Materialien), bekäme sonst jedes Teil über ω = v/r seinen eigenen
+      // Halbmesser und damit eine andere Drehzahl – die Felge würde gegenüber dem
+      // Reifen durchdrehen. Maßgeblich ist deshalb der größte Halbmesser je
+      // Quadrant, also der Reifen.
+      for (const [key, { box }] of clusters) {
+        const r = (box.max.y - box.min.y) / 2;
+        radiusByQuadrant.set(key, Math.max(radiusByQuadrant.get(key) || 0, r));
+      }
+    }
+
+    // Durchgang 2: je Cluster einen lenk- und drehbaren Pivot bauen.
+    for (const { mesh, geo, clusters } of wheelParts) {
       const invW = mesh.matrixWorld.clone().invert();
       const material = mesh.material;
       mesh.geometry = new THREE.BufferGeometry(); // Original rendert nichts mehr
 
-      for (const { idx, box: wBox } of clusters.values()) {
+      for (const [quadrant, { idx, box: wBox }] of clusters) {
         const cg = new THREE.BufferGeometry();
         for (const name of Object.keys(geo.attributes)) cg.setAttribute(name, geo.attributes[name]);
         cg.setIndex(idx);
@@ -1263,7 +1281,8 @@ function loadCar(index, onDone, onError) {
         wheels.push({
           spin: spinPivot,
           steer: isFront ? steerPivot : null,
-          radius: Math.max((wBox.max.y - wBox.min.y) / 2, 0.2),
+          // Alle Teile eines Rades teilen sich den Reifen-Halbmesser (siehe oben)
+          radius: Math.max(radiusByQuadrant.get(quadrant) ?? (wBox.max.y - wBox.min.y) / 2, 0.2),
           axisLocal: spinAxisWorld.clone().transformDirection(invW).normalize(),
           upLocal: new THREE.Vector3(0, 1, 0).transformDirection(invW).normalize(),
         });
