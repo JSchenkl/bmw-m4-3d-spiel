@@ -663,7 +663,11 @@ const CARS = [
     // (LED-Leiste oben, darunter Tempo | Gang | Drehzahl) und kippt beim Lenken mit.
     // „hoch“ = Abstand über der Nabe, „vor“ = Abstand vor der Lenkradebene.
     cockpit: {
-      lenkrad: { hoch: 0.090, vor: 0.014, breite: 0.135, hoehe: 0.030 },
+      // Am Display-Feld des Modells (Material INT_DISPLAY) ausgemessen, bezogen
+      // auf die gemessene Drehmitte und die gemessene Saeulenachse (nahezu
+      // waagerecht, nicht der konfigurierte Neigungswinkel): Feldmitte 0,0945 m
+      // darueber, Oberflaeche gut 0,013 m davor, Feldgroesse 0,150 x 0,028 m.
+      lenkrad: { hoch: 0.0882, vor: 0.016, quer: -0.006, breite: 0.150, hoehe: 0.028 },
     },
     // Originaldaten Toyota TS030 Hybrid (Le-Mans-Prototyp, 2012–2014)
     specs: {
@@ -887,8 +891,11 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec, wheelCenter, columnAxis) {
     const disp = new THREE.Mesh(
       new THREE.PlaneGeometry(s.breite, s.hoehe),
       new THREE.MeshBasicMaterial({ map: wheelDispTex, toneMapped: false, transparent: true }));
-    // über der Nabe, ein Stück vor der Lenkradebene (sonst Z-Fighting mit dem Modell)
-    disp.position.copy(u).multiplyScalar(s.hoch).addScaledVector(n, s.vor);
+    // über der Nabe, ein Stück vor der Lenkradebene (sonst Z-Fighting mit dem
+    // Modell); „quer“ verschiebt seitlich in der Lenkradebene
+    disp.position.copy(u).multiplyScalar(s.hoch)
+      .addScaledVector(n, s.vor)
+      .addScaledVector(r, s.quer || 0);
     disp.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r, u, n));
     pivot.add(disp);
     cockpitScreens.add(pivot);
@@ -971,7 +978,7 @@ function updateDashScreen() {
     w.fillText(String(spd), 190, 128);
     w.font = "bold 24px 'Segoe UI', Arial, sans-serif";
     w.fillStyle = 'rgba(255,255,255,0.45)';
-    w.fillText('km/h', 190, 190);
+    w.fillText('km/h', 190, 178);
     // Gang gross und rot in der Mitte
     w.fillStyle = '#ff2d20';
     w.font = "bold 120px Consolas, monospace";
@@ -982,7 +989,7 @@ function updateDashScreen() {
     w.fillText(String(rpm), 830, 128);
     w.font = "bold 24px 'Segoe UI', Arial, sans-serif";
     w.fillStyle = 'rgba(255,255,255,0.45)';
-    w.fillText('U/min', 830, 190);
+    w.fillText('U/min', 830, 178);
     wheelDispTex.needsUpdate = true;
   }
 
