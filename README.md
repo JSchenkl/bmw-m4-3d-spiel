@@ -64,7 +64,7 @@ Beide Autos nutzen dasselbe Kraftmodell, aber je Auto eigene Kennwerte
 
 - Modell **2022 BMW M4 GT3** – Ddiaz Design · [Sketchfab](https://sketchfab.com/3d-models/2022-bmw-m4-gt3-61695f14da8d4821beda6f0e376c2f73) · CC-BY-NC-SA 4.0
 - Modell **Mercedes-Benz 300SL Gullwing** – vecarz.com
-- Modell **Toyota TS030 Hybrid** – ⚠️ Urheber und Lizenz noch eintragen (auch in `index.html`, `#credit`)
+- Modell **Toyota TS030 Hybrid** – vecarz.com
 - Streckendaten – [TUM racetrack-database](https://github.com/TUMFTM/racetrack-database)
 - Spa-1992-Layout – **Spa Francorchamps 1992 layout** von Dave Love · [Sketchfab](https://sketchfab.com/3d-models/spa-francorchamps-1992-layout-a1223a21df954b9ebf8eb3b7c682eb99) · CC-BY 4.0
 - Austin-Layout – **Austin Circuit of the Americas 2012 layout** von Dave Love · [Sketchfab](https://sketchfab.com/3d-models/austin-circuit-of-the-americas-2012-layout-5fb6c4716f3c4ff2bd056bf72cd1a102) · CC-BY 4.0

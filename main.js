@@ -52,7 +52,8 @@ let lookYaw = 0;   // Umsehen in der Cockpit-Sicht (horizontal, recentert zu 0)
 let lookPitch = 0; // Umsehen in der Cockpit-Sicht (vertikal)
 const CHASE_FOV = 45;   // Sichtfeld der Verfolgerkamera
 const COCKPIT_FOV = 72; // weiteres Sichtfeld im Cockpit für mehr Immersion
-// Position des Fahrerauges relativ zur Fahrzeugmitte (für Cockpit-Kamera UND Lenkrad-Suche)
+// Position des Fahrerauges relativ zur Fahrzeugmitte (für Cockpit-Kamera UND Lenkrad-Suche).
+// Wird je Auto aus CARS[i].cockpitEye gesetzt (ein GT3 sitzt deutlich höher als ein LMP1).
 const COCKPIT_EYE = { back: 0.30, side: 0.32, height: 1.12 };
 // Nur die Kamera sitzt etwas tiefer und weiter hinten (GT3-Sitzposition);
 // die Lenkrad-Suche bleibt unverändert
@@ -581,6 +582,7 @@ const CARS = [
     interiorRe: /interior|textured|coloured|badge/, // Meshes, aus denen das Lenkrad gelöst wird
     plateRe: /interior|textured/,                   // davon nur die Lenkrad-„Platte“ zum Vermessen
     forward: null,          // Fahrtrichtung wird aus den Rücklichtern bestimmt
+    cockpitEye: { back: 0.30, side: 0.32, height: 1.12 }, // Fahrerauge (GT3-Sitzposition)
     // Originaldaten BMW M4 GT3 EVO (Datenblatt unten rechts im Auswahlbildschirm)
     specs: {
       klasse: 'GT3 · Kundensport-Rennwagen',
@@ -624,17 +626,24 @@ const CARS = [
     name: 'TOYOTA TS030 HYBRID',
     short: 'Toyota TS030',
     subtitle: 'LMP1-Le-Mans-Prototyp · 3D Viewer',
+    // „Toyota TS030 Hybrid" von vecarz.com
     file: 'models/toyota_ts030_hybrid.glb',
     length: 4.65,           // reale Fahrzeuglänge in Metern (LMP1-Reglement: max. 4650 mm)
-    // Prototypen benennen Materialien anders als das GT3-Modell – bewusst weit gefasst,
-    // damit Leuchten/Felgen auch bei abweichender Benennung gefunden werden.
-    lightRe: /light|lamp|glass|lens|red/,
-    redRe: /red|tail|rear/,       // rote Rückleuchte bestimmt die Fahrtrichtung
-    rimRe: /wheel|tire|tyre|rim/,
-    windowRe: /window|windshield|glass_/,
-    interiorRe: /interior|cockpit|carbon|textured|badge/,
-    plateRe: /interior|cockpit|carbon/,
-    forward: null,
+    // Materialnamen dieses Modells (aus der Datei ausgelesen):
+    //   TS030_LIGHT_POD / TS030_LIGHTS_RAM = Scheinwerfer-Pods ganz vorne,
+    //   inner_rim / outer_rim / Tyre / Disc = Rad (Brakes = feststehende Sättel, daher nicht),
+    //   glass = Windschutzscheibe, INT_* = komplette Lenkradeinheit inkl. Display.
+    lightRe: /ts030_light/,       // nur die Scheinwerfer-Pods (nicht die INT_LEDS am Lenkrad)
+    redRe: /ts030_light/,         // eigenes Rücklicht-Material gibt es nicht → forward wird gesetzt
+    rimRe: /rim|tyre|disc/,
+    windowRe: /^glass$/,
+    interiorRe: /^int_/,          // INT_* ist bei diesem Modell exakt die Lenkradeinheit
+    plateRe: /int_carbon|int_display/,
+    // Die Fahrzeugfront zeigt in +z (Scheinwerfer-Pods und Frontsplitter liegen dort),
+    // deshalb wird die Richtung hier fest gesetzt statt aus roten Rückleuchten geraten.
+    forward: { x: 0, y: 0, z: 1 },
+    // Fahrerauge im LMP1: tiefer und weiter vorne als im GT3 (das Auto ist nur 1,10 m hoch)
+    cockpitEye: { back: -0.26, side: 0.19, height: 0.82 },
     // Originaldaten Toyota TS030 Hybrid (Le-Mans-Prototyp, 2012–2014)
     specs: {
       klasse: 'LMP1 · Le-Mans-Prototyp',
@@ -671,8 +680,8 @@ const CARS = [
       gearMaxKmh: [0, 80, 125, 170, 220, 285, 400], // langer 6. Gang für die Mulsanne-Gerade
       gearPull: [0, 1.0, 0.80, 0.65, 0.56, 0.50, 0.45],
     },
-    // Prototypen-Cockpit: Lenkrad sitzt näher am Fahrer und flacher als im GT3
-    steerWheel: { ahead: 0.34, drop: 0.22, side: 0.0, rad: 0.19, depth: 0.10, tilt: 0.30, sign: 1, ratio: 5 },
+    // Lenkradmitte laut Modellvermessung 0,30 m vor und 0,26 m unter dem Fahrerauge
+    steerWheel: { ahead: 0.30, drop: 0.26, side: -0.02, rad: 0.19, depth: 0.12, tilt: 0.30, sign: 1, ratio: 5 },
   },
 ];
 // Start-Auto per URL wählbar (?car=ts030), Standard ist der M4
@@ -2054,7 +2063,8 @@ function applyCarPhysics(cfg) {
   GEAR_PULL = p.gearPull.slice();
   // Bots fahren dasselbe Auto wie der Spieler → gleiches Tempolimit
   BOT_MAX_SPEED = VMAX;
-  // Lenkrad-Geometrie im Cockpit ans Modell anpassen
+  // Sitzposition und Lenkrad-Geometrie im Cockpit ans Modell anpassen
+  Object.assign(COCKPIT_EYE, cfg.cockpitEye);
   Object.assign(STEER_WHEEL, cfg.steerWheel);
 }
 
