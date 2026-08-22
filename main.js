@@ -655,12 +655,11 @@ const CARS = [
     forward: { x: 0, y: 0, z: 1 },
     // Fahrerauge im LMP1: tiefer und weiter vorne als im GT3 (das Auto ist nur 1,10 m hoch)
     cockpitEye: { back: -0.26, side: 0.19, height: 0.82 },
-    // Prototypen-Cockpit: mittlerer Schirm über dem Lenkrad zeigt Tempo und Gang,
-    // der Schirm rechts daneben die Drehzahl (statt des Rückspiegels wie im M4).
+    // Prototypen-Cockpit: die Anzeige sitzt auf dem Display des Lenkrads selbst
+    // (LED-Leiste oben, darunter Tempo | Gang | Drehzahl) und kippt beim Lenken mit.
+    // „hoch“ = Abstand über der Nabe, „vor“ = Abstand vor der Lenkradebene.
     cockpit: {
-      dash:  { ahead: 0.42, side: 0.055, drop: 0.10, breite: 0.20, hoehe: 0.10, layout: 'tempo-gang' },
-      rechts: { ahead: 0.42, side: -0.185, drop: 0.10, breite: 0.13, hoehe: 0.082,
-                neigeY: 0.16, inhalt: 'drehzahl' },
+      lenkrad: { hoch: 0.066, vor: 0.014, breite: 0.135, hoehe: 0.030 },
     },
     // Originaldaten Toyota TS030 Hybrid (Le-Mans-Prototyp, 2012–2014)
     specs: {
@@ -825,6 +824,9 @@ let dashCanvas = null, dashCtx = null, dashTex = null, centerScreenMesh = null;
 let dashPrev = ''; // zuletzt gezeichneter Zustand (nur bei Änderung neu zeichnen)
 // Zweites Display für die Drehzahl (nur bei Autos, die rechts keinen Spiegel haben)
 let revCanvas = null, revCtx = null, revTex = null, revMesh = null, revPrev = '';
+// Display im Lenkrad selbst (LMP1): dreht mit dem Lenkrad mit
+let wheelDispCanvas = null, wheelDispCtx = null, wheelDispTex = null, wheelDispPrev = '';
+let dashAktiv = false, revAktiv = false, lenkradAktiv = false;
 const DASH_LED_COLORS = ['#2ecc40', '#74e22b', '#ffdc00', '#ff851b', '#ff2d20'];
 // Anordnung der Cockpit-Displays des aktuellen Autos (aus CARS[i].cockpit)
 let COCKPIT_SCREENS = {
@@ -832,10 +834,11 @@ let COCKPIT_SCREENS = {
   rechts: { ahead: 0.64, side: -0.275, drop: 0.235, breite: 0.16, hoehe: 0.09,
             neigeX: -0.12, neigeY: 0.18, inhalt: 'spiegel' },
 };
-function setupCockpitScreens(eyeLocal, fwd, sideVec) {
+function setupCockpitScreens(eyeLocal, fwd, sideVec, wheelCenter, columnAxis) {
   cockpitScreens.clear();
   centerScreenMesh = null;
   revMesh = null;
+  dashAktiv = revAktiv = lenkradAktiv = false;
 
   // Maße und Inhalte kommen je Auto aus CARS[i].cockpit (Cockpits sind unterschiedlich hoch)
   const cfg = COCKPIT_SCREENS;
@@ -853,19 +856,57 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec) {
     return m;
   };
 
-  // --- mittleres Fahrer-Display: gezeichnete Anzeige (CanvasTexture) ---
-  if (!dashCanvas) {
-    dashCanvas = document.createElement('canvas');
-    dashCanvas.width = 512; dashCanvas.height = 256;
-    dashCtx = dashCanvas.getContext('2d');
-    dashTex = new THREE.CanvasTexture(dashCanvas);
-    dashTex.colorSpace = THREE.SRGBColorSpace;
+  // --- Display im Lenkrad selbst (LMP1): hängt am Lenkrad-Pivot und kippt mit ---
+  if (cfg.lenkrad && wheelCenter && columnAxis) {
+    if (!wheelDispCanvas) {
+      wheelDispCanvas = document.createElement('canvas');
+      wheelDispCanvas.width = 1024; wheelDispCanvas.height = 215;
+      wheelDispCtx = wheelDispCanvas.getContext('2d');
+      wheelDispTex = new THREE.CanvasTexture(wheelDispCanvas);
+      wheelDispTex.colorSpace = THREE.SRGBColorSpace;
+    }
+    wheelDispPrev = '';
+    const s = cfg.lenkrad;
+    // Achsenkreuz in der Lenkradebene: Normale zeigt zum Fahrer, „oben“ liegt in der Ebene
+    const n = columnAxis.clone().negate().normalize();
+    const u = UP.clone().addScaledVector(n, -UP.dot(n)).normalize();
+    const r = new THREE.Vector3().crossVectors(u, n).normalize();
+
+    const pivot = new THREE.Object3D();
+    pivot.position.copy(wheelCenter);
+    // transparent: das Display des Modells bleibt sichtbar, nur Ziffern und
+    // Schaltlichter liegen darüber (kein schwarzes Rechteck auf dem Lenkrad)
+    const disp = new THREE.Mesh(
+      new THREE.PlaneGeometry(s.breite, s.hoehe),
+      new THREE.MeshBasicMaterial({ map: wheelDispTex, toneMapped: false, transparent: true }));
+    // über der Nabe, ein Stück vor der Lenkradebene (sonst Z-Fighting mit dem Modell)
+    disp.position.copy(u).multiplyScalar(s.hoch).addScaledVector(n, s.vor);
+    disp.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r, u, n));
+    pivot.add(disp);
+    cockpitScreens.add(pivot);
+    // Mit den übrigen Lenkradteilen mitdrehen lassen
+    steeringParts.push({ pivot, axisLocal: columnAxis.clone().normalize() });
+    lenkradAktiv = true;
   }
-  dashPrev = ''; // beim (Neu-)Aufbau einmal frisch zeichnen
-  flaeche(cfg.dash, new THREE.MeshBasicMaterial({ map: dashTex, toneMapped: false }));
+
+  // --- mittleres Fahrer-Display: gezeichnete Anzeige (CanvasTexture) ---
+  if (cfg.dash) {
+    if (!dashCanvas) {
+      dashCanvas = document.createElement('canvas');
+      dashCanvas.width = 512; dashCanvas.height = 256;
+      dashCtx = dashCanvas.getContext('2d');
+      dashTex = new THREE.CanvasTexture(dashCanvas);
+      dashTex.colorSpace = THREE.SRGBColorSpace;
+    }
+    dashPrev = ''; // beim (Neu-)Aufbau einmal frisch zeichnen
+    flaeche(cfg.dash, new THREE.MeshBasicMaterial({ map: dashTex, toneMapped: false }));
+    dashAktiv = true;
+  }
 
   // --- rechter Schirm: Rückspiegel oder Drehzahl ---
-  if (cfg.rechts.inhalt === 'drehzahl') {
+  if (!cfg.rechts) {
+    // nichts weiter
+  } else if (cfg.rechts.inhalt === 'drehzahl') {
     if (!revCanvas) {
       revCanvas = document.createElement('canvas');
       revCanvas.width = 512; revCanvas.height = 320;
@@ -875,6 +916,7 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec) {
     }
     revPrev = '';
     revMesh = flaeche(cfg.rechts, new THREE.MeshBasicMaterial({ map: revTex, toneMapped: false }));
+    revAktiv = true;
   } else {
     centerScreenMesh = flaeche(cfg.rechts,
       new THREE.MeshBasicMaterial({ map: mirrorRT.texture, toneMapped: false }));
@@ -885,7 +927,6 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec) {
 //   'tempo-gang' (TS030) – Tempo links, Gang groß und rot in der Mitte;
 //                          die Drehzahl steht dort auf dem rechten Schirm
 function updateDashScreen() {
-  if (!dashCtx) return;
   const spd = Math.round(Math.abs(speed) * 3.6);
   const gearTxt = gear === 0 ? 'R' : String(gear);
   const forward = Math.abs(speed) > 0.5 && gear >= 1;
@@ -893,9 +934,47 @@ function updateDashScreen() {
   const leds = REV_TH.filter((t) => frac >= t).length;
   const blink = performance.now() % 260 < 130; // Blink-Phase (nur am Limit relevant)
   const atLimit = frac >= REV_TH[4];
-  const tempoGang = COCKPIT_SCREENS.dash.layout === 'tempo-gang';
+  const tempoGang = COCKPIT_SCREENS.dash?.layout === 'tempo-gang';
 
   const state = `${gearTxt}|${spd}|${leds}|${atLimit ? blink : '-'}`;
+
+  // --- Display im Lenkrad: LED-Leiste oben, darunter Tempo | Gang (rot) | Drehzahl ---
+  if (lenkradAktiv && wheelDispCtx && state !== wheelDispPrev) {
+    wheelDispPrev = state;
+    const w = wheelDispCtx;
+    w.clearRect(0, 0, 1024, 215); // durchsichtig – das Modell-Display bleibt sichtbar
+    w.textAlign = 'center'; w.textBaseline = 'middle';
+    // Schaltlichter: nur die brennenden zeichnen, erloschene bleiben durchsichtig
+    const anLeds = frac < REV_TH[0] ? 0 : Math.round(((frac - REV_TH[0]) / (1 - REV_TH[0])) * 15);
+    for (let i = 0; i < 15; i++) {
+      if (!(atLimit ? blink : i < anLeds)) continue;
+      w.beginPath();
+      w.arc(72 + i * 63, 30, 15, 0, Math.PI * 2);
+      w.fillStyle = DASH_LED_COLORS[Math.min(4, Math.floor(i / 3))];
+      w.fill();
+    }
+    // Tempo links
+    w.fillStyle = '#ffffff';
+    w.font = "bold 84px Consolas, monospace";
+    w.fillText(String(spd), 190, 128);
+    w.font = "bold 24px 'Segoe UI', Arial, sans-serif";
+    w.fillStyle = 'rgba(255,255,255,0.45)';
+    w.fillText('km/h', 190, 190);
+    // Gang gross und rot in der Mitte
+    w.fillStyle = '#ff2d20';
+    w.font = "bold 120px Consolas, monospace";
+    w.fillText(gearTxt, 512, 132);
+    // Drehzahl rechts
+    w.fillStyle = '#ffffff';
+    w.font = "bold 84px Consolas, monospace";
+    w.fillText(String(Math.round(frac * 100)), 830, 128);
+    w.font = "bold 24px 'Segoe UI', Arial, sans-serif";
+    w.fillStyle = 'rgba(255,255,255,0.45)';
+    w.fillText('% DREHZAHL', 830, 190);
+    wheelDispTex.needsUpdate = true;
+  }
+
+  if (!dashAktiv || !dashCtx) return;
   if (state !== dashPrev) {
     dashPrev = state;
     const g = dashCtx;
@@ -946,7 +1025,7 @@ function updateDashScreen() {
   }
 
   // --- rechter Schirm: Drehzahl mit Schaltlichtern und Balken ---
-  if (!revCtx) return;
+  if (!revAktiv || !revCtx) return;
   const pct = Math.round(frac * 100);
   const revState = `${leds}|${pct}|${atLimit ? blink : '-'}`;
   if (revState === revPrev) return;
@@ -1555,8 +1634,9 @@ function loadCar(index, onDone, onError) {
         });
       }
 
-      // Cockpit-Displays platzieren (linkes Fahrer-Display + rechtes Rückspiegel-Display)
-      setupCockpitScreens(eye, carForward, sideVec);
+      // Cockpit-Displays platzieren; wheelCenter/columnAxisWorld für ein Display,
+      // das am Lenkrad selbst sitzt und mitdreht
+      setupCockpitScreens(eye, carForward, sideVec, wheelCenter, columnAxisWorld);
 
     }
 
