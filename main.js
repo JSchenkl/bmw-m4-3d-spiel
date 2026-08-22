@@ -659,7 +659,7 @@ const CARS = [
     // (LED-Leiste oben, darunter Tempo | Gang | Drehzahl) und kippt beim Lenken mit.
     // „hoch“ = Abstand über der Nabe, „vor“ = Abstand vor der Lenkradebene.
     cockpit: {
-      lenkrad: { hoch: 0.066, vor: 0.014, breite: 0.135, hoehe: 0.030 },
+      lenkrad: { hoch: 0.100, vor: 0.014, breite: 0.135, hoehe: 0.030 },
     },
     // Originaldaten Toyota TS030 Hybrid (Le-Mans-Prototyp, 2012–2014)
     specs: {
@@ -699,6 +699,8 @@ const CARS = [
     },
     // Lenkradmitte laut Modellvermessung 0,30 m vor und 0,26 m unter dem Fahrerauge
     steerWheel: { ahead: 0.30, drop: 0.26, side: -0.02, rad: 0.19, depth: 0.12, tilt: 0.30, sign: 1, ratio: 5 },
+    // Drehmitte aus der Ausdehnung statt aus dem Schwerpunkt bestimmen (Nabe)
+    wheelCenterMode: 'bbox',
   },
 ];
 // Start-Auto per URL wählbar (?car=ts030), Standard ist der M4
@@ -1579,8 +1581,22 @@ function loadCar(index, onDone, onError) {
           if (s < -0.20 || s > 0.08) return false; // Griffe hinten mitnehmen, Säule vorn nicht
           return rel.lengthSq() - s * s <= 0.22 * 0.22; // radial: Platte + Griffe
         }, interiorMeshes);
+        // Der Dreiecks-Schwerpunkt liegt nur dann in der Nabe, wenn die Geometrie
+        // gleichmäßig ums Zentrum verteilt ist. Beim TS030 ziehen Display und
+        // LED-Leiste oben sowie die Tastencluster den Schwerpunkt aus der Mitte –
+        // das Lenkrad schwingt dann beim Lenken, statt sich zu drehen. Für einen
+        // Kreis ist die Mitte der Ausdehnung das richtige Maß.
+        if (cfg.wheelCenterMode === 'bbox' && grab.pts.length > 30) {
+          const b = new THREE.Box3().makeEmpty();
+          for (const p of grab.pts) b.expandByPoint(p);
+          const d = b.getCenter(new THREE.Vector3()).sub(wheelCenter);
+          // Nur QUER zur Säulenachse korrigieren: die Lage in der Achse bestimmt
+          // die Lenkradebene (gemessen), und für die Drehung ist sie ohnehin egal.
+          d.addScaledVector(columnAxisWorld, -d.dot(columnAxisWorld));
+          wheelCenter.add(d);
+        }
         console.log('Lenkrad: Achse', columnAxisWorld.toArray().map((x) => x.toFixed(3)).join(','),
-          '| Zentrum', wheelCenter.toArray().map((x) => x.toFixed(2)).join(','),
+          '| Zentrum', wheelCenter.toArray().map((x) => x.toFixed(3)).join(','),
           '| Dreiecke', grab.pts.length);
         if (STEER_WHEEL.debug) {
           // Welche Materialien liegen im Lenkrad-Zylinder? (Griffe evtl. ausgefiltert)
