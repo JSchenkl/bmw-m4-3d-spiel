@@ -982,14 +982,17 @@ function updateDashScreen() {
     // Schaltlichter auf ihrer eigenen Fläche: 15 Punkte wie im Modell, nur die
     // brennenden zeichnen – erloschene bleiben durchsichtig und die Punkte des
     // Modells scheinen durch.
-    const anLeds = frac < REV_TH[0] ? 0 : Math.round(((frac - REV_TH[0]) / (1 - REV_TH[0])) * 15);
+    // Die Leiste des Modells hat 15 Punkte; der aeusserste links und rechts
+    // bleibt dunkel, es leuchten also 13. Die uebrigen behalten ihre Position.
+    const LEDS = 13;
+    const anLeds = frac < REV_TH[0] ? 0 : Math.round(((frac - REV_TH[0]) / (1 - REV_TH[0])) * LEDS);
     const L = ledCtx;
     L.clearRect(0, 0, 1024, 103);
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < LEDS; i++) {
       if (!(atLimit ? blink : i < anLeds)) continue;
       L.beginPath();
-      L.arc(15 + i * 71, 51, 18, 0, Math.PI * 2);
-      L.fillStyle = DASH_LED_COLORS[Math.min(4, Math.floor(i / 3))];
+      L.arc(86 + i * 71, 51, 18, 0, Math.PI * 2); // Punkt 2 bis 14 der Leiste
+      L.fillStyle = DASH_LED_COLORS[Math.min(4, Math.floor(i * 5 / LEDS))];
       L.fill();
     }
     ledTex.needsUpdate = true;
