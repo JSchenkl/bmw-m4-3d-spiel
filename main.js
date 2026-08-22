@@ -624,6 +624,10 @@ const CARS = [
       steerRate: 3.0,              // Lenkgeschwindigkeit (Rennlenkung)
       gearMaxKmh: [0, 60, 100, 140, 180, 225, 300], // Gang-Höchsttempo (GT3-Rennabstufung)
       gearPull: [0, 1.0, 0.76, 0.58, 0.48, 0.40, 0.34], // Zugkraft-Faktor je Gang
+      // Für die Drehzahlanzeige: das Spiel rechnet mit dem Anteil am Gang-Limit,
+      // daraus wird linear eine Drehzahl zwischen Leerlauf und Begrenzer gebildet.
+      leerlauf: 1300,              // U/min im Stand
+      drehzahlMax: 7300,           // U/min am Begrenzer (P58, BoP-limitiert)
     },
     // Lenkrad wird aus dem Innenraum-Mesh herausgelöst – Maße relativ zum Fahrerauge
     steerWheel: { ahead: 0.38, drop: 0.26, side: 0.0, rad: 0.20, depth: 0.10, tilt: 0.40, sign: 1, ratio: 5 },
@@ -696,6 +700,8 @@ const CARS = [
       steerRate: 3.2,
       gearMaxKmh: [0, 80, 125, 170, 220, 285, 400], // langer 6. Gang für die Mulsanne-Gerade
       gearPull: [0, 1.0, 0.80, 0.65, 0.56, 0.50, 0.45],
+      leerlauf: 1200,              // U/min im Stand
+      drehzahlMax: 8500,           // U/min am Begrenzer (3,4-l-V8 Saugmotor)
     },
     // Lenkradmitte laut Modellvermessung 0,30 m vor und 0,26 m unter dem Fahrerauge
     steerWheel: { ahead: 0.30, drop: 0.26, side: -0.02, rad: 0.19, depth: 0.12, tilt: 0.30, sign: 1, ratio: 5 },
@@ -939,10 +945,14 @@ function updateDashScreen() {
   const tempoGang = COCKPIT_SCREENS.dash?.layout === 'tempo-gang';
 
   const state = `${gearTxt}|${spd}|${leds}|${atLimit ? blink : '-'}`;
+  // Drehzahl in U/min: linear zwischen Leerlauf und Begrenzer über den Anteil
+  // am Gang-Höchsttempo (eine echte Kurbelwellendrehzahl simuliert das Spiel nicht)
+  const rpm = Math.round(LEERLAUF + frac * (DREHZAHL_MAX - LEERLAUF));
 
   // --- Display im Lenkrad: LED-Leiste oben, darunter Tempo | Gang (rot) | Drehzahl ---
-  if (lenkradAktiv && wheelDispCtx && state !== wheelDispPrev) {
-    wheelDispPrev = state;
+  const wheelState = `${state}|${rpm}`;
+  if (lenkradAktiv && wheelDispCtx && wheelState !== wheelDispPrev) {
+    wheelDispPrev = wheelState;
     const w = wheelDispCtx;
     w.clearRect(0, 0, 1024, 215); // durchsichtig – das Modell-Display bleibt sichtbar
     w.textAlign = 'center'; w.textBaseline = 'middle';
@@ -966,13 +976,13 @@ function updateDashScreen() {
     w.fillStyle = '#ff2d20';
     w.font = "bold 120px Consolas, monospace";
     w.fillText(gearTxt, 512, 132);
-    // Drehzahl rechts
-    w.fillStyle = '#ffffff';
-    w.font = "bold 84px Consolas, monospace";
-    w.fillText(String(Math.round(frac * 100)), 830, 128);
+    // Drehzahl rechts (U/min)
+    w.fillStyle = atLimit ? '#ff2d20' : '#ffffff';
+    w.font = "bold 76px Consolas, monospace";
+    w.fillText(String(rpm), 830, 128);
     w.font = "bold 24px 'Segoe UI', Arial, sans-serif";
     w.fillStyle = 'rgba(255,255,255,0.45)';
-    w.fillText('% DREHZAHL', 830, 190);
+    w.fillText('U/min', 830, 190);
     wheelDispTex.needsUpdate = true;
   }
 
@@ -1028,8 +1038,7 @@ function updateDashScreen() {
 
   // --- rechter Schirm: Drehzahl mit Schaltlichtern und Balken ---
   if (!revAktiv || !revCtx) return;
-  const pct = Math.round(frac * 100);
-  const revState = `${leds}|${pct}|${atLimit ? blink : '-'}`;
+  const revState = `${leds}|${rpm}|${atLimit ? blink : '-'}`;
   if (revState === revPrev) return;
   revPrev = revState;
 
@@ -1052,13 +1061,13 @@ function updateDashScreen() {
   r.fillRect(56, 128, 400 * frac, 34);
   r.strokeStyle = 'rgba(255,255,255,0.25)'; r.lineWidth = 3;
   r.strokeRect(56, 128, 400, 34);
-  // Zahlenwert
-  r.fillStyle = '#ffffff';
+  // Zahlenwert in U/min
+  r.fillStyle = atLimit ? '#ff2d20' : '#ffffff';
   r.font = "bold 96px Consolas, monospace";
-  r.fillText(String(pct), 256, 226);
+  r.fillText(String(rpm), 256, 226);
   r.font = "bold 26px 'Segoe UI', Arial, sans-serif";
   r.fillStyle = 'rgba(255,255,255,0.5)';
-  r.fillText('% DREHZAHL', 256, 290);
+  r.fillText('U/min', 256, 290);
   revTex.needsUpdate = true;
 }
 
@@ -2272,6 +2281,8 @@ function applyCarPhysics(cfg) {
   // Getriebe: Gang-Höchsttempo (km/h → m/s) und Zugkraft je Gang
   GEAR_MAX_SPEED = p.gearMaxKmh.map((v) => v / 3.6);
   GEAR_PULL = p.gearPull.slice();
+  LEERLAUF = p.leerlauf;
+  DREHZAHL_MAX = p.drehzahlMax;
   // Bots fahren dasselbe Auto wie der Spieler → gleiches Tempolimit
   BOT_MAX_SPEED = VMAX;
   // Sitzposition, Lenkrad-Geometrie und Display-Anordnung ans Cockpit anpassen
@@ -2292,6 +2303,8 @@ const gearEl = document.getElementById('gear');
 // Beide Tabellen gehören zum gewählten Auto und werden von applyCarPhysics() gesetzt.
 let GEAR_MAX_SPEED = [0, 60, 100, 140, 180, 225, 300].map((v) => v / 3.6); // km/h → m/s
 let GEAR_PULL = [0, 1.0, 0.76, 0.58, 0.48, 0.40, 0.34]; // Zugkraft-Faktor je Gang (höhere Gänge kräftiger → mehr Topspeed-Durchzug)
+// Drehzahlbereich des aktuellen Motors (nur für die Anzeige)
+let LEERLAUF = 1300, DREHZAHL_MAX = 7300;
 let gear = 1; // 0 = Rückwärtsgang (R), 1…6 = Vorwärtsgänge
 let prevGearSound = 1; // letzter Gang – für den Schaltsound (Hoch-/Runterschalten)
 let autoGearbox = false; // false = Handschaltung, true = Automatikgetriebe
