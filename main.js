@@ -659,7 +659,7 @@ const CARS = [
     // (LED-Leiste oben, darunter Tempo | Gang | Drehzahl) und kippt beim Lenken mit.
     // „hoch“ = Abstand über der Nabe, „vor“ = Abstand vor der Lenkradebene.
     cockpit: {
-      lenkrad: { hoch: 0.100, vor: 0.014, breite: 0.135, hoehe: 0.030 },
+      lenkrad: { hoch: 0.090, vor: 0.014, breite: 0.135, hoehe: 0.030 },
     },
     // Originaldaten Toyota TS030 Hybrid (Le-Mans-Prototyp, 2012–2014)
     specs: {
