@@ -663,11 +663,13 @@ const CARS = [
     // (LED-Leiste oben, darunter Tempo | Gang | Drehzahl) und kippt beim Lenken mit.
     // „hoch“ = Abstand über der Nabe, „vor“ = Abstand vor der Lenkradebene.
     cockpit: {
-      // Am Display-Feld des Modells (Material INT_DISPLAY) ausgemessen, bezogen
-      // auf die gemessene Drehmitte und die gemessene Saeulenachse (nahezu
-      // waagerecht, nicht der konfigurierte Neigungswinkel): Feldmitte 0,0945 m
-      // darueber, Oberflaeche gut 0,013 m davor, Feldgroesse 0,150 x 0,028 m.
-      lenkrad: { hoch: 0.0882, vor: 0.016, quer: -0.006, breite: 0.150, hoehe: 0.028 },
+      // Am Lenkrad-Display des Modells ausgemessen. LED-Leiste und Zahlenfelder
+      // sind getrennte Bauteile und bekommen je eine eigene Flaeche - eine
+      // gemeinsame waere so hoch, dass die Perspektive sie zum Trapez verzerrt.
+      lenkrad: {
+        felder: { hoch: 0.0882, vor: 0.016, quer: -0.0060, breite: 0.1500, hoehe: 0.028 },
+        leds:   { hoch: 0.1025, vor: 0.016, quer: -0.0010, breite: 0.1025, hoehe: 0.0105 },
+      },
     },
     // Originaldaten Toyota TS030 Hybrid (Le-Mans-Prototyp, 2012–2014)
     specs: {
@@ -838,6 +840,7 @@ let dashPrev = ''; // zuletzt gezeichneter Zustand (nur bei Änderung neu zeichn
 let revCanvas = null, revCtx = null, revTex = null, revMesh = null, revPrev = '';
 // Display im Lenkrad selbst (LMP1): dreht mit dem Lenkrad mit
 let wheelDispCanvas = null, wheelDispCtx = null, wheelDispTex = null, wheelDispPrev = '';
+let ledCanvas = null, ledCtx = null, ledTex = null;
 let dashAktiv = false, revAktiv = false, lenkradAktiv = false;
 const DASH_LED_COLORS = ['#2ecc40', '#74e22b', '#ffdc00', '#ff851b', '#ff2d20'];
 // Anordnung der Cockpit-Displays des aktuellen Autos (aus CARS[i].cockpit)
@@ -877,8 +880,14 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec, wheelCenter, columnAxis) {
       wheelDispTex = new THREE.CanvasTexture(wheelDispCanvas);
       wheelDispTex.colorSpace = THREE.SRGBColorSpace;
     }
+    if (!ledCanvas) {
+      ledCanvas = document.createElement('canvas');
+      ledCanvas.width = 1024; ledCanvas.height = 103;
+      ledCtx = ledCanvas.getContext('2d');
+      ledTex = new THREE.CanvasTexture(ledCanvas);
+      ledTex.colorSpace = THREE.SRGBColorSpace;
+    }
     wheelDispPrev = '';
-    const s = cfg.lenkrad;
     // Achsenkreuz in der Lenkradebene: Normale zeigt zum Fahrer, „oben“ liegt in der Ebene
     const n = columnAxis.clone().negate().normalize();
     const u = UP.clone().addScaledVector(n, -UP.dot(n)).normalize();
@@ -886,18 +895,24 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec, wheelCenter, columnAxis) {
 
     const pivot = new THREE.Object3D();
     pivot.position.copy(wheelCenter);
-    // transparent: das Display des Modells bleibt sichtbar, nur Ziffern und
-    // Schaltlichter liegen darüber (kein schwarzes Rechteck auf dem Lenkrad)
-    const disp = new THREE.Mesh(
-      new THREE.PlaneGeometry(s.breite, s.hoehe),
-      new THREE.MeshBasicMaterial({ map: wheelDispTex, toneMapped: false, transparent: true }));
-    // über der Nabe, ein Stück vor der Lenkradebene (sonst Z-Fighting mit dem
-    // Modell); „quer“ verschiebt seitlich in der Lenkradebene
-    disp.position.copy(u).multiplyScalar(s.hoch)
-      .addScaledVector(n, s.vor)
-      .addScaledVector(r, s.quer || 0);
-    disp.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r, u, n));
-    pivot.add(disp);
+    // Eine Fläche in der Lenkradebene aufhängen. Transparent: das Display des
+    // Modells bleibt sichtbar, nur Ziffern und Schaltlichter liegen darüber.
+    // „hoch“ = über der Nabe, „vor“ = vor der Ebene (sonst Z-Fighting),
+    // „quer“ = seitlich in der Ebene.
+    const inEbene = (s, tex) => {
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(s.breite, s.hoehe),
+        new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, transparent: true }));
+      m.position.copy(u).multiplyScalar(s.hoch)
+        .addScaledVector(n, s.vor)
+        .addScaledVector(r, s.quer || 0);
+      m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r, u, n));
+      pivot.add(m);
+      return m;
+    };
+    inEbene(cfg.lenkrad.felder, wheelDispTex); // Tempo | Gang | Drehzahl
+    inEbene(cfg.lenkrad.leds, ledTex);         // Schaltlichter darüber
+
     cockpitScreens.add(pivot);
     // Mit den übrigen Lenkradteilen mitdrehen lassen
     steeringParts.push({ pivot, axisLocal: columnAxis.clone().normalize() });
@@ -963,33 +978,39 @@ function updateDashScreen() {
     const w = wheelDispCtx;
     w.clearRect(0, 0, 1024, 215); // durchsichtig – das Modell-Display bleibt sichtbar
     w.textAlign = 'center'; w.textBaseline = 'middle';
-    // Schaltlichter: nur die brennenden zeichnen, erloschene bleiben durchsichtig
+
+    // Schaltlichter auf ihrer eigenen Fläche: 15 Punkte wie im Modell, nur die
+    // brennenden zeichnen – erloschene bleiben durchsichtig und die Punkte des
+    // Modells scheinen durch.
     const anLeds = frac < REV_TH[0] ? 0 : Math.round(((frac - REV_TH[0]) / (1 - REV_TH[0])) * 15);
+    const L = ledCtx;
+    L.clearRect(0, 0, 1024, 103);
     for (let i = 0; i < 15; i++) {
       if (!(atLimit ? blink : i < anLeds)) continue;
-      w.beginPath();
-      w.arc(72 + i * 63, 30, 15, 0, Math.PI * 2);
-      w.fillStyle = DASH_LED_COLORS[Math.min(4, Math.floor(i / 3))];
-      w.fill();
+      L.beginPath();
+      L.arc(15 + i * 71, 51, 18, 0, Math.PI * 2);
+      L.fillStyle = DASH_LED_COLORS[Math.min(4, Math.floor(i / 3))];
+      L.fill();
     }
+    ledTex.needsUpdate = true;
     // Tempo links
     w.fillStyle = '#ffffff';
     w.font = "bold 84px Consolas, monospace";
-    w.fillText(String(spd), 190, 128);
+    w.fillText(String(spd), 313, 128);
     w.font = "bold 24px 'Segoe UI', Arial, sans-serif";
     w.fillStyle = 'rgba(255,255,255,0.45)';
-    w.fillText('km/h', 190, 178);
+    w.fillText('km/h', 313, 178);
     // Gang gross und rot in der Mitte
     w.fillStyle = '#ff2d20';
     w.font = "bold 120px Consolas, monospace";
-    w.fillText(gearTxt, 512, 132);
+    w.fillText(gearTxt, 541, 132);
     // Drehzahl rechts (U/min)
     w.fillStyle = atLimit ? '#ff2d20' : '#ffffff';
     w.font = "bold 76px Consolas, monospace";
-    w.fillText(String(rpm), 830, 128);
+    w.fillText(String(rpm), 781, 128);
     w.font = "bold 24px 'Segoe UI', Arial, sans-serif";
     w.fillStyle = 'rgba(255,255,255,0.45)';
-    w.fillText('U/min', 830, 178);
+    w.fillText('U/min', 781, 178);
     wheelDispTex.needsUpdate = true;
   }
 
