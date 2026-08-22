@@ -560,8 +560,11 @@ const barEl = document.getElementById('bar');
 const pctEl = document.getElementById('pct');
 const loaderEl = document.getElementById('loader');
 
-// Verfügbare Autos. Beide fahren mit derselben Physik (siehe Fahrsteuerung unten);
-// die Regexe beschreiben, wie Leuchten/Felgen/Scheiben im jeweiligen Modell heißen.
+// Verfügbare Autos. Jeder Eintrag beschreibt drei Dinge:
+//   • das 3D-Modell (Datei, reale Länge, Regexe für Leuchten/Felgen/Scheiben/Innenraum),
+//   • „specs“ = die Originaldaten fürs Datenblatt im Auswahlbildschirm (unten rechts),
+//   • „phys“  = die Fahrphysik, die aus genau diesen Originaldaten abgeleitet ist
+//     (siehe applyCarPhysics weiter unten – die Autos fahren sich bewusst unterschiedlich).
 const CARS = [
   {
     id: 'm4',
@@ -575,10 +578,104 @@ const CARS = [
     redRe: /red_glass/,           // rotes Glas sitzt am Heck → bestimmt die Fahrtrichtung
     rimRe: /wheel/,               // Wheel1A-Material = Felgen/Reifen
     windowRe: /window_material/,  // nur die Scheiben (RED_GLASS ausgenommen)
+    interiorRe: /interior|textured|coloured|badge/, // Meshes, aus denen das Lenkrad gelöst wird
+    plateRe: /interior|textured/,                   // davon nur die Lenkrad-„Platte“ zum Vermessen
     forward: null,          // Fahrtrichtung wird aus den Rücklichtern bestimmt
+    // Originaldaten BMW M4 GT3 EVO (Datenblatt unten rechts im Auswahlbildschirm)
+    specs: {
+      klasse: 'GT3 · Kundensport-Rennwagen',
+      baujahr: 'seit 2022 (EVO ab 2025)',
+      motor: '3,0-l-R6-Biturbo (P58)',
+      leistung: '590 PS (434 kW)',
+      gewicht: '1300 kg (BoP-Minimum)',
+      accel: '2,8 s',
+      vmax: '280 km/h',
+      antrieb: 'Hinterrad',
+      getriebe: '6-Gang sequenziell (Xtrac)',
+    },
+    // Längs-/Querdynamik. Kommentare nennen jeweils die reale Größe dahinter.
+    phys: {
+      mass: 1300,                  // kg (BoP-Mindestgewicht GT3)
+      powerWheel: 440000 * 0.9,    // W an den Rädern (~590 PS, sequenziell = wenig Verlust)
+      fTraction: 16500,            // N Traktionsgrenze beim Start (Slicks)
+      accelBoost: 1.15,            // ergibt 0–100 ≈ 2,8 s, 0–200 ≈ 9,4 s – wie der echte GT3
+      driveRear: 1.0,              // GT3 = reiner Hinterradantrieb
+      rearGripFrac: 0.52,          // Anteil der Achslast am Heck
+      rearGripMu: 1.30,            // Reibwert der Slicks
+      oversteerGain: 0.8,          // wie stark das Heck bei Schlupf eindreht
+      brakeDecel: 17.5,            // m/s² Rennbremse + Aero (~1,8 g)
+      cdArea: 0.47 * 2.2,          // cw · Stirnfläche (m²) – großer Heckflügel
+      rollRes: 0.013,              // Rollwiderstandsbeiwert (Slicks)
+      vmaxKmh: 280,                // Topspeed (BoP-/Getriebe-limitiert)
+      wheelbase: 2.85,             // m Radstand
+      maxLatG: 1.05,               // mechanische Haftgrenze in g (ohne Abtrieb)
+      aeroMax: 0.45,               // max. Grip-Zuschlag durch Abtrieb (+45 %)
+      aeroK: 0.00008,              // wie schnell der Abtrieb mit dem Tempo wächst
+      maxSteerDeg: 27.2,           // max. Radeinschlag
+      steerRate: 3.0,              // Lenkgeschwindigkeit (Rennlenkung)
+      gearMaxKmh: [0, 60, 100, 140, 180, 225, 300], // Gang-Höchsttempo (GT3-Rennabstufung)
+      gearPull: [0, 1.0, 0.76, 0.58, 0.48, 0.40, 0.34], // Zugkraft-Faktor je Gang
+    },
+    // Lenkrad wird aus dem Innenraum-Mesh herausgelöst – Maße relativ zum Fahrerauge
+    steerWheel: { ahead: 0.38, drop: 0.26, side: 0.0, rad: 0.20, depth: 0.10, tilt: 0.40, sign: 1, ratio: 5 },
+  },
+  {
+    id: 'ts030',
+    name: 'TOYOTA TS030 HYBRID',
+    short: 'Toyota TS030',
+    subtitle: 'LMP1-Le-Mans-Prototyp · 3D Viewer',
+    file: 'models/toyota_ts030_hybrid.glb',
+    length: 4.65,           // reale Fahrzeuglänge in Metern (LMP1-Reglement: max. 4650 mm)
+    // Prototypen benennen Materialien anders als das GT3-Modell – bewusst weit gefasst,
+    // damit Leuchten/Felgen auch bei abweichender Benennung gefunden werden.
+    lightRe: /light|lamp|glass|lens|red/,
+    redRe: /red|tail|rear/,       // rote Rückleuchte bestimmt die Fahrtrichtung
+    rimRe: /wheel|tire|tyre|rim/,
+    windowRe: /window|windshield|glass_/,
+    interiorRe: /interior|cockpit|carbon|textured|badge/,
+    plateRe: /interior|cockpit|carbon/,
+    forward: null,
+    // Originaldaten Toyota TS030 Hybrid (Le-Mans-Prototyp, 2012–2014)
+    specs: {
+      klasse: 'LMP1 · Le-Mans-Prototyp',
+      baujahr: '2012–2014 (WEC / Le Mans)',
+      motor: '3,4-l-V8 Saugmotor + THS-R Hybrid',
+      leistung: '730 PS gesamt (530 PS V8 + 300 PS E-Boost)',
+      gewicht: '900 kg (LMP1-Minimum)',
+      accel: '2,3 s',
+      vmax: '340 km/h',
+      antrieb: 'Hinterrad (Hybrid an der Hinterachse)',
+      getriebe: '6-Gang sequenziell',
+    },
+    // Deutlich leichter, stärker und mit viel mehr Abtrieb als der GT3:
+    // 0–100 ≈ 2,3 s, 0–200 ≈ 6,6 s, Vmax 340 km/h (mit demselben Kraftmodell gerechnet).
+    phys: {
+      mass: 900,                   // kg (LMP1-Mindestgewicht)
+      powerWheel: 537000 * 0.92,   // W an den Rädern (~730 PS Systemleistung)
+      fTraction: 13800,            // N Traktionsgrenze (leichter, aber breite Prototypen-Slicks)
+      accelBoost: 1.00,            // ergibt 0–100 ≈ 2,3 s wie beim echten TS030
+      driveRear: 1.0,              // Hinterradantrieb (der Hybrid sitzt an der Hinterachse)
+      rearGripFrac: 0.56,          // Mittelmotor-Prototyp → mehr Last am Heck
+      rearGripMu: 1.45,            // Prototypen-Slicks greifen stärker als GT3-Slicks
+      oversteerGain: 0.7,          // stabiler als der GT3
+      brakeDecel: 21.0,            // m/s² (~2,1 g – Kohlefaserbremsen + Abtrieb)
+      cdArea: 0.36 * 1.72,         // cw · Stirnfläche (m²) – schlanke Le-Mans-Karosserie
+      rollRes: 0.012,
+      vmaxKmh: 340,                // Topspeed (Le-Mans-Abstimmung)
+      wheelbase: 2.98,             // m Radstand
+      maxLatG: 1.25,               // mehr mechanischer Grip als der GT3
+      aeroMax: 0.75,               // LMP1-Abtrieb: bis zu +75 % Kurven-Grip
+      aeroK: 0.00009,
+      maxSteerDeg: 25.0,           // Prototypen lenken direkter, aber weniger weit ein
+      steerRate: 3.2,
+      gearMaxKmh: [0, 80, 125, 170, 220, 285, 400], // langer 6. Gang für die Mulsanne-Gerade
+      gearPull: [0, 1.0, 0.80, 0.65, 0.56, 0.50, 0.45],
+    },
+    // Prototypen-Cockpit: Lenkrad sitzt näher am Fahrer und flacher als im GT3
+    steerWheel: { ahead: 0.34, drop: 0.22, side: 0.0, rad: 0.19, depth: 0.10, tilt: 0.30, sign: 1, ratio: 5 },
   },
 ];
-// Start-Auto per URL wählbar (?car=sls), Standard ist der M4
+// Start-Auto per URL wählbar (?car=ts030), Standard ist der M4
 const urlCar = new URLSearchParams(location.search).get('car');
 let currentCarIndex = Math.max(0, CARS.findIndex((c) => c.id === urlCar));
 let currentCar = null; // Szenen-Objekt des aktuell geladenen Autos
@@ -955,8 +1052,13 @@ function mergeCarMeshes(car) {
   return merged;
 }
 
-function loadCar(index) {
+// Lädt ein Auto aus CARS.
+//   onDone  – wird nach dem Laden aufgerufen (Standard: Startbildschirm einblenden)
+//   onError – wird aufgerufen, wenn die Modelldatei nicht geladen werden kann
+function loadCar(index, onDone, onError) {
   const cfg = CARS[index];
+  currentCarIndex = index;
+  applyCarPhysics(cfg); // Gewicht, Leistung, Getriebe, Grip auf dieses Auto umstellen
 
   // Beim Wechsel behält das neue Auto Position und Fahrtrichtung des alten
   const prevHeading = (carForward && currentCar)
@@ -1197,9 +1299,9 @@ function loadCar(index) {
       car.traverse((n) => {
         if (!n.isMesh || !n.geometry.getAttribute('position')) return;
         const mat = (n.material?.name || '').toLowerCase();
-        if (!/interior|textured|coloured|badge/.test(mat)) return;
+        if (!cfg.interiorRe.test(mat)) return;
         interiorMeshes.push(n);
-        if (/interior|textured/.test(mat)) plateMeshes.push(n);
+        if (cfg.plateRe.test(mat)) plateMeshes.push(n);
       });
 
       const _c = new THREE.Vector3();
@@ -1398,8 +1500,9 @@ function loadCar(index) {
     applyMode();
     controls.autoRotate = true;
     loaderEl.classList.add('hidden');
+    if (onDone) onDone();
     // Startscreen einblenden (requestAnimationFrame damit CSS-Transition greift)
-    requestAnimationFrame(() => document.getElementById('start-screen').classList.add('visible'));
+    else requestAnimationFrame(() => document.getElementById('start-screen').classList.add('visible'));
   },
   (xhr) => {
     if (xhr.total > 0) {
@@ -1409,13 +1512,13 @@ function loadCar(index) {
     }
   },
   (err) => {
-    pctEl.textContent = 'Fehler beim Laden des Modells. Bitte über einen lokalen Server starten (start.bat).';
+    pctEl.textContent = `Modell „${cfg.file}“ konnte nicht geladen werden. `
+      + 'Datei vorhanden? Und bitte über einen lokalen Server starten (start.bat).';
     console.error(err);
+    if (onError) onError(err);
   }
   );
 }
-
-loadCar(currentCarIndex);
 
 // ---------- Zustand & UI ----------
 let isNight = false;
@@ -1722,10 +1825,10 @@ function showTrackScreen() {
 }
 function confirmTrackSelection() {
   const t = TRACKS[selectedTrackIndex];
+  // Nach der Strecke kommt die Autoauswahl, erst danach die Modus-Wahl
   const proceed = () => {
     document.getElementById('track-screen').classList.remove('visible');
-    document.getElementById('mode-screen').classList.add('visible');
-    startNavIndex = 0; // Modus-Navigation startet bei „Training"
+    showCarScreen();
   };
   if (t.file !== trackLoadedFile) loadTrack(t.file).then(proceed); else proceed();
 }
@@ -1734,6 +1837,118 @@ function confirmTrackSelection() {
   byId('track-prev')?.addEventListener('click', () => cycleTrack(-1));
   byId('track-next')?.addEventListener('click', () => cycleTrack(1));
   byId('track-confirm')?.addEventListener('click', confirmTrackSelection);
+}
+
+// ---------- Autoauswahl (nach der Strecke, vor der Modus-Wahl) ----------
+// Zeigt je Auto die Originaldaten aus CARS[i].specs unten rechts an. Die Fahrphysik
+// wird beim Laden des Modells aus CARS[i].phys übernommen (siehe applyCarPhysics).
+let selectedCarIndex = currentCarIndex;
+// Ergebnis der Verfügbarkeitsprüfung je Auto: true = Datei da, false = fehlt, undefined = ungeprüft
+const carFileAvailable = {};
+let carLoadPending = false; // solange true ist „Weiter" gesperrt (Modell lädt gerade)
+
+// Reihenfolge und Beschriftung der Datenblatt-Zeilen
+const SPEC_ROWS = [
+  ['klasse', 'Klasse'],
+  ['baujahr', 'Baujahr'],
+  ['motor', 'Motor'],
+  ['leistung', 'Leistung'],
+  ['gewicht', 'Gewicht'],
+  ['accel', '0–100 km/h'],
+  ['vmax', 'Höchstgeschwindigkeit'],
+  ['antrieb', 'Antrieb'],
+  ['getriebe', 'Getriebe'],
+];
+// 0–100 und Vmax werden im Datenblatt farbig hervorgehoben
+const SPEC_KEY_FIGURES = new Set(['accel', 'vmax']);
+
+function renderCarScreen() {
+  const cfg = CARS[selectedCarIndex];
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('car-name', cfg.name);
+  set('car-class', cfg.specs.klasse);
+  set('car-specs-title', `Originaldaten · ${cfg.short}`);
+
+  // Kachel in den Farben der jeweiligen Marke
+  document.getElementById('car-slot')?.classList.toggle('toyota', cfg.id === 'ts030');
+
+  // Datenblatt unten rechts
+  const rows = document.getElementById('car-specs-rows');
+  if (rows) {
+    rows.replaceChildren(...SPEC_ROWS.filter(([k]) => cfg.specs[k]).map(([k, label]) => {
+      const row = document.createElement('div');
+      row.className = SPEC_KEY_FIGURES.has(k) ? 'spec-row key-figure' : 'spec-row';
+      const key = document.createElement('span');
+      key.className = 'spec-key';
+      key.textContent = label;
+      const val = document.createElement('span');
+      val.className = 'spec-val';
+      val.textContent = cfg.specs[k];
+      row.append(key, val);
+      return row;
+    }));
+  }
+
+  // Fehlt die Modelldatei, wird das Auto klar gekennzeichnet und „Weiter" gesperrt
+  const missingEl = document.getElementById('car-missing');
+  const available = carFileAvailable[cfg.id];
+  if (missingEl) {
+    const missing = available === false;
+    missingEl.style.display = missing ? '' : 'none';
+    if (missing) missingEl.textContent = `3D-Modell fehlt: ${cfg.file}`;
+  }
+  const confirmBtn = document.getElementById('car-confirm');
+  if (confirmBtn) {
+    confirmBtn.disabled = available === false || carLoadPending;
+    confirmBtn.textContent = carLoadPending ? 'Lädt Modell …' : 'Weiter ▸';
+  }
+}
+
+function cycleCar(dir) {
+  if (carLoadPending) return; // während des Ladens nicht umschalten
+  selectedCarIndex = (selectedCarIndex + dir + CARS.length) % CARS.length;
+  renderCarScreen();
+}
+
+function showCarScreen() {
+  selectedCarIndex = currentCarIndex;
+  carLoadPending = false;
+  renderCarScreen();
+  document.getElementById('car-screen').classList.add('visible');
+  // Einmalig prüfen, welche Modelldateien tatsächlich vorhanden sind
+  CARS.forEach((cfg) => {
+    if (carFileAvailable[cfg.id] !== undefined) return;
+    fetch(cfg.file, { method: 'HEAD' })
+      .then((r) => { carFileAvailable[cfg.id] = r.ok; })
+      .catch(() => { carFileAvailable[cfg.id] = false; })
+      .then(() => { if (CARS[selectedCarIndex].id === cfg.id) renderCarScreen(); });
+  });
+}
+
+function confirmCarSelection() {
+  if (carLoadPending || carFileAvailable[CARS[selectedCarIndex].id] === false) return;
+  const toModeScreen = () => {
+    carLoadPending = false;
+    document.getElementById('car-screen').classList.remove('visible');
+    document.getElementById('mode-screen').classList.add('visible');
+    startNavIndex = 0; // Modus-Navigation startet bei „Training"
+  };
+  // Schon geladen? Dann direkt weiter, sonst erst das Modell nachladen.
+  if (selectedCarIndex === currentCarIndex && currentCar) { toModeScreen(); return; }
+  carLoadPending = true;
+  renderCarScreen();
+  loadCar(selectedCarIndex, toModeScreen, () => {
+    // Laden fehlgeschlagen: im Auswahlbildschirm bleiben und das Auto markieren
+    carFileAvailable[CARS[selectedCarIndex].id] = false;
+    carLoadPending = false;
+    renderCarScreen();
+  });
+}
+{
+  const byId = (id) => document.getElementById(id);
+  byId('car-prev')?.addEventListener('click', () => cycleCar(-1));
+  byId('car-next')?.addEventListener('click', () => cycleCar(1));
+  byId('car-confirm')?.addEventListener('click', confirmCarSelection);
 }
 
 // ---------- Kameraperspektive umschalten (Taste T, Klick auf den Ansicht-Button) ----------
@@ -1784,34 +1999,64 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 // ---------- Fahrsteuerung ----------
 // W = Gas, A/D = Lenken, Leertaste = Bremse, S = Rückwärts
 //
-// Längsdynamik nach Eckdaten des BMW M4 GT3 EVO (Rennwagen, P58-Motor):
-//   3,0-l-R6-Biturbo, ~590 PS (BoP), ~1300 kg, sequenzielles 6-Gang-Getriebe (Xtrac),
-//   Rennslicks, große Aero (Schwanenhals-Heckflügel) → Abtrieb wächst mit dem Tempo
-const MASS = 1300;                 // kg (BoP-Mindestgewicht GT3)
-const POWER_WHEEL = 440000 * 0.9;  // W an den Rädern (~590 PS, sequenzielles Getriebe = wenig Verlust)
-const F_TRACTION = 16500;          // N Traktionsgrenze beim Start (Slicks)
-const ACCEL_BOOST = 1.15;          // leichter Boost (ergibt 0–100 ≈ 2,8 s, 0–200 ≈ 9,4 s – wie der echte GT3)
+// Alle folgenden Größen gehören zum aktuell gewählten Auto und werden von
+// applyCarPhysics() aus CARS[i].phys gesetzt (deshalb `let` statt `const`).
+// Beispiel BMW M4 GT3 EVO: 3,0-l-R6-Biturbo, ~590 PS (BoP), ~1300 kg,
+// sequenzielles 6-Gang-Getriebe, Rennslicks, große Aero (Abtrieb wächst mit dem Tempo).
+let MASS = 1300;                 // kg Fahrzeugmasse
+let POWER_WHEEL = 440000 * 0.9;  // W an den Rädern
+let F_TRACTION = 16500;          // N Traktionsgrenze beim Start (Slicks)
+let ACCEL_BOOST = 1.15;          // Feinabstimmung der Beschleunigung auf die Originaldaten
 // Power-Oversteer: Heckantrieb – übersteigt die Antriebskraft die Heck-Haftung,
 // drehen die Hinterräder durch und das Heck bricht aus.
-const DRIVE_REAR = 1.0;                      // GT3 = reiner Hinterradantrieb
-const REAR_GRIP = 0.52 * MASS * 9.81 * 1.30; // max. Längskraft am Heck (Slicks, μ≈1,3)
-const OVERSTEER_GAIN = 0.8;                  // wie stark das Heck bei Schlupf eindreht
-const BRAKE_DECEL = 17.5;          // m/s² Rennbremse + Aero (~1,8 g)
-const RHO_AIR = 1.225;             // kg/m³ Luftdichte
-const CD_AREA = 0.47 * 2.2;        // cw · Stirnfläche (m²) – mehr Widerstand durch den großen Flügel
-const ROLL_RES = 0.013;            // Rollwiderstandsbeiwert (Slicks)
-const VMAX = 280 / 3.6;            // m/s Topspeed (BoP-/Getriebe-limitiert)
-const MAX_REVERSE = -20 / 3.6;     // m/s rückwärts
+let DRIVE_REAR = 1.0;                      // Anteil der Antriebskraft am Heck
+let REAR_GRIP = 0.52 * MASS * 9.81 * 1.30; // max. Längskraft am Heck (Achslast · μ)
+let OVERSTEER_GAIN = 0.8;                  // wie stark das Heck bei Schlupf eindreht
+let BRAKE_DECEL = 17.5;          // m/s² Bremsverzögerung
+const RHO_AIR = 1.225;           // kg/m³ Luftdichte (autounabhängig)
+let CD_AREA = 0.47 * 2.2;        // cw · Stirnfläche (m²)
+let ROLL_RES = 0.013;            // Rollwiderstandsbeiwert
+let VMAX = 280 / 3.6;            // m/s Topspeed
+const MAX_REVERSE = -20 / 3.6;   // m/s rückwärts (für alle Autos gleich)
 
-// Querdynamik (Einspurmodell): GT3-Slicks mit ~1,25 g mechanischem Grip;
-// dazu kommt der Aero-Abtrieb, der die Kurvenhaftung mit dem Tempo erhöht (bis >2 g).
-const WHEELBASE   = 2.85;              // m
-const MAX_LAT_ACC = 1.05 * 9.81;       // m/s² mechanische Haftgrenze – bewusst niedriger (weniger Grip in langsamen Kurven)
-// Abtriebs-Zuschlag aufs Grip-Budget: wächst quadratisch mit dem Tempo (max. +45 %; weniger Grip in schnellen Kurven)
-const aeroGrip = (v) => 1 + Math.min(0.45, v * v * 0.00008);
-const MAX_STEER   = 27.2 * Math.PI / 180; // max. Radeinschlag (rad)
-const STEER_RATE  = 3.0;               // Lenkgeschwindigkeit (Rennlenkung, direkter)
+// Querdynamik (Einspurmodell): mechanischer Slick-Grip plus Aero-Abtrieb,
+// der die Kurvenhaftung mit steigendem Tempo erhöht.
+let WHEELBASE   = 2.85;              // m Radstand
+let MAX_LAT_ACC = 1.05 * 9.81;       // m/s² mechanische Haftgrenze (ohne Abtrieb)
+// Abtriebs-Zuschlag aufs Grip-Budget: wächst quadratisch mit dem Tempo
+let aeroGrip = (v) => 1 + Math.min(0.45, v * v * 0.00008);
+let MAX_STEER   = 27.2 * Math.PI / 180; // max. Radeinschlag (rad)
+let STEER_RATE  = 3.0;               // Lenkgeschwindigkeit
 let steerAngle = 0;                    // aktueller Radeinschlag
+
+// Fahrphysik auf das gewählte Auto umstellen. Wird vor jedem Laden eines Modells
+// aufgerufen, damit Getriebe, Gewicht und Grip zu den Originaldaten passen.
+function applyCarPhysics(cfg) {
+  const p = cfg.phys;
+  MASS = p.mass;
+  POWER_WHEEL = p.powerWheel;
+  F_TRACTION = p.fTraction;
+  ACCEL_BOOST = p.accelBoost;
+  DRIVE_REAR = p.driveRear;
+  REAR_GRIP = p.rearGripFrac * p.mass * 9.81 * p.rearGripMu;
+  OVERSTEER_GAIN = p.oversteerGain;
+  BRAKE_DECEL = p.brakeDecel;
+  CD_AREA = p.cdArea;
+  ROLL_RES = p.rollRes;
+  VMAX = p.vmaxKmh / 3.6;
+  WHEELBASE = p.wheelbase;
+  MAX_LAT_ACC = p.maxLatG * 9.81;
+  aeroGrip = (v) => 1 + Math.min(p.aeroMax, v * v * p.aeroK);
+  MAX_STEER = p.maxSteerDeg * Math.PI / 180;
+  STEER_RATE = p.steerRate;
+  // Getriebe: Gang-Höchsttempo (km/h → m/s) und Zugkraft je Gang
+  GEAR_MAX_SPEED = p.gearMaxKmh.map((v) => v / 3.6);
+  GEAR_PULL = p.gearPull.slice();
+  // Bots fahren dasselbe Auto wie der Spieler → gleiches Tempolimit
+  BOT_MAX_SPEED = VMAX;
+  // Lenkrad-Geometrie im Cockpit ans Modell anpassen
+  Object.assign(STEER_WHEEL, cfg.steerWheel);
+}
 
 
 let speed = 0;
@@ -1822,8 +2067,9 @@ const gearEl = document.getElementById('gear');
 // Manuelles 6-Gang-Getriebe: je Gang ein Drehzahllimit (Gang-Höchsttempo) und ein
 // Zugkraft-Faktor. Niedriger Gang = viel Zugkraft, wenig Topspeed; hoher Gang
 // umgekehrt. Man muss mit RB/E hochschalten, um schneller als das Gang-Limit zu fahren.
-const GEAR_MAX_SPEED = [0, 60, 100, 140, 180, 225, 300].map((v) => v / 3.6); // km/h → m/s (GT3-Rennabstufung; 6. Gang lang, Vmax regelt ab)
-const GEAR_PULL = [0, 1.0, 0.76, 0.58, 0.48, 0.40, 0.34]; // Zugkraft-Faktor je Gang (höhere Gänge kräftiger → mehr Topspeed-Durchzug)
+// Beide Tabellen gehören zum gewählten Auto und werden von applyCarPhysics() gesetzt.
+let GEAR_MAX_SPEED = [0, 60, 100, 140, 180, 225, 300].map((v) => v / 3.6); // km/h → m/s
+let GEAR_PULL = [0, 1.0, 0.76, 0.58, 0.48, 0.40, 0.34]; // Zugkraft-Faktor je Gang (höhere Gänge kräftiger → mehr Topspeed-Durchzug)
 let gear = 1; // 0 = Rückwärtsgang (R), 1…6 = Vorwärtsgänge
 let prevGearSound = 1; // letzter Gang – für den Schaltsound (Hoch-/Runterschalten)
 let autoGearbox = false; // false = Handschaltung, true = Automatikgetriebe
@@ -2109,11 +2355,17 @@ function updateCar(dt) {
     // Startmenü (vor dem Spielstart): Kreuztasten wechseln, A bestätigt
     if (!gameStarted) {
       const trackScr = document.getElementById('track-screen');
+      const carScr = document.getElementById('car-screen');
       if (trackScr && trackScr.classList.contains('visible')) {
         // Streckenauswahl: Kreuztasten wechseln die Strecke, A bestätigt
         if (padPressedOnce(pad, 14) || padPressedOnce(pad, 12)) cycleTrack(-1);
         if (padPressedOnce(pad, 15) || padPressedOnce(pad, 13)) cycleTrack(1);
         if (padPressedOnce(pad, 0)) confirmTrackSelection();
+      } else if (carScr && carScr.classList.contains('visible')) {
+        // Autoauswahl: Kreuztasten wechseln das Auto, A bestätigt
+        if (padPressedOnce(pad, 14) || padPressedOnce(pad, 12)) cycleCar(-1);
+        if (padPressedOnce(pad, 15) || padPressedOnce(pad, 13)) cycleCar(1);
+        if (padPressedOnce(pad, 0)) confirmCarSelection();
       } else {
         const startItems = getStartItems();
         if (startItems.length) {
@@ -2686,9 +2938,10 @@ btnHome.addEventListener('click', () => {
   isNight = true; headlightsOn = true; taillightsOn = true;
   applyMode();
 
-  // Modus- und Streckenauswahl sicher aus, Startbildschirm wieder einblenden
+  // Modus-, Strecken- und Autoauswahl sicher aus, Startbildschirm wieder einblenden
   document.getElementById('mode-screen').classList.remove('visible');
   document.getElementById('track-screen').classList.remove('visible');
+  document.getElementById('car-screen').classList.remove('visible');
   const ss = document.getElementById('start-screen');
   ss.style.display = '';
   requestAnimationFrame(() => ss.classList.add('visible'));
@@ -2698,7 +2951,7 @@ btnHome.addEventListener('click', () => {
 // Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
 const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
-const BOT_MAX_SPEED = 280 / 3.6; // m/s (~280 km/h) – wie der Spieler-Topspeed (GT3)
+let BOT_MAX_SPEED = 280 / 3.6;  // m/s – wird von applyCarPhysics() auf den Topspeed des gewählten Autos gesetzt
 const BOT_MIN_SPEED = 16;       // m/s Mindesttempo in engen Kurven (wie der Spieler dort)
 // (Kurven-Grip der Bots = Spieler-Querhaftung MAX_LAT_ACC, siehe botTargetSpeed)
 const BOT_ACCEL = 8;            // m/s² Längsbeschleunigung am Start
@@ -3512,3 +3765,8 @@ renderer.setAnimationLoop(() => {
   updateSunGlare(); // Blenden, wenn man in die Sonne schaut
   renderer.render(scene, camera);
 });
+
+// ---------- Startauto laden ----------
+// Bewusst am Dateiende: loadCar() ruft applyCarPhysics() auf, und das setzt unter
+// anderem GEAR_MAX_SPEED/GEAR_PULL/BOT_MAX_SPEED – die weiter unten deklariert sind.
+loadCar(currentCarIndex);

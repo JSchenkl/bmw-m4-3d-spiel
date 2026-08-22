@@ -437,6 +437,77 @@
       font-size: clamp(16px, 1.8vw, 24px); font-weight: 800; letter-spacing: 1px;
       text-shadow: 0 2px 10px rgba(0,0,0,0.7);
     }
+
+    /* ---------- Autoauswahl (nach der Strecke, vor der Modus-Wahl) ---------- */
+    #car-screen {
+      position: absolute; inset: 0; z-index: 63; display: none;
+      align-items: center; justify-content: center; gap: 34px;
+      padding: 6vh 4vw; background: rgba(0,0,6,0.92);
+    }
+    #car-screen.visible { display: flex; }
+    /* Pfeile und Kachel übernehmen die Optik der Streckenauswahl */
+    .car-slot {
+      flex: 0 1 560px; height: 46vh; max-width: 42vw;
+      transform: skewX(-12deg); border-radius: 28px; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 14px 50px rgba(0,0,0,0.6);
+      background: linear-gradient(115deg,
+        #0653a0 0%, #0653a0 36%, #2aa6e0 36%, #2aa6e0 60%, #e2001a 60%, #e2001a 100%);
+      transition: background 0.25s;
+    }
+    /* Toyota-Kachel in den Werksfarben des TS030 (Weiß/Rot/Schwarz) */
+    .car-slot.toyota {
+      background: linear-gradient(115deg,
+        #14161c 0%, #14161c 34%, #e8e8ec 34%, #e8e8ec 62%, #d8071f 62%, #d8071f 100%);
+    }
+    .car-info {
+      transform: skewX(12deg); text-align: center; color: #fff;
+      font-family: 'Segoe UI', Arial, sans-serif; text-shadow: 0 4px 16px rgba(0,0,0,0.75);
+    }
+    .car-name { font-size: clamp(24px, 3.2vw, 46px); font-weight: 800; letter-spacing: 2px; }
+    .car-class { font-size: clamp(14px, 1.6vw, 21px); margin-top: 14px; opacity: 0.96; }
+    /* Hinweis, wenn die Modelldatei (noch) fehlt */
+    .car-missing {
+      margin: 14px auto 0; max-width: 82%; font-size: clamp(12px, 1.25vw, 16px);
+      font-weight: 700; line-height: 1.5; overflow-wrap: anywhere;
+      color: #ffd54a; background: rgba(0,0,0,0.55); border-radius: 10px;
+      padding: 6px 14px;
+    }
+    /* Datenblatt mit den Originaldaten – unten rechts */
+    #car-specs {
+      position: absolute; bottom: 24px; right: 24px; z-index: 2;
+      min-width: 300px; max-width: 40vw;
+      background: rgba(10,14,20,0.86); border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 16px; padding: 16px 20px;
+      font-family: 'Segoe UI', Arial, sans-serif; color: #fff;
+      box-shadow: 0 10px 36px rgba(0,0,0,0.55);
+    }
+    #car-specs h3 {
+      margin: 0 0 10px; font-size: 13px; font-weight: 800; letter-spacing: 2px;
+      text-transform: uppercase; color: #2aa6e0;
+    }
+    #car-specs .spec-row {
+      display: flex; justify-content: space-between; gap: 22px;
+      font-size: clamp(12px, 1.15vw, 15px); line-height: 1.85;
+    }
+    #car-specs .spec-key { color: rgba(255,255,255,0.5); white-space: nowrap; }
+    #car-specs .spec-val { font-weight: 700; text-align: right; }
+    /* Eckdaten (0–100 und Vmax) hervorheben */
+    #car-specs .spec-row.key-figure .spec-val { color: #ffd54a; }
+    #car-confirm {
+      position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%);
+      cursor: pointer; border: none;
+      background: linear-gradient(110deg, #e2001a, #ff5a30); color: #fff;
+      padding: 18px 36px; border-radius: 14px; font-size: clamp(16px, 1.7vw, 22px);
+      font-weight: 800; letter-spacing: 1px; box-shadow: 0 10px 36px rgba(226,0,26,0.5);
+      transition: filter 0.15s, opacity 0.15s;
+    }
+    #car-confirm:hover { filter: brightness(1.08); }
+    #car-confirm:disabled { opacity: 0.4; cursor: not-allowed; filter: none; }
+    #car-hint {
+      position: absolute; bottom: 38px; left: 24px; color: #aab3c0;
+      font-family: 'Segoe UI', Arial, sans-serif; font-size: 15px;
+    }
   </style>
 </head>
 <body>
@@ -479,6 +550,26 @@
     <button class="track-arrow" id="track-next" aria-label="nächste Strecke">›</button>
     <div id="track-hint">‹ › Strecke wählen &nbsp;·&nbsp; A / Weiter bestätigen</div>
     <button id="track-confirm">Weiter ▸</button>
+  </div>
+
+  <!-- Autoauswahl nach der Streckenwahl (vor der Modus-Wahl) -->
+  <div id="car-screen">
+    <button class="track-arrow" id="car-prev" aria-label="vorheriges Auto">&lsaquo;</button>
+    <div class="car-slot" id="car-slot">
+      <div class="car-info">
+        <div class="car-name" id="car-name"></div>
+        <div class="car-class" id="car-class"></div>
+        <div class="car-missing" id="car-missing" style="display:none"></div>
+      </div>
+    </div>
+    <button class="track-arrow" id="car-next" aria-label="nächstes Auto">&rsaquo;</button>
+    <!-- Originaldaten des markierten Autos – unten rechts -->
+    <div id="car-specs">
+      <h3 id="car-specs-title">Originaldaten</h3>
+      <div id="car-specs-rows"></div>
+    </div>
+    <div id="car-hint">&lsaquo; &rsaquo; Auto wählen &nbsp;·&nbsp; A / Weiter bestätigen</div>
+    <button id="car-confirm">Weiter &#9656;</button>
   </div>
 
   <!-- Modus-Auswahl nach der Streckenwahl -->
@@ -556,6 +647,8 @@
     Modell: „2022 BMW M4 GT3" von Ddiaz Design ·
     <a href="https://sketchfab.com/3d-models/2022-bmw-m4-gt3-61695f14da8d4821beda6f0e376c2f73" target="_blank">Sketchfab</a> · Lizenz CC-BY-NC-SA 4.0<br>
     Modell: „Mercedes-Benz 300SL Gullwing" von vecarz.com<br>
+    <!-- TODO: Urheber und Lizenz des Toyota-Modells eintragen, sobald die Quelle feststeht -->
+    Modell: „Toyota TS030 Hybrid" · Urheber/Lizenz siehe Modellquelle<br>
     Streckendaten:
     <a href="https://github.com/TUMFTM/racetrack-database" target="_blank">TUM racetrack-database</a> ·
     Spa-1992-Layout aus „Spa Francorchamps 1992 layout" von Dave Love ·
