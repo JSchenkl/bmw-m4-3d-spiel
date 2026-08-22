@@ -631,10 +631,14 @@ const CARS = [
     length: 4.65,           // reale Fahrzeuglänge in Metern (LMP1-Reglement: max. 4650 mm)
     // Materialnamen dieses Modells (aus der Datei ausgelesen):
     //   TS030_LIGHT_POD / TS030_LIGHTS_RAM = Scheinwerfer-Pods ganz vorne,
+    //   TS030_SV = flache Leuchtstreifen, drei vorne (z ≈ +2,0) und zwei am
+    //     Heckabschluss (z = −2,28) → liefert die Rückleuchten,
     //   inner_rim / outer_rim / Tyre / Disc = Rad (Brakes = feststehende Sättel, daher nicht),
     //   glass = Windschutzscheibe, INT_* = komplette Lenkradeinheit inkl. Display.
-    lightRe: /ts030_light/,       // nur die Scheinwerfer-Pods (nicht die INT_LEDS am Lenkrad)
-    redRe: /ts030_light/,         // eigenes Rücklicht-Material gibt es nicht → forward wird gesetzt
+    // INT_LEDS (Lenkrad-Schaltblitz) bleibt bewusst draußen, sonst würde er als
+    // Scheinwerfer behandelt; TS030_POZICNI (Positionsleuchten an den Flanken) ebenso.
+    lightRe: /ts030_light|ts030_sv/,
+    redRe: /ts030_sv/,            // Heckstreifen; für die Richtung ungenutzt, da forward gesetzt ist
     rimRe: /rim|tyre|disc/,
     windowRe: /^glass$/,
     interiorRe: /^int_/,          // INT_* ist bei diesem Modell exakt die Lenkradeinheit
