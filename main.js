@@ -583,6 +583,13 @@ const CARS = [
     plateRe: /interior|textured/,                   // davon nur die Lenkrad-„Platte“ zum Vermessen
     forward: null,          // Fahrtrichtung wird aus den Rücklichtern bestimmt
     cockpitEye: { back: 0.30, side: 0.32, height: 1.12 }, // Fahrerauge (GT3-Sitzposition)
+    // Cockpit-Displays, Maße relativ zum Fahrerauge. „inhalt“ des rechten Schirms:
+    // 'spiegel' = Live-Rückspiegel, 'drehzahl' = Drehzahl mit Schaltlichtern.
+    cockpit: {
+      dash:  { ahead: 0.60, side: 0.01, drop: 0.24, breite: 0.20, hoehe: 0.10, layout: 'gang-tempo' },
+      rechts: { ahead: 0.64, side: -0.275, drop: 0.235, breite: 0.16, hoehe: 0.09,
+                neigeX: -0.12, neigeY: 0.18, inhalt: 'spiegel' },
+    },
     // Originaldaten BMW M4 GT3 EVO (Datenblatt unten rechts im Auswahlbildschirm)
     specs: {
       klasse: 'GT3 · Kundensport-Rennwagen',
@@ -648,6 +655,13 @@ const CARS = [
     forward: { x: 0, y: 0, z: 1 },
     // Fahrerauge im LMP1: tiefer und weiter vorne als im GT3 (das Auto ist nur 1,10 m hoch)
     cockpitEye: { back: -0.26, side: 0.19, height: 0.82 },
+    // Prototypen-Cockpit: mittlerer Schirm über dem Lenkrad zeigt Tempo und Gang,
+    // der Schirm rechts daneben die Drehzahl (statt des Rückspiegels wie im M4).
+    cockpit: {
+      dash:  { ahead: 0.42, side: 0.055, drop: 0.10, breite: 0.20, hoehe: 0.10, layout: 'tempo-gang' },
+      rechts: { ahead: 0.42, side: -0.185, drop: 0.10, breite: 0.13, hoehe: 0.082,
+                neigeY: 0.16, inhalt: 'drehzahl' },
+    },
     // Originaldaten Toyota TS030 Hybrid (Le-Mans-Prototyp, 2012–2014)
     specs: {
       klasse: 'LMP1 · Le-Mans-Prototyp',
@@ -809,12 +823,37 @@ const cockpitScreens = new THREE.Group();
 carGroup.add(cockpitScreens);
 let dashCanvas = null, dashCtx = null, dashTex = null, centerScreenMesh = null;
 let dashPrev = ''; // zuletzt gezeichneter Zustand (nur bei Änderung neu zeichnen)
+// Zweites Display für die Drehzahl (nur bei Autos, die rechts keinen Spiegel haben)
+let revCanvas = null, revCtx = null, revTex = null, revMesh = null, revPrev = '';
 const DASH_LED_COLORS = ['#2ecc40', '#74e22b', '#ffdc00', '#ff851b', '#ff2d20'];
+// Anordnung der Cockpit-Displays des aktuellen Autos (aus CARS[i].cockpit)
+let COCKPIT_SCREENS = {
+  dash:  { ahead: 0.60, side: 0.01, drop: 0.24, breite: 0.20, hoehe: 0.10, layout: 'gang-tempo' },
+  rechts: { ahead: 0.64, side: -0.275, drop: 0.235, breite: 0.16, hoehe: 0.09,
+            neigeX: -0.12, neigeY: 0.18, inhalt: 'spiegel' },
+};
 function setupCockpitScreens(eyeLocal, fwd, sideVec) {
   cockpitScreens.clear();
   centerScreenMesh = null;
+  revMesh = null;
 
-  // --- linkes Fahrer-Display: gezeichnete Anzeige (CanvasTexture) ---
+  // Maße und Inhalte kommen je Auto aus CARS[i].cockpit (Cockpits sind unterschiedlich hoch)
+  const cfg = COCKPIT_SCREENS;
+  // Fläche an einer Stelle relativ zum Fahrerauge aufhängen und zum Fahrer drehen
+  const flaeche = (s, material) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(s.breite, s.hoehe), material);
+    m.position.copy(eyeLocal.clone()
+      .addScaledVector(fwd, s.ahead)
+      .addScaledVector(sideVec, s.side)
+      .addScaledVector(UP, -s.drop));
+    m.lookAt(eyeLocal);
+    if (s.neigeX) m.rotateX(s.neigeX);
+    if (s.neigeY) m.rotateY(s.neigeY);
+    cockpitScreens.add(m);
+    return m;
+  };
+
+  // --- mittleres Fahrer-Display: gezeichnete Anzeige (CanvasTexture) ---
   if (!dashCanvas) {
     dashCanvas = document.createElement('canvas');
     dashCanvas.width = 512; dashCanvas.height = 256;
@@ -823,31 +862,28 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec) {
     dashTex.colorSpace = THREE.SRGBColorSpace;
   }
   dashPrev = ''; // beim (Neu-)Aufbau einmal frisch zeichnen
-  const dashMat = new THREE.MeshBasicMaterial({ map: dashTex, toneMapped: false });
-  const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.20, 0.10), dashMat);
-  const dashPos = eyeLocal.clone()
-    .addScaledVector(fwd, 0.60)        // auf dem Fahrer-Display hinter dem Lenkrad
-    .addScaledVector(sideVec, 0.01)
-    .addScaledVector(UP, -0.24);
-  dash.position.copy(dashPos);
-  dash.lookAt(eyeLocal);               // zum Fahrer ausrichten
-  cockpitScreens.add(dash);
+  flaeche(cfg.dash, new THREE.MeshBasicMaterial({ map: dashTex, toneMapped: false }));
 
-  // --- rechtes Center-Display: Rückspiegel (RenderTarget-Textur) ---
-  const mirMat = new THREE.MeshBasicMaterial({ map: mirrorRT.texture, toneMapped: false });
-  const mir = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.09), mirMat);
-  const mirPos = eyeLocal.clone()
-    .addScaledVector(fwd, 0.64)
-    .addScaledVector(sideVec, -0.275)  // rechts daneben (Beifahrer-Display)
-    .addScaledVector(UP, -0.235);
-  mir.position.copy(mirPos);
-  mir.lookAt(eyeLocal);
-  mir.rotateX(-0.12);                  // wie das echte Display leicht nach hinten geneigt
-  mir.rotateY(0.18);                   // …und leicht mitgedreht wie die Display-Blende
-  cockpitScreens.add(mir);
-  centerScreenMesh = mir;
+  // --- rechter Schirm: Rückspiegel oder Drehzahl ---
+  if (cfg.rechts.inhalt === 'drehzahl') {
+    if (!revCanvas) {
+      revCanvas = document.createElement('canvas');
+      revCanvas.width = 512; revCanvas.height = 320;
+      revCtx = revCanvas.getContext('2d');
+      revTex = new THREE.CanvasTexture(revCanvas);
+      revTex.colorSpace = THREE.SRGBColorSpace;
+    }
+    revPrev = '';
+    revMesh = flaeche(cfg.rechts, new THREE.MeshBasicMaterial({ map: revTex, toneMapped: false }));
+  } else {
+    centerScreenMesh = flaeche(cfg.rechts,
+      new THREE.MeshBasicMaterial({ map: mirrorRT.texture, toneMapped: false }));
+  }
 }
-// Fahrer-Display zeichnen: LEDs oben, Gang links (blau), Tempo rechts
+// Fahrer-Display zeichnen. Zwei Anordnungen:
+//   'gang-tempo' (M4)    – LEDs oben, Gang links (blau), Tempo rechts
+//   'tempo-gang' (TS030) – Tempo links, Gang groß und rot in der Mitte;
+//                          die Drehzahl steht dort auf dem rechten Schirm
 function updateDashScreen() {
   if (!dashCtx) return;
   const spd = Math.round(Math.abs(speed) * 3.6);
@@ -856,38 +892,93 @@ function updateDashScreen() {
   const frac = forward ? Math.min(1, Math.abs(speed) / GEAR_MAX_SPEED[gear]) : 0;
   const leds = REV_TH.filter((t) => frac >= t).length;
   const blink = performance.now() % 260 < 130; // Blink-Phase (nur am Limit relevant)
-  const state = `${gearTxt}|${spd}|${leds}|${frac >= REV_TH[4] ? blink : '-'}`;
-  if (state === dashPrev) return;
-  dashPrev = state;
-
-  const g = dashCtx;
-  g.fillStyle = '#07090c'; g.fillRect(0, 0, 512, 256);
-  g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 6; g.strokeRect(3, 3, 506, 250);
-  // Drehzahl-LEDs (am Limit blinken alle im Takt)
   const atLimit = frac >= REV_TH[4];
+  const tempoGang = COCKPIT_SCREENS.dash.layout === 'tempo-gang';
+
+  const state = `${gearTxt}|${spd}|${leds}|${atLimit ? blink : '-'}`;
+  if (state !== dashPrev) {
+    dashPrev = state;
+    const g = dashCtx;
+    g.fillStyle = '#07090c'; g.fillRect(0, 0, 512, 256);
+    g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 6; g.strokeRect(3, 3, 506, 250);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+
+    if (tempoGang) {
+      // Tempo links …
+      g.fillStyle = '#ffffff';
+      g.font = "bold 108px Consolas, monospace";
+      g.fillText(String(spd), 140, 120);
+      g.font = "bold 26px 'Segoe UI', Arial, sans-serif";
+      g.fillStyle = 'rgba(255,255,255,0.5)';
+      g.fillText('km/h', 140, 196);
+      // … Gang groß und rot in der Mitte
+      g.fillStyle = '#ff2d20';
+      g.font = "bold 170px Consolas, monospace";
+      g.fillText(gearTxt, 366, 118);
+      g.font = "bold 26px 'Segoe UI', Arial, sans-serif";
+      g.fillStyle = 'rgba(255,255,255,0.5)';
+      g.fillText('GANG', 366, 218);
+    } else {
+      // Drehzahl-LEDs (am Limit blinken alle im Takt)
+      for (let i = 0; i < 5; i++) {
+        const lit = atLimit ? blink : i < leds;
+        g.beginPath();
+        g.arc(96 + i * 80, 52, 22, 0, Math.PI * 2);
+        g.fillStyle = lit ? DASH_LED_COLORS[i] : '#1b1e24';
+        g.fill();
+      }
+      // Gang (blau, links)
+      g.fillStyle = '#4da3ff';
+      g.font = "bold 120px Consolas, monospace";
+      g.fillText(gearTxt, 110, 168);
+      g.font = "bold 26px 'Segoe UI', Arial, sans-serif";
+      g.fillStyle = 'rgba(255,255,255,0.5)';
+      g.fillText('GANG', 110, 234);
+      // Tempo (weiß, rechts)
+      g.fillStyle = '#ffffff';
+      g.font = "bold 110px Consolas, monospace";
+      g.fillText(String(spd), 330, 168);
+      g.font = "bold 26px 'Segoe UI', Arial, sans-serif";
+      g.fillStyle = 'rgba(255,255,255,0.5)';
+      g.fillText('km/h', 330, 234);
+    }
+    dashTex.needsUpdate = true;
+  }
+
+  // --- rechter Schirm: Drehzahl mit Schaltlichtern und Balken ---
+  if (!revCtx) return;
+  const pct = Math.round(frac * 100);
+  const revState = `${leds}|${pct}|${atLimit ? blink : '-'}`;
+  if (revState === revPrev) return;
+  revPrev = revState;
+
+  const r = revCtx;
+  r.fillStyle = '#07090c'; r.fillRect(0, 0, 512, 320);
+  r.strokeStyle = 'rgba(255,255,255,0.18)'; r.lineWidth = 6; r.strokeRect(3, 3, 506, 314);
+  r.textAlign = 'center'; r.textBaseline = 'middle';
+  // Schaltlichter
   for (let i = 0; i < 5; i++) {
     const lit = atLimit ? blink : i < leds;
-    g.beginPath();
-    g.arc(96 + i * 80, 52, 22, 0, Math.PI * 2);
-    g.fillStyle = lit ? DASH_LED_COLORS[i] : '#1b1e24';
-    g.fill();
+    r.beginPath();
+    r.arc(96 + i * 80, 58, 26, 0, Math.PI * 2);
+    r.fillStyle = lit ? DASH_LED_COLORS[i] : '#1b1e24';
+    r.fill();
   }
-  // Gang (blau, links)
-  g.fillStyle = '#4da3ff';
-  g.font = "bold 120px Consolas, monospace";
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(gearTxt, 110, 168);
-  g.font = "bold 26px 'Segoe UI', Arial, sans-serif";
-  g.fillStyle = 'rgba(255,255,255,0.5)';
-  g.fillText('GANG', 110, 234);
-  // Tempo (weiß, rechts)
-  g.fillStyle = '#ffffff';
-  g.font = "bold 110px Consolas, monospace";
-  g.fillText(String(spd), 330, 168);
-  g.font = "bold 26px 'Segoe UI', Arial, sans-serif";
-  g.fillStyle = 'rgba(255,255,255,0.5)';
-  g.fillText('km/h', 330, 234);
-  dashTex.needsUpdate = true;
+  // Drehzahlbalken (Anteil am Gang-Höchsttempo)
+  r.fillStyle = '#14181f';
+  r.fillRect(56, 128, 400, 34);
+  r.fillStyle = atLimit ? '#ff2d20' : (leds >= 4 ? '#ff851b' : '#2ecc40');
+  r.fillRect(56, 128, 400 * frac, 34);
+  r.strokeStyle = 'rgba(255,255,255,0.25)'; r.lineWidth = 3;
+  r.strokeRect(56, 128, 400, 34);
+  // Zahlenwert
+  r.fillStyle = '#ffffff';
+  r.font = "bold 96px Consolas, monospace";
+  r.fillText(String(pct), 256, 226);
+  r.font = "bold 26px 'Segoe UI', Arial, sans-serif";
+  r.fillStyle = 'rgba(255,255,255,0.5)';
+  r.fillText('% DREHZAHL', 256, 290);
+  revTex.needsUpdate = true;
 }
 
 // ---------- Auspuffflammen (GT3): Feuerstöße aus den Endrohren ----------
@@ -1084,6 +1175,7 @@ function loadCar(index, onDone, onError) {
   taillightGlows.clear();
   cockpitScreens.clear();
   centerScreenMesh = null;
+  revMesh = null;
   wheels.length = 0;
   steeringParts.length = 0;
   headlightMats.length = 0;
@@ -2086,9 +2178,10 @@ function applyCarPhysics(cfg) {
   GEAR_PULL = p.gearPull.slice();
   // Bots fahren dasselbe Auto wie der Spieler → gleiches Tempolimit
   BOT_MAX_SPEED = VMAX;
-  // Sitzposition und Lenkrad-Geometrie im Cockpit ans Modell anpassen
+  // Sitzposition, Lenkrad-Geometrie und Display-Anordnung ans Cockpit anpassen
   Object.assign(COCKPIT_EYE, cfg.cockpitEye);
   Object.assign(STEER_WHEEL, cfg.steerWheel);
+  COCKPIT_SCREENS = cfg.cockpit;
 }
 
 
