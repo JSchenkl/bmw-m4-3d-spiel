@@ -657,7 +657,11 @@ const CARS = [
     // Lenkrad des Modells scheint durch, gezeichnet werden nur Ziffern und Lichter.
     cockpit: {
       lenkrad: {
-        vor: 0.016,   // Abstand vor der Lenkradebene (sonst Z-Fighting)
+        // Praktisch genau IN der Lenkradebene. Ein größerer Abstand wirkt beim
+        // Lenken wie eine schwebende Folie: die Ziffern wandern durch die
+        // Perspektive aus ihren Feldern heraus (bei 1,6 cm um bis zu 12 px).
+        // Dass die Fläche trotzdem sichtbar bleibt, regelt depthTest: false.
+        vor: 0.001,
         gross: 1.0,   // Kantenlänge der Fläche als Vielfaches des Lenkrad-Durchmessers
         // Wo auf dieser Fläche gezeichnet wird – am Display des Modells ausgemessen.
         // „hoch“ = über der Nabe, „quer“ = seitlich in der Lenkradebene.
@@ -947,9 +951,21 @@ function setupCockpitScreens(eyeLocal, fwd, sideVec, wheelCenter, columnAxis) {
     // EINE quadratische Fläche in Lenkradgröße, mittig auf der Nabe. Sie hängt am
     // selben Pivot wie die übrigen Lenkradteile und dreht sich deshalb um genau
     // dieselbe Achse. Transparent – nur Ziffern und Lichter sind zu sehen.
+    // depthWrite MUSS aus sein: die Fläche ist fast überall durchsichtig, würde
+    // aber trotzdem auf ihrer ganzen Lenkradgröße in den Tiefenpuffer schreiben
+    // und damit Knöpfe, Speichen und das Display-Feld dahinter verdecken.
+    // depthTest ebenfalls aus: die Displayfläche des Modells steht rund 6 mm vor
+    // der Lenkradebene, ihr Rahmen bei Einschlag noch weiter. Ohne Tiefentest
+    // darf die Anzeige in der Ebene liegen (keine Parallaxe) und bleibt trotzdem
+    // sichtbar. Verdeckt wird dadurch nichts Falsches: sie sitzt auf dem Display
+    // und dreht mit ihm, es schiebt sich also nie etwas anderes davor.
     const scheibe = new THREE.Mesh(
       new THREE.PlaneGeometry(kante, kante),
-      new THREE.MeshBasicMaterial({ map: wheelDispTex, toneMapped: false, transparent: true }));
+      new THREE.MeshBasicMaterial({
+        map: wheelDispTex, toneMapped: false, transparent: true,
+        depthWrite: false, depthTest: false,
+      }));
+    scheibe.renderOrder = 3; // nach dem Lenkrad zeichnen
     scheibe.position.copy(n).multiplyScalar(L.vor);
     scheibe.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r, u, n));
     pivot.add(scheibe);
