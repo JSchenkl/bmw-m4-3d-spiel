@@ -384,6 +384,21 @@
       box-shadow: 0 0 0 4px rgba(42,166,224,0.45), 0 0 34px rgba(42,166,224,0.75) !important;
     }
 
+    /* ---------- Minikarte im Spiel (unten rechts) ---------- */
+    #minimap {
+      position: absolute; bottom: 76px; right: 20px; z-index: 20;
+      width: 158px; height: 158px; padding: 9px; box-sizing: border-box;
+      pointer-events: none; display: none;
+      background: rgba(10,14,20,0.62); border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 14px; box-shadow: 0 6px 22px rgba(0,0,0,0.45);
+    }
+    #minimap svg { width: 100%; height: 100%; display: block; }
+    #minimap-path {
+      fill: none; stroke: rgba(255,255,255,0.85); stroke-width: 2.4;
+      stroke-linejoin: round; stroke-linecap: round;
+    }
+    #minimap-dot { fill: #2aa6e0; stroke: #fff; stroke-width: 1.1; }
+
     /* ---------- Streckenauswahl ---------- */
     #track-screen {
       position: absolute; inset: 0; z-index: 62; display: none;
@@ -613,6 +628,14 @@
     <div id="revlights"><i></i><i></i><i></i><i></i><i></i></div>
     <div id="speed"><span id="speed-num">0</span><span class="unit">km/h</span></div>
   </div>
+  <!-- Minikarte: Strecke von oben, blauer Punkt = eigene Position -->
+  <div id="minimap">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+      <path id="minimap-path" d=""></path>
+      <circle id="minimap-dot" cx="-99" cy="-99" r="3.4"></circle>
+    </svg>
+  </div>
+
   <div id="laptimer" style="display:none">
     <div class="lt-row"><span class="lt-label">RUNDE</span><span id="lt-cur">--:--</span></div>
     <div class="lt-row"><span class="lt-label">LETZTE</span><span id="lt-last">--:--</span></div>

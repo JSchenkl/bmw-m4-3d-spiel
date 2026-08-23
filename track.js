@@ -88,7 +88,7 @@ export async function createTrack(file, opts = {}) {
 
   // --- Rot-weiße Curbs entlang der GESAMTEN Strecke (beidseitig) ---
   const CURB_WIDTH = 1.3;
-  const CURB_Y = 0.13;          // Randsteine liegen leicht erhöht über dem Asphalt (0.05)
+  const CURB_Y = 0.16;          // Randsteine liegen leicht erhöht über dem Asphalt (0.05)
   const CURB_BLOCK = 5;        // Meter pro Farbblock (rot/weiß)
   const extended = new Array(n).fill(true); // überall Randsteine, nicht nur in Kurven
 
@@ -98,6 +98,13 @@ export async function createTrack(file, opts = {}) {
     // a/b = innere, c/d = äußere Kante des Segments
     buf.push(a.x, CURB_Y, a.z, c.x, CURB_Y, c.z, b.x, CURB_Y, b.z);
     buf.push(b.x, CURB_Y, b.z, c.x, CURB_Y, c.z, d.x, CURB_Y, d.z);
+  };
+  // Senkrechte Stufe von der Fahrbahn hoch zur Curb-Oberkante. Ohne sie schwebt
+  // der Randstein als reine Fläche über dem Asphalt, mit einer offenen Lücke
+  // dazwischen – aus dem Cockpit sieht er dadurch eher versenkt als erhöht aus.
+  const pushStufe = (buf, a, b) => {
+    buf.push(a.x, ASPHALT_Y, a.z, a.x, CURB_Y, a.z, b.x, ASPHALT_Y, b.z);
+    buf.push(b.x, ASPHALT_Y, b.z, a.x, CURB_Y, a.z, b.x, CURB_Y, b.z);
   };
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
@@ -112,6 +119,7 @@ export async function createTrack(file, opts = {}) {
       const d = pts[j].clone().addScaledVector(leftNs[j], side * (wj + CURB_WIDTH));
       if (side === 1) pushQuad(curbPos[color], a, b, c, d);
       else pushQuad(curbPos[color], b, a, d, c); // Wicklung spiegeln → Fläche zeigt nach oben
+      pushStufe(curbPos[color], a, b);
     }
   }
   const curbColors = { red: 0xc62828, white: 0xf5f5f5 };

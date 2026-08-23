@@ -1933,6 +1933,9 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
     document.getElementById('hint').style.display = 'none';
     document.getElementById('title').style.display = '';
     document.getElementById('laptimer').style.display = '';
+    // Minikarte einblenden und mit der gewählten Strecke füllen
+    document.getElementById('minimap').style.display = 'block';
+    setupMinimap(TRACKS[selectedTrackIndex]);
 
     // Immer in der Cockpit-Sicht ins Spiel starten
     cameraMode = 1;
@@ -2021,12 +2024,11 @@ function moveStartSelection(dir) {
 
 // ---------- Streckenauswahl (vor der Modus-Wahl) ----------
 const _trackMapCache = {};
-function setTrackMap(track) {
-  const pathEl = document.getElementById('track-map-path');
-  if (!pathEl) return;
-  if (_trackMapCache[track.id]) { pathEl.setAttribute('d', _trackMapCache[track.id]); return; }
-  pathEl.setAttribute('d', '');
-  fetch(track.file).then((r) => r.text()).then((text) => {
+// Baut den SVG-Pfad einer Strecke und merkt sich die Abbildung Welt → SVG,
+// damit die Minikarte im Spiel denselben Maßstab benutzen kann.
+function buildTrackMap(track) {
+  if (_trackMapCache[track.id]) return Promise.resolve(_trackMapCache[track.id]);
+  return fetch(track.file).then((r) => r.text()).then((text) => {
     const rows = text.split('\n').map((l) => l.trim())
       .filter((l) => l && !l.startsWith('#')).map((l) => l.split(',').map(Number));
     const xs = rows.map((r) => r[0]), ys = rows.map((r) => r[1]);
@@ -2040,9 +2042,53 @@ function setTrackMap(track) {
       d += (i ? 'L' : 'M') + px.toFixed(1) + ' ' + py.toFixed(1) + ' ';
     }
     d += 'Z';
-    _trackMapCache[track.id] = d;
-    if (TRACKS[selectedTrackIndex].id === track.id) pathEl.setAttribute('d', d);
+    const eintrag = { d, tf: { minX, maxY, scale, ox, oy } };
+    _trackMapCache[track.id] = eintrag;
+    return eintrag;
+  });
+}
+function setTrackMap(track) {
+  const pathEl = document.getElementById('track-map-path');
+  if (!pathEl) return;
+  const fertig = _trackMapCache[track.id];
+  if (fertig) { pathEl.setAttribute('d', fertig.d); return; }
+  pathEl.setAttribute('d', '');
+  buildTrackMap(track).then((e) => {
+    if (TRACKS[selectedTrackIndex].id === track.id) pathEl.setAttribute('d', e.d);
   }).catch(() => {});
+}
+
+// ---------- Minikarte im Spiel (unten rechts) ----------
+// Zeigt die Strecke von oben und die eigene Position als blauen Punkt.
+let minimapTf = null; // Abbildung Welt → SVG der aktuell gefahrenen Strecke
+function setupMinimap(track) {
+  const pathEl = document.getElementById('minimap-path');
+  const dotEl = document.getElementById('minimap-dot');
+  if (!pathEl || !dotEl) return;
+  minimapTf = null;
+  pathEl.setAttribute('d', '');
+  buildTrackMap(track).then((e) => {
+    if (currentTrackId !== track.id) return;
+    pathEl.setAttribute('d', e.d);
+    minimapTf = e.tf;
+    _minimapDot.x = Infinity;   // Punkt sofort setzen, auch im Stand
+    updateMinimap();
+  }).catch(() => {});
+}
+// Startwert bewusst unerreichbar: sonst bliebe der Punkt ungesetzt, solange
+// das Auto genau auf dem Vergleichswert steht (am Startplatz ist das (0,0)).
+const _minimapDot = { x: Infinity, z: Infinity };
+function updateMinimap() {
+  if (!minimapTf) return;
+  const x = carGroup.position.x, z = carGroup.position.z;
+  // nur bei echter Bewegung neu setzen (spart DOM-Schreibzugriffe je Bild)
+  if (Math.abs(x - _minimapDot.x) < 0.3 && Math.abs(z - _minimapDot.z) < 0.3) return;
+  _minimapDot.x = x; _minimapDot.z = z;
+  const dotEl = document.getElementById('minimap-dot');
+  if (!dotEl) return;
+  // Welt → SVG: x direkt, z gespiegelt (Welt-z = −CSV-y)
+  dotEl.setAttribute('cx', (minimapTf.ox + (x - minimapTf.minX) * minimapTf.scale).toFixed(2));
+  dotEl.setAttribute('cy', (minimapTf.oy + (minimapTf.maxY + z) * minimapTf.scale).toFixed(2));
 }
 function renderTrackScreen() {
   const t = TRACKS[selectedTrackIndex];
@@ -3174,6 +3220,7 @@ btnHome.addEventListener('click', () => {
   document.getElementById('hud-top').style.display = 'none';
   document.getElementById('laptimer').style.display = 'none';
   document.getElementById('title').style.display = 'none';
+  document.getElementById('minimap').style.display = 'none';
 
   // Startbildschirm-Optik: Verfolgerkamera mit Auto-Rotation, Nachtmodus + Lichter
   cameraMode = 0;
@@ -4007,6 +4054,7 @@ renderer.setAnimationLoop(() => {
     }
   }
 
+  if (gameStarted) updateMinimap(); // blauer Punkt auf der Minikarte
   updateSunGlare(); // Blenden, wenn man in die Sonne schaut
   renderer.render(scene, camera);
 });
