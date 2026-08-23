@@ -161,6 +161,34 @@ export async function createTrack(file, opts = {}) {
     pitCenter.push(pts[i].clone().addScaledVector(leftNs[i], -off)); // rechts = -links
     pitDirs.push(tangents[i]);
   }
+  // Sperrbereich Boxengasse: Fahrbahn und Boxenhäuser reichen etwa 11,5 bis 27 m
+  // rechts der Streckenmitte. computeRunoff stoppt den Auslauf-Strahl bisher nur an
+  // anderen Streckenteilen – ohne diesen Bereich landet die Bande eines benachbarten
+  // Streckenabschnitts mitten auf der Boxengasse.
+  const PIT_BLOCK_R = 9.25;   // deckt 11,5…27 m ab (Mitte 19,25, plus Sicherheitsabstand)
+  const pitBlock = [];
+  for (let k = 0; k < seq.length; k++) {
+    const off = PIT_OFFSET * ramp(pitArc[k]);
+    if (off < 10) continue;   // dort fädelt die Gasse in die Strecke ein, kein eigener Korridor
+    const i = seq[k];
+    pitBlock.push(pts[i].clone().addScaledVector(leftNs[i], -(off + 4.25)));
+  }
+
+  // Punkte der Gassenmitte, solange die Gasse einen eigenen Korridor hat (nicht im Einfaedeln)
+  const pitKorridor = [];
+  for (let k = 0; k < seq.length; k++) {
+    if (PIT_OFFSET * ramp(pitArc[k]) < 6) continue;
+    pitKorridor.push(pitCenter[k]);
+  }
+  const PIT_KORRIDOR_R = 12; // Fahrbahn (3,5) + Boxenhaeuser dahinter
+  const aufBoxengasse = (p) => {
+    for (let k = 0; k < pitKorridor.length; k++) {
+      const dx = p.x - pitKorridor[k].x, dz = p.z - pitKorridor[k].z;
+      if (dx * dx + dz * dz < PIT_KORRIDOR_R * PIT_KORRIDOR_R) return true;
+    }
+    return false;
+  };
+
   const pitLeft = pitCenter.map((p, k) => p.clone().addScaledVector(leftNs[seq[k]], PIT_HALF_WIDTH));
   const pitRight = pitCenter.map((p, k) => p.clone().addScaledVector(leftNs[seq[k]], -PIT_HALF_WIDTH));
   const pitMat = new THREE.MeshStandardMaterial({ color: 0x2e2e33, roughness: 0.95, side: THREE.DoubleSide });
@@ -312,6 +340,19 @@ export async function createTrack(file, opts = {}) {
         const g1 = -b - Math.sqrt(disc);  // erster Eintritt in den Sperrkreis
         if (g1 >= 0 && g1 < lim) lim = g1;
       }
+      // …und zusätzlich am Boxengassen-Bereich stoppen
+      for (let k = 0; k < pitBlock.length && lim > 0; k++) {
+        const q = pitBlock[k];
+        const rx = origin.x - q.x, rz = origin.z - q.z;
+        if (rx * rx + rz * rz > (PIT_BLOCK_R + maxTotal) * (PIT_BLOCK_R + maxTotal)) continue;
+        const b = dir.x * rx + dir.z * rz;
+        const c = rx * rx + rz * rz - PIT_BLOCK_R * PIT_BLOCK_R;
+        if (c < 0) { lim = 0; break; }
+        const disc = b * b - c;
+        if (disc <= 0) continue;
+        const g1 = -b - Math.sqrt(disc);
+        if (g1 >= 0 && g1 < lim) lim = g1;
+      }
       raw[i] = Math.max(0, lim);
     }
 
@@ -359,6 +400,9 @@ export async function createTrack(file, opts = {}) {
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
       if (side === -1 && (pitSet.has(i) || pitSet.has(j))) continue; // Pit-Bereich frei lassen
+      // Auch von anderen Streckenabschnitten aus nichts über die Boxengasse legen –
+      // sonst steht die Reifenwand mitten auf deren Fahrbahn.
+      if (aufBoxengasse(outer[i]) || aufBoxengasse(outer[j])) continue;
       const gi = grassInner[i], gj = grassInner[j], goi = grassOuter[i], goj = grassOuter[j];
       const ai = inner[i], aj = inner[j], oi = outer[i], oj = outer[j];
       const gy = ASPHALT_Y + 0.003;
