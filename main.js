@@ -607,6 +607,15 @@ const CARS = [
       // daraus wird linear eine Drehzahl zwischen Leerlauf und Begrenzer gebildet.
       leerlauf: 1300,              // U/min im Stand
       drehzahlMax: 7300,           // U/min am Begrenzer (P58, BoP-limitiert)
+      // Reifen: GT3-Slicks. Kalt deutlich weniger Haftung, auf Temperatur volles Maximum.
+      reifen: {
+        haftungKalt: 0.82,   // Haftungsfaktor bei kalten Reifen
+        haftungWarm: 1.06,   // …und auf Betriebstemperatur (etwas Reserve über 1)
+        warmDauer: 20,       // Sekunden unter voller Last bis auf Temperatur
+        kuehlDauer: 70,      // Sekunden ohne Last bis wieder kalt
+        gleitFaktor: 0.72,   // Reibung im blockierten Zustand, Anteil vom Haftmaximum
+        lenkImBlock: 0.25,   // verbleibende Lenkwirkung, wenn die Vorderräder blockieren
+      },
     },
     // Lenkrad wird aus dem Innenraum-Mesh herausgelöst – Maße relativ zum Fahrerauge
     steerWheel: { ahead: 0.38, drop: 0.26, side: 0.0, rad: 0.20, depth: 0.10, tilt: 0.40, sign: 1, ratio: 5 },
@@ -687,6 +696,17 @@ const CARS = [
       gearPull: [0, 1.0, 0.80, 0.65, 0.56, 0.50, 0.45],
       leerlauf: 1200,              // U/min im Stand
       drehzahlMax: 8500,           // U/min am Begrenzer (3,4-l-V8 Saugmotor)
+      // Reifen: LMP1-Slicks. Bissiger, wenn sie laufen, aber kalt heikler und
+      // langsamer auf Temperatur als die GT3-Reifen – der Prototyp ist leichter,
+      // bringt also weniger Gewicht zum Aufwärmen auf die Lauffläche.
+      reifen: {
+        haftungKalt: 0.76,
+        haftungWarm: 1.10,
+        warmDauer: 28,
+        kuehlDauer: 55,
+        gleitFaktor: 0.68,   // blockiert rutschen sie stärker weg
+        lenkImBlock: 0.18,
+      },
     },
     // Lenkradmitte laut Modellvermessung 0,30 m vor und 0,26 m unter dem Fahrerauge
     steerWheel: { ahead: 0.30, drop: 0.26, side: -0.02, rad: 0.19, depth: 0.12, tilt: 0.30, sign: 1, ratio: 5 },
@@ -2339,6 +2359,9 @@ function applyCarPhysics(cfg) {
   GEAR_PULL = p.gearPull.slice();
   LEERLAUF = p.leerlauf;
   DREHZAHL_MAX = p.drehzahlMax;
+  REIFEN = p.reifen;
+  reifenTemp = 0; // frisches Auto = kalte Reifen
+  blockierStaerke = 0;
   // Bots fahren dasselbe Auto wie der Spieler → gleiches Tempolimit
   BOT_MAX_SPEED = VMAX;
   // Sitzposition, Lenkrad-Geometrie und Display-Anordnung ans Cockpit anpassen
@@ -2361,6 +2384,12 @@ let GEAR_MAX_SPEED = [0, 60, 100, 140, 180, 225, 300].map((v) => v / 3.6); // km
 let GEAR_PULL = [0, 1.0, 0.76, 0.58, 0.48, 0.40, 0.34]; // Zugkraft-Faktor je Gang (höhere Gänge kräftiger → mehr Topspeed-Durchzug)
 // Drehzahlbereich des aktuellen Motors (nur für die Anzeige)
 let LEERLAUF = 1300, DREHZAHL_MAX = 7300;
+// Reifen des aktuellen Autos
+let REIFEN = { haftungKalt: 0.82, haftungWarm: 1.06, warmDauer: 20, kuehlDauer: 70, gleitFaktor: 0.72, lenkImBlock: 0.25 };
+let reifenTemp = 0;       // 0 = kalt, 1 = auf Betriebstemperatur
+let blockierStaerke = 0;  // 0 = Haftung, 1 = voll blockiert (geglättet)
+// Haftungsfaktor der Reifen aus ihrer Temperatur
+const reifenGriff = () => REIFEN.haftungKalt + (REIFEN.haftungWarm - REIFEN.haftungKalt) * reifenTemp;
 let gear = 1; // 0 = Rückwärtsgang (R), 1…6 = Vorwärtsgänge
 let prevGearSound = 1; // letzter Gang – für den Schaltsound (Hoch-/Runterschalten)
 let autoGearbox = false; // false = Handschaltung, true = Automatikgetriebe
@@ -2705,6 +2734,7 @@ function updateCar(dt) {
   let accel = 0;
   let slipTarget = 0; // angeforderter Heck-Schlupf dieses Frames (für den Oversteer)
   let longUse = 0;    // genutzte Längs-Haftung (Reibkreis): Gas/Bremse zehrt am Kurven-Grip
+  let blockZiel = 0;  // angefordertes Blockieren dieses Frames (0 = Räder rollen)
 
   // Automatikgetriebe wählt Gang/Richtung, bevor der Antrieb berechnet wird.
   // Richtungswahl per Tastatur nur über W/S (nicht über den RT-Gashebel des Controllers).
@@ -2714,8 +2744,25 @@ function updateCar(dt) {
   const reverseInput = gear === 0 ? Math.max(throttle, reverse) : reverse;
 
   if (braking) {
-    accel = -Math.sign(speed) * (BRAKE_DECEL * brakeInput * surfaceGrip + (fDrag + fRoll) / MASS);
-    longUse = BRAKE_DECEL * brakeInput * surfaceGrip;   // Bremskraft belegt Längs-Haftung
+    // Blockieren: Was der Fahrer am Pedal verlangt, wird mit dem verglichen, was die
+    // Reifen gerade halten können. Der Wunsch haengt NICHT vom Untergrund ab – deshalb
+    // blockiert dieselbe Pedalkraft auf Gras sofort und auf trockenem Asphalt nicht.
+    const bremsWunsch = BRAKE_DECEL * brakeInput;
+    // Lenken zehrt am selben Reifen-Grip (Kammscher Kreis): beim Anbremsen in die
+    // Kurve stehen die Räder deutlich früher als geradeaus.
+    const querAnteil = Math.min(1, Math.abs(steerAngle) / MAX_STEER);
+    const bremsGrenze = BRAKE_DECEL * surfaceGrip * reifenGriff() * (1 - 0.35 * querAnteil);
+    let verzoegerung;
+    if (bremsWunsch > bremsGrenze) {
+      // Über der Haftgrenze: die Räder stehen, es wirkt nur noch Gleitreibung –
+      // weniger Verzögerung als bei optimalem Schlupf.
+      blockZiel = Math.min(1, (bremsWunsch - bremsGrenze) / (0.45 * bremsGrenze));
+      verzoegerung = bremsGrenze * REIFEN.gleitFaktor;
+    } else {
+      verzoegerung = bremsWunsch;
+    }
+    accel = -Math.sign(speed) * (verzoegerung + (fDrag + fRoll) / MASS);
+    longUse = verzoegerung;   // Bremskraft belegt Längs-Haftung
     // nicht über den Nullpunkt hinaus bremsen
     if (Math.abs(accel * dt) >= v) { speed = 0; accel = 0; }
   } else if (gear >= 1 && throttle) {
@@ -2766,7 +2813,7 @@ function updateCar(dt) {
     const speedGrip = THREE.MathUtils.clamp(1 - Math.max(0, v - 15) * 0.005, 0.72, 1) * aeroGrip(v);
     // Beim Gasgeben in der Kurve etwas mehr Grip (+10 % bei Vollgas) – stabilerer Kurvenausgang
     const throttleGrip = 1 + 0.1 * Math.min(1, throttle);
-    const aMax = MAX_LAT_ACC * surfaceGrip * speedGrip * throttleGrip; // gesamtes Grip-Budget
+    const aMax = MAX_LAT_ACC * surfaceGrip * speedGrip * throttleGrip * reifenGriff(); // Grip-Budget (kalte Reifen halten weniger)
     const longShare = Math.min(longUse, aMax);                 // davon längs belegt
     const latMax = Math.max(0.1 * aMax, Math.sqrt(aMax * aMax - longShare * longShare));
 
@@ -2778,6 +2825,9 @@ function updateCar(dt) {
       speed -= Math.sign(speed) * Math.min(2 * dt, Math.abs(speed));
     }
 
+    // Blockierte Vorderräder schieben geradeaus – Lenkeinschlag wirkt kaum noch.
+    omega *= 1 - (1 - REIFEN.lenkImBlock) * blockierStaerke;
+
     // Übersteuern: das ausbrechende Heck dreht das Auto zusätzlich um die Hochachse.
     // Auf Gras stark, auf Kies mittel, auf der Strecke nur leicht (mehr Grip).
     const overshoot = OVERSTEER_GAIN * overMul * Math.min(slide, 2) * Math.min(1, Math.abs(speed) / 6);
@@ -2788,6 +2838,22 @@ function updateCar(dt) {
 
   // Heck-Schlupf glätten
   rearSlip += (slipTarget - rearSlip) * Math.min(1, dt * 8);
+  // Blockieren glätten (Rad steht nicht schlagartig)
+  blockierStaerke += (blockZiel - blockierStaerke) * Math.min(1, dt * 12);
+
+  // --- Reifentemperatur ---
+  // Reifen erwärmen sich durch Arbeit: Bremsen, Lenken bei Tempo, Schlupf. Ohne
+  // Last kühlen sie wieder aus. Warme Reifen haften besser und blockieren später.
+  const reifenArbeit = Math.min(1,
+    longUse / Math.max(1, BRAKE_DECEL)
+    + (Math.abs(steerAngle) / MAX_STEER) * Math.min(1, v / 25)
+    + 0.6 * blockierStaerke + 0.4 * Math.min(1, rearSlip));
+  if (reifenArbeit > 0.05) reifenTemp = Math.min(1, reifenTemp + (reifenArbeit / REIFEN.warmDauer) * dt);
+  else reifenTemp = Math.max(0, reifenTemp - dt / REIFEN.kuehlDauer);
+
+  // Rauch und Spuren, solange die Reifen rutschen (blockiert oder durchdrehend)
+  const rutscht = Math.max(blockierStaerke, Math.min(1, rearSlip * 0.8));
+  updateReifenSpuren(rutscht, dt);
 
   // Bewegung in Fahrtrichtung der Fahrzeugfront
   if (speed !== 0 && carForward) {
@@ -3221,6 +3287,7 @@ btnHome.addEventListener('click', () => {
   document.getElementById('laptimer').style.display = 'none';
   document.getElementById('title').style.display = 'none';
   document.getElementById('minimap').style.display = 'none';
+  resetReifenSpuren(); // alte Bremsspuren und Rauch entfernen
 
   // Startbildschirm-Optik: Verfolgerkamera mit Auto-Rotation, Nachtmodus + Lichter
   cameraMode = 0;
@@ -3869,6 +3936,153 @@ function carOnGravel() {
 }
 
 const DUST_N = 140;
+// ---------- Reifenrauch und Bremsspuren ----------
+// Rutschen die Reifen (blockiert beim Bremsen oder durchdrehend am Gas), steigt
+// weißer Rauch auf und auf der Fahrbahn bleibt eine dunkle Spur zurück.
+const RAUCH_N = 260;                 // Partikel im Umlauf
+// Je Bild und Rad entsteht höchstens ein Viereck: 3000 reichen für rund 12 s
+// durchgehendes Rutschen auf allen vier Rädern, also mehrere Bremszonen.
+const SPUR_MAX = 3000;               // Spur-Vierecke im Ringpuffer
+const SPUR_BREITE = 0.34;            // Breite einer Reifenspur (m)
+let rauchPunkte = null, rauchPos = null;
+const rauchVel = [], rauchLeben = [];
+let rauchNext = 0;
+let spurMesh = null, spurPos = null, spurNext = 0;
+const spurLetzte = [null, null, null, null]; // letzte Bodenposition je Rad
+const _rFwd = new THREE.Vector3(), _rSide = new THREE.Vector3(), _rP = new THREE.Vector3();
+
+function initReifenSpuren() {
+  // Rauch: weiße, wachsende Punkte
+  rauchPos = new Float32Array(RAUCH_N * 3);
+  for (let i = 0; i < RAUCH_N; i++) {
+    rauchPos[i * 3 + 1] = -9999;
+    rauchVel.push(new THREE.Vector3());
+    rauchLeben.push(0);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(rauchPos, 3));
+  // Weiche runde Wolke statt hartem Quadrat
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const cx = c.getContext('2d');
+  const grad = cx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.35)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  cx.fillStyle = grad;
+  cx.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c);
+  // Punktgröße ist materialweit – PointsMaterial kann sie nicht je Partikel setzen.
+  const m = new THREE.PointsMaterial({
+    color: 0xf2f2f2, size: 1.4, sizeAttenuation: true, map: tex,
+    transparent: true, opacity: 0.34, depthWrite: false,
+  });
+  rauchPunkte = new THREE.Points(g, m);
+  rauchPunkte.frustumCulled = false;
+  scene.add(rauchPunkte);
+
+  // Spuren: Ringpuffer aus Vierecken, flach auf der Fahrbahn
+  spurPos = new Float32Array(SPUR_MAX * 6 * 3);
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute('position', new THREE.BufferAttribute(spurPos, 3));
+  const sm = new THREE.MeshBasicMaterial({
+    // DoubleSide: die Umlaufrichtung der Vierecke hängt von der Fahrtrichtung ab,
+    // einseitig wären die Spuren je nach Kurve unsichtbar.
+    color: 0x141414, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+    depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  });
+  spurMesh = new THREE.Mesh(sg, sm);
+  spurMesh.frustumCulled = false;
+  spurMesh.renderOrder = 2;
+  scene.add(spurMesh);
+}
+
+function spawnRauch(x, y, z, staerke) {
+  const i = rauchNext; rauchNext = (rauchNext + 1) % RAUCH_N;
+  rauchPos[i * 3] = x + (Math.random() - 0.5) * 0.4;
+  rauchPos[i * 3 + 1] = y + 0.12;
+  rauchPos[i * 3 + 2] = z + (Math.random() - 0.5) * 0.4;
+  rauchVel[i].set((Math.random() - 0.5) * 1.2, 0.7 + Math.random() * 0.9, (Math.random() - 0.5) * 1.2);
+  rauchLeben[i] = 0.9 + Math.random() * 0.8 * staerke;
+}
+
+// Ein Spur-Viereck von a nach b legen (quer zur Fahrtrichtung SPUR_BREITE breit)
+function spawnSpur(a, b, quer) {
+  const k = spurNext; spurNext = (spurNext + 1) % SPUR_MAX;
+  const h = SPUR_BREITE / 2;
+  const p = [
+    [a.x - quer.x * h, a.z - quer.z * h], [a.x + quer.x * h, a.z + quer.z * h],
+    [b.x + quer.x * h, b.z + quer.z * h], [b.x - quer.x * h, b.z - quer.z * h],
+  ];
+  const ecken = [p[0], p[1], p[2], p[0], p[2], p[3]];
+  // carGroup.position.y ist die Aufstandshöhe (= Fahrbahnhöhe), also knapp darüber legen
+  const y = carGroup.position.y + 0.012;
+  for (let e = 0; e < 6; e++) {
+    const o = (k * 6 + e) * 3;
+    spurPos[o] = ecken[e][0]; spurPos[o + 1] = y; spurPos[o + 2] = ecken[e][1];
+  }
+}
+
+// Wird je Bild aus updateCar gerufen: rutscht 0…1
+function updateReifenSpuren(rutscht, dt) {
+  if (!rauchPunkte) initReifenSpuren();
+  const v = Math.abs(speed);
+  const aktiv = rutscht > 0.12 && v > 2.5 && !carOnGrass();
+
+  if (carForward) {
+    _rFwd.copy(carForward).applyAxisAngle(UP, carYaw).normalize();
+    _rSide.crossVectors(UP, _rFwd).normalize();
+    const achse = WHEELBASE / 2, spur = Math.max(0.6, carHalf.wid * 0.78);
+    let k = 0;
+    for (const laengs of [achse, -achse]) {
+      for (const seite of [spur, -spur]) {
+        _rP.copy(carGroup.position).addScaledVector(_rFwd, laengs).addScaledVector(_rSide, seite);
+        const jetzt = { x: _rP.x, z: _rP.z };
+        if (aktiv) {
+          const vorher = spurLetzte[k];
+          if (vorher && Math.hypot(jetzt.x - vorher.x, jetzt.z - vorher.z) > 0.15) {
+            spawnSpur(vorher, jetzt, _rSide);
+            spurLetzte[k] = jetzt;
+          } else if (!vorher) {
+            spurLetzte[k] = jetzt;
+          }
+          // etwas hinter dem Rad ansetzen – sonst steht die Cockpit-Kamera in der Wolke
+          if (Math.random() < rutscht * 0.55) {
+            spawnRauch(jetzt.x - _rFwd.x * 0.8, carGroup.position.y, jetzt.z - _rFwd.z * 0.8, rutscht);
+          }
+        } else {
+          spurLetzte[k] = null; // Spur unterbrechen
+        }
+        k++;
+      }
+    }
+    if (spurMesh) spurMesh.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // Rauch aufsteigen und verwehen lassen
+  for (let i = 0; i < RAUCH_N; i++) {
+    if (rauchLeben[i] <= 0) continue;
+    rauchLeben[i] -= dt;
+    if (rauchLeben[i] <= 0) { rauchPos[i * 3 + 1] = -9999; continue; }
+    rauchPos[i * 3] += rauchVel[i].x * dt;
+    rauchPos[i * 3 + 1] += rauchVel[i].y * dt;
+    rauchPos[i * 3 + 2] += rauchVel[i].z * dt;
+    rauchVel[i].multiplyScalar(1 - 1.1 * dt); // Luftwiderstand
+  }
+  rauchPunkte.geometry.attributes.position.needsUpdate = true;
+}
+
+// Spuren und Rauch beim Streckenwechsel/Neustart löschen
+function resetReifenSpuren() {
+  if (!rauchPunkte) return;
+  for (let i = 0; i < RAUCH_N; i++) { rauchLeben[i] = 0; rauchPos[i * 3 + 1] = -9999; }
+  spurPos.fill(0);
+  spurNext = 0;
+  for (let i = 0; i < 4; i++) spurLetzte[i] = null;
+  rauchPunkte.geometry.attributes.position.needsUpdate = true;
+  spurMesh.geometry.attributes.position.needsUpdate = true;
+}
+
 let dustPoints = null, dustPos = null;
 const dustVel = [], dustLife = [];
 let dustNext = 0;

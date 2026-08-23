@@ -32,6 +32,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - **5 Strecken** aus echten Vermessungsdaten der [TUM racetrack-database](https://github.com/TUMFTM/racetrack-database): **Red Bull Ring (Spielberg)**, **Hockenheimring**, **Circuit Zandvoort**, **Circuit Gilles-Villeneuve**, **Interlagos (São Paulo)** – inkl. Gras, Kiesbett und Reifen-Bande
 - **Streckenauswahl** vor der Modus-Wahl (Kreuztasten wechseln die Strecke, mit Streckenkarte von oben, Name, Länge und Land)
 - **Autoauswahl** direkt nach der Strecke: BMW M4 GT3 EVO oder Toyota TS030 Hybrid, mit den **Originaldaten unten rechts** (Motor, Leistung, Gewicht, 0–100, Vmax, Antrieb, Getriebe)
+- **Reifenmechanik**: das Spiel rechnet je Bild aus, ob die Reifen blockieren. Zu hartes Bremsen (besonders mit Lenkeinschlag) übersteigt die Haftgrenze – dann qualmt **weißer Reifenrauch** und auf der Fahrbahn bleiben **Bremsspuren** zurück. Die Reifen **wärmen sich beim Fahren auf**: warme Reifen greifen deutlich besser und blockieren viel später, stehende oder kalt gefahrene kühlen wieder ab
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
 - Scheinwerfer & Rücklichter mit Lichtkegeln
 - Tag-/Nachtmodus
@@ -50,6 +51,10 @@ Beide Autos nutzen dasselbe Kraftmodell, aber je Auto eigene Kennwerte
 - Längsdynamik: Zugkraft, Leistungsgrenze, Luft- und Rollwiderstand
 - Querdynamik: Einspurmodell mit Kammschem Kreis; **Aero-Abtrieb** erhöht den Kurven-Grip mit dem Tempo
 - Power-Oversteer bei Hinterradschlupf
+- **Reifen**: ein Haftungsfaktor wächst mit der Reifentemperatur und geht in Brems- und
+  Kurvengrenze ein. Übersteigt der Bremswunsch die Haftgrenze, blockiert das Rad – die
+  Verzögerung fällt auf den Gleitreibwert und die Lenkung verliert fast ihre Wirkung
+  (`CARS[i].phys.reifen`)
 
 | | BMW M4 GT3 EVO | Toyota TS030 Hybrid |
 |---|---|---|
@@ -60,6 +65,12 @@ Beide Autos nutzen dasselbe Kraftmodell, aber je Auto eigene Kennwerte
 | Topspeed | 280 km/h | 340 km/h |
 | Kurven-Grip | 1,05 g + bis +45 % Abtrieb | 1,25 g + bis +75 % Abtrieb |
 | Bremsen | 1,8 g | 2,1 g |
+| Reifen kalt → warm | 0,82 → 1,06 | 0,76 → 1,10 |
+| auf Temperatur nach | ca. 35 s | ca. 48 s |
+| Bremsweg 200 → 0 km/h | 149 m kalt · 88 m warm | 142 m kalt · 73 m warm |
+
+Der Toyota startet also kälter und braucht länger, bis die Reifen greifen – dafür hat er
+warm den klar besseren Grip. Der M4 ist von Anfang an gutmütiger.
 
 ## Credits
 
