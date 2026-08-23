@@ -28,7 +28,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 ## Features
 
 - **Zwei Autos** als 3D-Modell (GLB) mit jeweils eigener, aus den Originaldaten abgeleiteter Fahrdynamik: **BMW M4 GT3 EVO** und **Toyota TS030 Hybrid** (LMP1)
-- **5 Strecken**: **Spa-Francorchamps 1992** (komplette 3D-Szenerie samt Höhenprofil aus einem Modell – Eau Rouge geht wirklich bergauf!), **Hockenheimring**, **Circuit of the Americas** (Austin, komplette 3D-Szenerie mit Höhenprofil – T1 geht bergauf!), **Circuit Gilles-Villeneuve**, **Interlagos (São Paulo)** – inkl. Gras, Kiesbett und Reifen-Bande
+- **5 Strecken** aus echten Vermessungsdaten der [TUM racetrack-database](https://github.com/TUMFTM/racetrack-database): **Red Bull Ring (Spielberg)**, **Hockenheimring**, **Circuit Zandvoort**, **Circuit Gilles-Villeneuve**, **Interlagos (São Paulo)** – inkl. Gras, Kiesbett und Reifen-Bande
 - **Streckenauswahl** vor der Modus-Wahl (Kreuztasten wechseln die Strecke, mit Streckenkarte von oben, Name, Länge und Land)
 - **Autoauswahl** direkt nach der Strecke: BMW M4 GT3 EVO oder Toyota TS030 Hybrid, mit den **Originaldaten unten rechts** (Motor, Leistung, Gewicht, 0–100, Vmax, Antrieb, Getriebe)
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen

@@ -134,42 +134,21 @@ function updateSunGlare() {
 
 // ---------- Rennstrecken (echte Vermessungsdaten, TUM racetrack-database) ----------
 const TRACKS = [
-  // Layout aus dem 3D-Modell „Spa Francorchamps 1992 layout" (Dave Love, CC-BY-4.0) extrahiert;
-  // die Szenerie (Straße, Gras, Zäune, Gebäude, Höhenprofil!) kommt direkt aus dem Modell.
-  // k/offX/offZ = Transformation Modell-Koordinaten → Spiel-Koordinaten (aus der Extraktion)
+  // Reine Vermessungsdaten aus der TUM racetrack-database, wie bei den uebrigen
+  // Strecken: Mittellinie plus Fahrbahnbreite links/rechts, keine 3D-Szenerie.
   {
-    id: 'spa92', name: 'Spa-Francorchamps 1992', country: 'Belgien', length: '6,940 km',
-    file: 'models/spa1992_track.csv',
-    scenery: {
-      file: 'spa_francorchamps_1992_layout.glb', k: 0.18095075, offX: 698.586, offZ: 1163.1662,
-      wallRe: 'twall|grdrl|pinewall|fnc', // Reifenwände, Leitplanken, Waldränder, Zäune
-      // Startplatz auf der Boxengassen-Fahrbahn des Modells (diagonal vor den Boxengebäuden),
-      // per Straßenraster-Abtastung bestimmt: ~200 m vor Start/Ziel, 35 m links
-      pitSpawn: { x: 1123.4, z: 1089.8, dx: 0.2393, dz: -0.9707 },
-    },
+    id: 'spielberg', name: 'Red Bull Ring (Spielberg)', country: 'Österreich', length: '4,318 km',
+    file: 'models/spielberg_track.csv',
   },
   { id: 'hockenheim', name: 'Hockenheimring', country: 'Deutschland', length: '4,574 km', file: 'models/hockenheim_track.csv' },
-  // Szenerie aus dem 3D-Modell „Austin Circuit of the Americas 2012 layout" (Dave Love, CC-BY-4.0);
-  // Rennlinie aus der TUM racetrack-database (Austin), per Ähnlichkeitstransformation aufs Modell gelegt.
   {
-    id: 'austin', name: 'Circuit of the Americas', country: 'USA', length: '5,513 km',
-    file: 'models/austin_track.csv',
-    scenery: {
-      file: 'models/austin/austin.glb', k: 1.011103, offX: 0, offZ: 0,
-      // Höhenprofil aus dem Modell (T1 geht bergauf!); Fahrbahn liegt bei Y≈-143…-113,
-      // maxH=-105 hält Tribünen/Gebäude aus dem Bodenraster
-      maxH: -105,
-      wallRe: 'cota', // alle Meshes (Banden, Mauern) → senkrechte, bodennahe Flächen werden Kollisionen
-      // nur Wände 11–60 m von der Ideallinie behalten: näher = fälschlich auf der Strecke
-      // (Curbs/Gebäudefronten), weiter weg = ferner Modell-Rand/Deko
-      wallCorridor: [11, 60],
-      pitSpawn: { x: -712.3, z: 638.6, dx: 0.7946, dz: 0.6071 },
-    },
+    id: 'zandvoort', name: 'Circuit Zandvoort', country: 'Niederlande', length: '4,307 km',
+    file: 'models/zandvoort_track.csv',
   },
   { id: 'montreal', name: 'Circuit Gilles-Villeneuve', country: 'Kanada', length: '4,361 km', file: 'models/montreal_track.csv' },
   { id: 'saopaulo', name: 'Autódromo José Carlos Pace (Interlagos)', country: 'Brasilien', length: '4,309 km', file: 'models/saopaulo_track.csv' },
 ];
-// Startstrecke per URL wählbar (?track=austin), Standard ist die erste
+// Startstrecke per URL wählbar (?track=spielberg), Standard ist die erste
 const urlTrack = new URLSearchParams(location.search).get('track');
 let selectedTrackIndex = Math.max(0, TRACKS.findIndex((t) => t.id === urlTrack));
 let currentTrackId = TRACKS[selectedTrackIndex].id; // aktuell geladene Strecke (für die Bestzeit-Zuordnung)
