@@ -32,7 +32,9 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - **5 Strecken** aus echten Vermessungsdaten der [TUM racetrack-database](https://github.com/TUMFTM/racetrack-database): **Red Bull Ring (Spielberg)**, **Hockenheimring**, **Circuit Zandvoort**, **Circuit Gilles-Villeneuve**, **Interlagos (São Paulo)** – inkl. Gras, Kiesbett und Reifen-Bande
 - **Streckenauswahl** vor der Modus-Wahl (Kreuztasten wechseln die Strecke, mit Streckenkarte von oben, Name, Länge und Land)
 - **Autoauswahl** direkt nach der Strecke: BMW M4 GT3 EVO oder Toyota TS030 Hybrid, mit den **Originaldaten unten rechts** (Motor, Leistung, Gewicht, 0–100, Vmax, Antrieb, Getriebe)
-- **Reifenmechanik**: das Spiel rechnet je Bild aus, ob die Reifen blockieren. Zu hartes Bremsen (besonders mit Lenkeinschlag) übersteigt die Haftgrenze – dann qualmt **weißer Reifenrauch** und auf der Fahrbahn bleiben **Bremsspuren** zurück. Die Reifen **wärmen sich beim Fahren auf**: warme Reifen greifen deutlich besser und blockieren viel später, stehende oder kalt gefahrene kühlen wieder ab
+- **Reifenmechanik**: das Spiel rechnet je Bild aus, ob die Reifen blockieren oder durchdrehen. Zu hartes Bremsen (besonders mit Lenkeinschlag) übersteigt die Haftgrenze – dann qualmt **weißer Reifenrauch** und auf der Fahrbahn bleiben **Bremsspuren** zurück. Die vier Reifen **wärmen sich einzeln auf** und **nutzen sich ab**: warme Reifen greifen besser und blockieren später, abgefahrene verlieren Haftung. Ein Boxenstopp (**Zur Box**) zieht frische, kalte Reifen auf
+- **Reifenanzeige unten rechts**: Grundriss mit allen vier Reifen – die Farbe zeigt die Temperatur (blau kalt → grün bereit → rot heiß), der schraffierte Anteil die Abnutzung, darunter die verbleibende Lauffläche in Prozent
+- **Minikarte unten rechts** (ohne Kasten) mit blauem Punkt für die eigene Position
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
 - Scheinwerfer & Rücklichter mit Lichtkegeln
 - Tag-/Nachtmodus
@@ -51,10 +53,14 @@ Beide Autos nutzen dasselbe Kraftmodell, aber je Auto eigene Kennwerte
 - Längsdynamik: Zugkraft, Leistungsgrenze, Luft- und Rollwiderstand
 - Querdynamik: Einspurmodell mit Kammschem Kreis; **Aero-Abtrieb** erhöht den Kurven-Grip mit dem Tempo
 - Power-Oversteer bei Hinterradschlupf
-- **Reifen**: ein Haftungsfaktor wächst mit der Reifentemperatur und geht in Brems- und
-  Kurvengrenze ein. Übersteigt der Bremswunsch die Haftgrenze, blockiert das Rad – die
-  Verzögerung fällt auf den Gleitreibwert und die Lenkung verliert fast ihre Wirkung
-  (`CARS[i].phys.reifen`)
+- **Reifen**: jeder der vier Reifen führt seinen eigenen Haftungsfaktor aus Temperatur
+  und Abnutzung. Er geht dort ein, wo der Reifen arbeitet – vorne in die Bremsgrenze,
+  hinten in die Traktionsgrenze, alle vier in die Kurvengrenze (`CARS[i].phys.reifen`)
+- **Lastverlagerung**: beim Beschleunigen wandert Achslast nach hinten, das Heck kann
+  also mehr Kraft absetzen als im Stand. Ohne diesen Anteil würden die Hinterräder
+  schon bei normalem Vollgas rechnerisch durchdrehen
+- Übersteigt der Bremswunsch die Haftgrenze, blockiert das Rad: die Verzögerung fällt
+  auf den Gleitreibwert und die Lenkung verliert fast ihre Wirkung
 
 | | BMW M4 GT3 EVO | Toyota TS030 Hybrid |
 |---|---|---|
@@ -66,11 +72,16 @@ Beide Autos nutzen dasselbe Kraftmodell, aber je Auto eigene Kennwerte
 | Kurven-Grip | 1,05 g + bis +45 % Abtrieb | 1,25 g + bis +75 % Abtrieb |
 | Bremsen | 1,8 g | 2,1 g |
 | Reifen kalt → warm | 0,82 → 1,06 | 0,76 → 1,10 |
-| auf Temperatur nach | ca. 35 s | ca. 48 s |
-| Bremsweg 200 → 0 km/h | 149 m kalt · 88 m warm | 142 m kalt · 73 m warm |
+| Bremsweg 200 → 0 km/h | 138 m kalt · 84 m warm | 133 m kalt · 71 m warm |
+| …mit abgefahrenen Reifen | 142 m | 131 m |
+| Hinterreifen auf Temperatur | nach ~1 Runde | nach ~1 Runde |
+| Vorderreifen auf Temperatur | nach ~2 Runden | nach ~3 Runden |
+| Reifen abgefahren nach | ~20 Runden | ~14 Runden |
 
-Der Toyota startet also kälter und braucht länger, bis die Reifen greifen – dafür hat er
-warm den klar besseren Grip. Der M4 ist von Anfang an gutmütiger.
+Der Toyota startet kälter und braucht länger, bis die Reifen greifen – dafür hat er warm
+den klar besseren Grip, verschleißt aber schneller. Der M4 ist von Anfang an gutmütiger
+und hält länger durch. Bei beiden werden die Hinterreifen zuerst warm und gehen zuerst
+kaputt: beide Autos sind Hecktriebler.
 
 ## Credits
 

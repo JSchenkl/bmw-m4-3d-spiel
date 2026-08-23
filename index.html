@@ -384,20 +384,65 @@
       box-shadow: 0 0 0 4px rgba(42,166,224,0.45), 0 0 34px rgba(42,166,224,0.75) !important;
     }
 
-    /* ---------- Minikarte im Spiel (unten rechts) ---------- */
+    /* ---------- Minikarte im Spiel (unten rechts, ohne Hintergrund) ---------- */
     #minimap {
-      position: absolute; bottom: 76px; right: 20px; z-index: 20;
-      width: 158px; height: 158px; padding: 9px; box-sizing: border-box;
+      position: absolute; bottom: 128px; right: 12px; z-index: 20;
+      width: 158px; height: 158px;
       pointer-events: none; display: none;
-      background: rgba(10,14,20,0.62); border: 1px solid rgba(255,255,255,0.16);
-      border-radius: 14px; box-shadow: 0 6px 22px rgba(0,0,0,0.45);
     }
     #minimap svg { width: 100%; height: 100%; display: block; }
+    /* Ohne Kasten dahinter braucht die Linie einen Schatten, sonst verschwindet
+       sie auf hellem Asphalt. */
     #minimap-path {
-      fill: none; stroke: rgba(255,255,255,0.85); stroke-width: 2.4;
+      fill: none; stroke: rgba(255,255,255,0.92); stroke-width: 2.4;
       stroke-linejoin: round; stroke-linecap: round;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9));
     }
     #minimap-dot { fill: #2aa6e0; stroke: #fff; stroke-width: 1.1; }
+
+    /* ---------- Reifen: Temperatur und Abnutzung (ganz unten rechts) ---------- */
+    #tyres {
+      position: absolute; bottom: 18px; right: 12px; z-index: 20;
+      width: 158px; pointer-events: none; display: none;
+      font-family: Consolas, 'Courier New', monospace;
+      text-shadow: 0 2px 5px rgba(0,0,0,0.9);
+    }
+    /* Grundriss des Autos: zwei Reihen à zwei Reifen um eine angedeutete Karosserie */
+    #tyre-grid {
+      display: grid; grid-template-columns: repeat(2, 24px);
+      gap: 8px 30px; justify-content: center;
+      position: relative; padding: 4px 0;
+    }
+    /* Karosserie-Andeutung zwischen den Reifen: Rumpf mit angedeuteter Front */
+    #tyre-grid::before {
+      content: ''; position: absolute; left: 50%; top: 0; bottom: 0;
+      width: 34px; margin-left: -17px; border-radius: 10px 10px 5px 5px;
+      background: rgba(255,255,255,0.13);
+      border: 1px solid rgba(255,255,255,0.28);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+    .tyre {
+      width: 24px; height: 34px; border-radius: 5px;
+      background: #3a3f46; border: 1px solid rgba(0,0,0,0.75);
+      position: relative; overflow: hidden; z-index: 1;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.7);
+    }
+    /* Farbe = Temperatur, wird aus main.js gesetzt */
+    .tyre i {
+      position: absolute; inset: 0; display: block;
+      background: #3f7fd0; transition: background 0.25s linear;
+    }
+    /* Abgefahrener Anteil frisst den Reifen von unten weg */
+    .tyre b {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 0%;
+      background: repeating-linear-gradient(45deg,
+        rgba(0,0,0,0.72) 0 3px, rgba(0,0,0,0.42) 3px 6px);
+    }
+    #tyre-label {
+      margin-top: 6px; text-align: center;
+      font-size: 11px; font-weight: bold; letter-spacing: 1.2px;
+      color: rgba(255,255,255,0.88);
+    }
 
     /* ---------- Streckenauswahl ---------- */
     #track-screen {
@@ -634,6 +679,17 @@
       <path id="minimap-path" d=""></path>
       <circle id="minimap-dot" cx="-99" cy="-99" r="3.4"></circle>
     </svg>
+  </div>
+
+  <!-- Reifen: Farbe = Temperatur, schraffierter Anteil = Abnutzung -->
+  <div id="tyres">
+    <div id="tyre-grid">
+      <div class="tyre" id="tyre-0"><i></i><b></b></div>
+      <div class="tyre" id="tyre-1"><i></i><b></b></div>
+      <div class="tyre" id="tyre-2"><i></i><b></b></div>
+      <div class="tyre" id="tyre-3"><i></i><b></b></div>
+    </div>
+    <div id="tyre-label">REIFEN --%</div>
   </div>
 
   <div id="laptimer" style="display:none">

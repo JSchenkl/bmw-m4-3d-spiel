@@ -586,10 +586,11 @@ const CARS = [
       mass: 1300,                  // kg (BoP-Mindestgewicht GT3)
       powerWheel: 440000 * 0.9,    // W an den Rädern (~590 PS, sequenziell = wenig Verlust)
       fTraction: 16500,            // N Traktionsgrenze beim Start (Slicks)
-      accelBoost: 1.15,            // ergibt 0–100 ≈ 2,8 s, 0–200 ≈ 9,4 s – wie der echte GT3
+      accelBoost: 1.064,           // ergibt 0–100 ≈ 2,8 s, 0–200 ≈ 9,4 s – wie der echte GT3
       driveRear: 1.0,              // GT3 = reiner Hinterradantrieb
-      rearGripFrac: 0.52,          // Anteil der Achslast am Heck
-      rearGripMu: 1.30,            // Reibwert der Slicks
+      rearGripFrac: 0.52,          // Anteil der Achslast am Heck im STAND
+      rearGripMax: 0.78,           // …und höchstens beim Beschleunigen (Lastverlagerung)
+      rearGripMu: 1.60,            // Reibwert der Slicks
       oversteerGain: 0.8,          // wie stark das Heck bei Schlupf eindreht
       brakeDecel: 17.5,            // m/s² Rennbremse + Aero (~1,8 g)
       cdArea: 0.47 * 2.2,          // cw · Stirnfläche (m²) – großer Heckflügel
@@ -602,19 +603,22 @@ const CARS = [
       maxSteerDeg: 27.2,           // max. Radeinschlag
       steerRate: 3.0,              // Lenkgeschwindigkeit (Rennlenkung)
       gearMaxKmh: [0, 60, 100, 140, 180, 225, 300], // Gang-Höchsttempo (GT3-Rennabstufung)
-      gearPull: [0, 1.0, 0.76, 0.58, 0.48, 0.40, 0.34], // Zugkraft-Faktor je Gang
+      gearPull: [0, 1.0, 0.76, 0.58, 0.530, 0.442, 0.375], // Zugkraft-Faktor je Gang
       // Für die Drehzahlanzeige: das Spiel rechnet mit dem Anteil am Gang-Limit,
       // daraus wird linear eine Drehzahl zwischen Leerlauf und Begrenzer gebildet.
       leerlauf: 1300,              // U/min im Stand
       drehzahlMax: 7300,           // U/min am Begrenzer (P58, BoP-limitiert)
       // Reifen: GT3-Slicks. Kalt deutlich weniger Haftung, auf Temperatur volles Maximum.
+      // GT3-Reifen sind auf lange Stints ausgelegt und halten länger als LMP1-Gummi.
       reifen: {
         haftungKalt: 0.82,   // Haftungsfaktor bei kalten Reifen
         haftungWarm: 1.06,   // …und auf Betriebstemperatur (etwas Reserve über 1)
-        warmDauer: 20,       // Sekunden unter voller Last bis auf Temperatur
+        warmDauer: 45,       // Sekunden unter voller Last bis auf Temperatur
         kuehlDauer: 70,      // Sekunden ohne Last bis wieder kalt
         gleitFaktor: 0.72,   // Reibung im blockierten Zustand, Anteil vom Haftmaximum
         lenkImBlock: 0.25,   // verbleibende Lenkwirkung, wenn die Vorderräder blockieren
+        abnutzDauer: 1800,   // Sekunden unter voller Last bis der Reifen runter ist
+        abnutzVerlust: 0.25, // so viel Haftung fehlt dem völlig abgefahrenen Reifen
       },
     },
     // Lenkrad wird aus dem Innenraum-Mesh herausgelöst – Maße relativ zum Fahrerauge
@@ -677,10 +681,11 @@ const CARS = [
       mass: 900,                   // kg (LMP1-Mindestgewicht)
       powerWheel: 537000 * 0.92,   // W an den Rädern (~730 PS Systemleistung)
       fTraction: 13800,            // N Traktionsgrenze (leichter, aber breite Prototypen-Slicks)
-      accelBoost: 1.00,            // ergibt 0–100 ≈ 2,3 s wie beim echten TS030
+      accelBoost: 0.915,           // ergibt 0–100 ≈ 2,3 s wie beim echten TS030
       driveRear: 1.0,              // Hinterradantrieb (der Hybrid sitzt an der Hinterachse)
-      rearGripFrac: 0.56,          // Mittelmotor-Prototyp → mehr Last am Heck
-      rearGripMu: 1.45,            // Prototypen-Slicks greifen stärker als GT3-Slicks
+      rearGripFrac: 0.56,          // Mittelmotor-Prototyp → mehr Last am Heck im STAND
+      rearGripMax: 0.78,           // …und höchstens beim Beschleunigen (Lastverlagerung)
+      rearGripMu: 1.75,            // Prototypen-Slicks greifen stärker als GT3-Slicks
       oversteerGain: 0.7,          // stabiler als der GT3
       brakeDecel: 21.0,            // m/s² (~2,1 g – Kohlefaserbremsen + Abtrieb)
       cdArea: 0.36 * 1.72,         // cw · Stirnfläche (m²) – schlanke Le-Mans-Karosserie
@@ -693,7 +698,7 @@ const CARS = [
       maxSteerDeg: 25.0,           // Prototypen lenken direkter, aber weniger weit ein
       steerRate: 3.2,
       gearMaxKmh: [0, 80, 125, 170, 220, 285, 400], // langer 6. Gang für die Mulsanne-Gerade
-      gearPull: [0, 1.0, 0.80, 0.65, 0.56, 0.50, 0.45],
+      gearPull: [0, 1.0, 0.80, 0.717, 0.618, 0.552, 0.496],
       leerlauf: 1200,              // U/min im Stand
       drehzahlMax: 8500,           // U/min am Begrenzer (3,4-l-V8 Saugmotor)
       // Reifen: LMP1-Slicks. Bissiger, wenn sie laufen, aber kalt heikler und
@@ -702,10 +707,12 @@ const CARS = [
       reifen: {
         haftungKalt: 0.76,
         haftungWarm: 1.10,
-        warmDauer: 28,
+        warmDauer: 60,
         kuehlDauer: 55,
         gleitFaktor: 0.68,   // blockiert rutschen sie stärker weg
         lenkImBlock: 0.18,
+        abnutzDauer: 1250,   // weicherer Renngummi: schneller runter als die GT3-Slicks
+        abnutzVerlust: 0.30, // …und büßt abgefahren mehr Haftung ein
       },
     },
     // Lenkradmitte laut Modellvermessung 0,30 m vor und 0,26 m unter dem Fahrerauge
@@ -1955,7 +1962,12 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
     document.getElementById('laptimer').style.display = '';
     // Minikarte einblenden und mit der gewählten Strecke füllen
     document.getElementById('minimap').style.display = 'block';
+    document.getElementById('tyres').style.display = 'block';
+    // Lizenzhinweise gehören in die Auswahlbildschirme, nicht ins Blickfeld
+    // beim Fahren – dadurch ist unten rechts Platz für Karte und Reifen.
+    document.getElementById('credit').style.display = 'none';
     setupMinimap(TRACKS[selectedTrackIndex]);
+    updateReifenAnzeige();
 
     // Immer in der Cockpit-Sicht ins Spiel starten
     cameraMode = 1;
@@ -2109,6 +2121,60 @@ function updateMinimap() {
   // Welt → SVG: x direkt, z gespiegelt (Welt-z = −CSV-y)
   dotEl.setAttribute('cx', (minimapTf.ox + (x - minimapTf.minX) * minimapTf.scale).toFixed(2));
   dotEl.setAttribute('cy', (minimapTf.oy + (minimapTf.maxY + z) * minimapTf.scale).toFixed(2));
+}
+
+// ---------- Reifenanzeige (Temperatur + Abnutzung) ----------
+// Farbe zeigt die Temperatur: kalt blau, auf Betriebstemperatur grün, darüber
+// (heiß gefahren, also viel Arbeit auf schon warmem Reifen) orange bis rot.
+// Der schraffierte Anteil von unten zeigt, wie viel Gummi schon weg ist.
+const _tyreEls = [];
+const _tyreLetzt = [-1, -1, -1, -1];
+function tempFarbe(t) {
+  // 0 → blau (kalt), 0,55 → grün (bereit), 1 → rot (heiß)
+  const stufen = [
+    [0.00, [63, 127, 208]],
+    [0.55, [58, 178, 92]],
+    [0.80, [222, 168, 44]],
+    [1.00, [214, 62, 40]],
+  ];
+  for (let i = 1; i < stufen.length; i++) {
+    if (t <= stufen[i][0] || i === stufen.length - 1) {
+      const [a, ca] = stufen[i - 1], [b, cb] = stufen[i];
+      const f = Math.min(1, Math.max(0, (t - a) / (b - a)));
+      const m = ca.map((c, k) => Math.round(c + (cb[k] - c) * f));
+      return `rgb(${m[0]},${m[1]},${m[2]})`;
+    }
+  }
+  return 'rgb(63,127,208)';
+}
+function updateReifenAnzeige() {
+  if (!_tyreEls.length) {
+    for (let i = 0; i < 4; i++) {
+      const el = document.getElementById(`tyre-${i}`);
+      if (!el) return;
+      _tyreEls.push({ farbe: el.querySelector('i'), abrieb: el.querySelector('b') });
+    }
+    _tyreEls.label = document.getElementById('tyre-label');
+  }
+  let schlechtester = 0;
+  for (let i = 0; i < 4; i++) {
+    // nur neu zeichnen, wenn sich etwas sichtbar geändert hat
+    const stand = Math.round(reifenTemp[i] * 100) * 1000 + Math.round(reifenAbrieb[i] * 100);
+    if (stand !== _tyreLetzt[i]) {
+      _tyreLetzt[i] = stand;
+      _tyreEls[i].farbe.style.background = tempFarbe(reifenTemp[i]);
+      _tyreEls[i].abrieb.style.height = `${(reifenAbrieb[i] * 100).toFixed(0)}%`;
+    }
+    schlechtester = Math.max(schlechtester, reifenAbrieb[i]);
+  }
+  // Beschriftung nennt die verbleibende Lauffläche des am stärksten belasteten Reifens
+  const rest = Math.round((1 - schlechtester) * 100);
+  if (_tyreEls.label && _tyreEls.label.dataset.rest !== String(rest)) {
+    _tyreEls.label.dataset.rest = String(rest);
+    _tyreEls.label.textContent = `REIFEN ${rest}%`;
+    _tyreEls.label.style.color = rest < 25 ? '#e0603c'
+      : rest < 50 ? '#dea82c' : 'rgba(255,255,255,0.72)';
+  }
 }
 function renderTrackScreen() {
   const t = TRACKS[selectedTrackIndex];
@@ -2315,7 +2381,19 @@ let ACCEL_BOOST = 1.15;          // Feinabstimmung der Beschleunigung auf die Or
 // Power-Oversteer: Heckantrieb – übersteigt die Antriebskraft die Heck-Haftung,
 // drehen die Hinterräder durch und das Heck bricht aus.
 let DRIVE_REAR = 1.0;                      // Anteil der Antriebskraft am Heck
-let REAR_GRIP = 0.52 * MASS * 9.81 * 1.30; // max. Längskraft am Heck (Achslast · μ)
+let REAR_GRIP_FRAC = 0.52;                 // Achslast-Anteil am Heck im Stand
+let REAR_GRIP_MAX = 0.78;                  // …Obergrenze beim Beschleunigen (Lastverlagerung)
+let REAR_GRIP_MU = 1.60;                   // Reibwert der Hinterreifen
+// Maximale Längskraft, die die Hinterachse übertragen kann. Beim Beschleunigen
+// wandert Last nach hinten (die Front wird leichter), das Heck kann also mehr
+// Kraft absetzen als im Stand – ohne diesen Anteil würden die Räder schon bei
+// normalem Vollgas rechnerisch durchdrehen. Kalte oder abgefahrene Reifen
+// übertragen entsprechend weniger.
+function heckHaftung(fDrive, griff) {
+  const aG = (fDrive * DRIVE_REAR) / MASS / 9.81;            // Längsbeschleunigung in g
+  const frac = Math.min(REAR_GRIP_MAX, REAR_GRIP_FRAC + 0.30 * aG);
+  return frac * MASS * 9.81 * REAR_GRIP_MU * griff;
+}
 let OVERSTEER_GAIN = 0.8;                  // wie stark das Heck bei Schlupf eindreht
 let BRAKE_DECEL = 17.5;          // m/s² Bremsverzögerung
 const RHO_AIR = 1.225;           // kg/m³ Luftdichte (autounabhängig)
@@ -2343,7 +2421,7 @@ function applyCarPhysics(cfg) {
   F_TRACTION = p.fTraction;
   ACCEL_BOOST = p.accelBoost;
   DRIVE_REAR = p.driveRear;
-  REAR_GRIP = p.rearGripFrac * p.mass * 9.81 * p.rearGripMu;
+  REAR_GRIP_FRAC = p.rearGripFrac;
   OVERSTEER_GAIN = p.oversteerGain;
   BRAKE_DECEL = p.brakeDecel;
   CD_AREA = p.cdArea;
@@ -2360,8 +2438,9 @@ function applyCarPhysics(cfg) {
   LEERLAUF = p.leerlauf;
   DREHZAHL_MAX = p.drehzahlMax;
   REIFEN = p.reifen;
-  reifenTemp = 0; // frisches Auto = kalte Reifen
-  blockierStaerke = 0;
+  REAR_GRIP_MAX = p.rearGripMax;
+  REAR_GRIP_MU = p.rearGripMu;
+  resetReifen(); // frisches Auto = neue, kalte Reifen
   // Bots fahren dasselbe Auto wie der Spieler → gleiches Tempolimit
   BOT_MAX_SPEED = VMAX;
   // Sitzposition, Lenkrad-Geometrie und Display-Anordnung ans Cockpit anpassen
@@ -2385,11 +2464,32 @@ let GEAR_PULL = [0, 1.0, 0.76, 0.58, 0.48, 0.40, 0.34]; // Zugkraft-Faktor je Ga
 // Drehzahlbereich des aktuellen Motors (nur für die Anzeige)
 let LEERLAUF = 1300, DREHZAHL_MAX = 7300;
 // Reifen des aktuellen Autos
-let REIFEN = { haftungKalt: 0.82, haftungWarm: 1.06, warmDauer: 20, kuehlDauer: 70, gleitFaktor: 0.72, lenkImBlock: 0.25 };
-let reifenTemp = 0;       // 0 = kalt, 1 = auf Betriebstemperatur
-let blockierStaerke = 0;  // 0 = Haftung, 1 = voll blockiert (geglättet)
-// Haftungsfaktor der Reifen aus ihrer Temperatur
-const reifenGriff = () => REIFEN.haftungKalt + (REIFEN.haftungWarm - REIFEN.haftungKalt) * reifenTemp;
+let REIFEN = {
+  haftungKalt: 0.82, haftungWarm: 1.06, warmDauer: 45, kuehlDauer: 70,
+  gleitFaktor: 0.72, lenkImBlock: 0.25, abnutzDauer: 1800, abnutzVerlust: 0.25,
+};
+// Vier Reifen einzeln: 0 = vorne links, 1 = vorne rechts, 2 = hinten links, 3 = hinten rechts.
+// Jeder bekommt seine eigene Arbeit ab – bremsen belastet vorne, Gas hinten,
+// Kurven die kurvenäußere Seite –, deshalb erwärmen und verschleißen sie ungleich.
+const REIFEN_VL = 0, REIFEN_VR = 1, REIFEN_HL = 2, REIFEN_HR = 3;
+const reifenTemp = [0, 0, 0, 0];    // 0 = kalt, 1 = auf Betriebstemperatur
+const reifenAbrieb = [0, 0, 0, 0];  // 0 = neu, 1 = völlig abgefahren
+let blockierStaerke = 0;            // 0 = Haftung, 1 = voll blockiert (geglättet)
+// Haftungsfaktor EINES Reifens: warm greift er besser, abgefahren schlechter.
+function griffVon(i) {
+  const warm = REIFEN.haftungKalt + (REIFEN.haftungWarm - REIFEN.haftungKalt) * reifenTemp[i];
+  return warm * (1 - REIFEN.abnutzVerlust * reifenAbrieb[i]);
+}
+// Die Bremse wirkt vorwiegend vorne, der Antrieb hinten, die Kurvenkraft auf allen vieren.
+const griffVorn   = () => (griffVon(REIFEN_VL) + griffVon(REIFEN_VR)) / 2;
+const griffHinten = () => (griffVon(REIFEN_HL) + griffVon(REIFEN_HR)) / 2;
+const griffAlle   = () => (griffVorn() + griffHinten()) / 2;
+// Frische, kalte Reifen aufziehen (Boxenstopp, Neustart, Auto-Wechsel)
+function resetReifen() {
+  reifenTemp.fill(0);
+  reifenAbrieb.fill(0);
+  blockierStaerke = 0;
+}
 let gear = 1; // 0 = Rückwärtsgang (R), 1…6 = Vorwärtsgänge
 let prevGearSound = 1; // letzter Gang – für den Schaltsound (Hoch-/Runterschalten)
 let autoGearbox = false; // false = Handschaltung, true = Automatikgetriebe
@@ -2751,7 +2851,7 @@ function updateCar(dt) {
     // Lenken zehrt am selben Reifen-Grip (Kammscher Kreis): beim Anbremsen in die
     // Kurve stehen die Räder deutlich früher als geradeaus.
     const querAnteil = Math.min(1, Math.abs(steerAngle) / MAX_STEER);
-    const bremsGrenze = BRAKE_DECEL * surfaceGrip * reifenGriff() * (1 - 0.35 * querAnteil);
+    const bremsGrenze = BRAKE_DECEL * surfaceGrip * griffVorn() * (1 - 0.35 * querAnteil);
     let verzoegerung;
     if (bremsWunsch > bremsGrenze) {
       // Über der Haftgrenze: die Räder stehen, es wirkt nur noch Gleitreibung –
@@ -2774,8 +2874,10 @@ function updateCar(dt) {
       const fade = Math.max(0, 1 - Math.pow(v / vmaxGear, 9)); // Renn-Drehband: Zugkraft bleibt bis kurz vor den Begrenzer voll da
       // weiterhin leistungsbegrenzt (P = F·v), beim Anfahren traktionsbegrenzt
       const fDrive = Math.min(pull, POWER_WHEEL / Math.max(v, 3)) * throttle * fade * ACCEL_BOOST;
-      // Überschreitet der Heck-Anteil (90 %) die Heck-Haftung, drehen die Räder durch
-      slipTarget = Math.max(0, (fDrive * DRIVE_REAR - REAR_GRIP) / REAR_GRIP);
+      // Übersteigt die Antriebskraft die Heck-Haftung, drehen die Räder durch.
+      // Kalte Hinterreifen halten weniger → am Start dreht es früher durch.
+      const heck = heckHaftung(fDrive, griffHinten());
+      slipTarget = Math.max(0, (fDrive * DRIVE_REAR - heck) / heck);
       const grip = 1 - 0.12 * Math.min(1, slipTarget); // durchdrehende Reifen ziehen etwas schlechter
       // Untergrund: auf Gras/Kies greift der Antrieb nur anteilig (Gras = 30 %)
       accel = (fDrive * grip * surfaceGrip - fDrag - fRoll) / MASS;
@@ -2813,7 +2915,7 @@ function updateCar(dt) {
     const speedGrip = THREE.MathUtils.clamp(1 - Math.max(0, v - 15) * 0.005, 0.72, 1) * aeroGrip(v);
     // Beim Gasgeben in der Kurve etwas mehr Grip (+10 % bei Vollgas) – stabilerer Kurvenausgang
     const throttleGrip = 1 + 0.1 * Math.min(1, throttle);
-    const aMax = MAX_LAT_ACC * surfaceGrip * speedGrip * throttleGrip * reifenGriff(); // Grip-Budget (kalte Reifen halten weniger)
+    const aMax = MAX_LAT_ACC * surfaceGrip * speedGrip * throttleGrip * griffAlle(); // Grip-Budget (kalte oder abgefahrene Reifen halten weniger)
     const longShare = Math.min(longUse, aMax);                 // davon längs belegt
     const latMax = Math.max(0.1 * aMax, Math.sqrt(aMax * aMax - longShare * longShare));
 
@@ -2841,15 +2943,37 @@ function updateCar(dt) {
   // Blockieren glätten (Rad steht nicht schlagartig)
   blockierStaerke += (blockZiel - blockierStaerke) * Math.min(1, dt * 12);
 
-  // --- Reifentemperatur ---
-  // Reifen erwärmen sich durch Arbeit: Bremsen, Lenken bei Tempo, Schlupf. Ohne
-  // Last kühlen sie wieder aus. Warme Reifen haften besser und blockieren später.
-  const reifenArbeit = Math.min(1,
-    longUse / Math.max(1, BRAKE_DECEL)
-    + (Math.abs(steerAngle) / MAX_STEER) * Math.min(1, v / 25)
-    + 0.6 * blockierStaerke + 0.4 * Math.min(1, rearSlip));
-  if (reifenArbeit > 0.05) reifenTemp = Math.min(1, reifenTemp + (reifenArbeit / REIFEN.warmDauer) * dt);
-  else reifenTemp = Math.max(0, reifenTemp - dt / REIFEN.kuehlDauer);
+  // --- Reifentemperatur und Abnutzung, je Reifen einzeln ---
+  // Die Arbeit verteilt sich so, wie die Kräfte am Auto angreifen:
+  //   Bremsen  → vorwiegend die Vorderachse (typische Rennbremsbalance ~65 %),
+  //   Antrieb  → nur die Hinterachse (beide Autos sind Hecktriebler),
+  //   Kurve    → die kurvenäußere Seite trägt die Last,
+  //   Blockieren → wie die Bremse, aber deutlich heftiger.
+  const bremsArbeit = braking ? longUse / Math.max(1, BRAKE_DECEL) : 0;
+  const gasArbeit = braking ? 0 : longUse / Math.max(1, BRAKE_DECEL);
+  const kurvArbeit = (Math.abs(steerAngle) / MAX_STEER) * Math.min(1, v / 25);
+  // Lenkeinschlag > 0 heißt Linkskurve → die rechten Reifen sind die äußeren.
+  const rechtsAussen = steerAngle > 0;
+  const arbeit = [0, 0, 0, 0];
+  for (let i = 0; i < 4; i++) {
+    const vorne = i === REIFEN_VL || i === REIFEN_VR;
+    const aussen = (i === REIFEN_VR || i === REIFEN_HR) === rechtsAussen;
+    arbeit[i] = Math.min(1,
+      bremsArbeit * (vorne ? 0.65 : 0.35)
+      + gasArbeit * (vorne ? 0 : 0.9)
+      + kurvArbeit * (aussen ? 0.7 : 0.3)
+      + blockierStaerke * (vorne ? 0.75 : 0.45)
+      + Math.min(1, rearSlip) * (vorne ? 0 : 0.8));
+  }
+  for (let i = 0; i < 4; i++) {
+    if (arbeit[i] > 0.05) reifenTemp[i] = Math.min(1, reifenTemp[i] + (arbeit[i] / REIFEN.warmDauer) * dt);
+    else reifenTemp[i] = Math.max(0, reifenTemp[i] - dt / REIFEN.kuehlDauer);
+    // Abnutzung: Gummi geht nur beim Arbeiten weg und kommt nie zurück. Heiße
+    // Reifen verschleißen schneller, Rutschen radiert die Lauffläche regelrecht ab.
+    const heiss = 0.6 + 0.4 * reifenTemp[i];
+    const rutschen = 1 + 2.5 * blockierStaerke + 1.5 * Math.min(1, rearSlip);
+    reifenAbrieb[i] = Math.min(1, reifenAbrieb[i] + (arbeit[i] * heiss * rutschen / REIFEN.abnutzDauer) * dt);
+  }
 
   // Rauch und Spuren, solange die Reifen rutschen (blockiert oder durchdrehend)
   const rutscht = Math.max(blockierStaerke, Math.min(1, rearSlip * 0.8));
@@ -3256,6 +3380,7 @@ btnPit.addEventListener('click', () => {
   prevGearSound = 1;
    alignCarToPitlane();                 // in Fahrtrichtung der Boxengasse ausrichten
   prevCarPos.copy(carGroup.position);  // keinen Kamerasprung erzeugen
+  resetReifen();                       // Boxenstopp = frische Reifen (wieder kalt!)
   armLap();                            // frische, gemessene Runde ab der Box
   updateLapHud();
 });
@@ -3287,7 +3412,10 @@ btnHome.addEventListener('click', () => {
   document.getElementById('laptimer').style.display = 'none';
   document.getElementById('title').style.display = 'none';
   document.getElementById('minimap').style.display = 'none';
+  document.getElementById('tyres').style.display = 'none';
+  document.getElementById('credit').style.display = ''; // Lizenzen wieder zeigen
   resetReifenSpuren(); // alte Bremsspuren und Rauch entfernen
+  resetReifen();       // nächster Start beginnt wieder auf neuen, kalten Reifen
 
   // Startbildschirm-Optik: Verfolgerkamera mit Auto-Rotation, Nachtmodus + Lichter
   cameraMode = 0;
@@ -3368,7 +3496,11 @@ function engineAccel(v) {
   const pull = F_TRACTION * GEAR_PULL[g];
   const fade = Math.max(0, 1 - Math.pow(v / vmax, 9)); // wie beim Spieler (Renn-Drehband)
   const fDrive = Math.min(pull, POWER_WHEEL / Math.max(v, 3)) * fade * ACCEL_BOOST;
-  const slip = Math.max(0, (fDrive * DRIVE_REAR - REAR_GRIP) / REAR_GRIP);
+  // Bots rechnen mit Reifen auf Betriebstemperatur: sie kommen aus der Einführungs-
+  // runde, während der Spieler mit kalten Reifen losfährt. Sonst würden sie seine
+  // Reifentemperatur mitbenutzen, die sie gar nicht haben.
+  const heck = heckHaftung(fDrive, REIFEN.haftungWarm);
+  const slip = Math.max(0, (fDrive * DRIVE_REAR - heck) / heck);
   const grip = 1 - 0.12 * Math.min(1, slip);
   return (fDrive * grip - fDrag - fRoll) / MASS;
 }
@@ -4268,7 +4400,10 @@ renderer.setAnimationLoop(() => {
     }
   }
 
-  if (gameStarted) updateMinimap(); // blauer Punkt auf der Minikarte
+  if (gameStarted) {
+    updateMinimap();        // blauer Punkt auf der Minikarte
+    updateReifenAnzeige();  // Temperatur- und Abnutzungsanzeige der Reifen
+  }
   updateSunGlare(); // Blenden, wenn man in die Sonne schaut
   renderer.render(scene, camera);
 });
