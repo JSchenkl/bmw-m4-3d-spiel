@@ -666,7 +666,7 @@ const CARS = [
         // Wo auf dieser Fläche gezeichnet wird – am Display des Modells ausgemessen.
         // „hoch“ = über der Nabe, „quer“ = seitlich in der Lenkradebene.
         felder: { hoch: 0.0882, quer: -0.0060, breite: 0.1500, hoehe: 0.028 },
-        leds:   { hoch: 0.1025, quer: -0.0010, breite: 0.1025, hoehe: 0.0105 },
+        leds:   { hoch: 0.1005, quer: 0.0001, breite: 0.1066, hoehe: 0.0105 },
       },
     },
     // Originaldaten Toyota TS030 Hybrid (Le-Mans-Prototyp, 2012–2014)
