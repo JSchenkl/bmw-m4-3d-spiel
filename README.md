@@ -34,7 +34,8 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - **Autoauswahl** direkt nach der Strecke: BMW M4 GT3 EVO oder Toyota TS030 Hybrid, mit den **Originaldaten unten rechts** (Motor, Leistung, Gewicht, 0–100, Vmax, Antrieb, Getriebe)
 - **Reifenmechanik**: das Spiel rechnet je Bild aus, ob die Reifen blockieren oder durchdrehen. Zu hartes Bremsen (besonders mit Lenkeinschlag) übersteigt die Haftgrenze – dann qualmt **weißer Reifenrauch** und auf der Fahrbahn bleiben **Bremsspuren** zurück. Die vier Reifen **wärmen sich einzeln auf** und **nutzen sich ab**: warme Reifen greifen besser und blockieren später, abgefahrene verlieren Haftung. Ein Boxenstopp (**Zur Box**) zieht frische, kalte Reifen auf
 - **Curbs als Rampe**: die Randsteine steigen von der Fahrbahnkante nach außen an, statt als Stufe daneben zu stehen. Wer darauf fährt, rollt hinauf – das Auto neigt sich dabei stufenlos und der Wagenkasten steigt mit
-- **Reifenanzeige unten rechts**: Grundriss mit allen vier Reifen – die Farbe zeigt die Temperatur (blau kalt → grün bereit → rot heiß), der schraffierte Anteil die Abnutzung, darunter die verbleibende Lauffläche in Prozent
+- **Reifenschaden**: bei 100 % Verschleiß ist der Reifen **platt**. Das Auto bleibt fahrbar, verhält sich aber deutlich anders – es zieht zur Seite des Platten, wird beim Bremsen unruhig, der Rollwiderstand steigt stark. **Vorne platt** heißt Untersteuern und schlechtes Einlenken, **hinten platt** ein instabiles Heck. Wer weiterfährt, ruiniert zusätzlich die Felge; wie schnell, hängt am Tempo. Zurück an die Box kommt man im Schritttempo noch
+- **Reifenanzeige unten rechts**: Grundriss mit allen vier Reifen – die Farbe zeigt die Temperatur (blau kalt → grün bereit → rot heiß), der schraffierte Anteil die Abnutzung, darunter die verbleibende Lauffläche in Prozent. Ein platter Reifen wird rot durchgekreuzt, dazu warnt das HUD und es rumpelt hörbar
 - **Minikarte unten rechts** (ohne Kasten) mit blauem Punkt für die eigene Position
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
 - Scheinwerfer & Rücklichter mit Lichtkegeln
@@ -57,6 +58,13 @@ Beide Autos nutzen dasselbe Kraftmodell, aber je Auto eigene Kennwerte
 - **Reifen**: jeder der vier Reifen führt seinen eigenen Haftungsfaktor aus Temperatur
   und Abnutzung. Er geht dort ein, wo der Reifen arbeitet – vorne in die Bremsgrenze,
   hinten in die Traktionsgrenze, alle vier in die Kurvengrenze (`CARS[i].phys.reifen`)
+- **Verschleiß wirkt progressiv**, nicht linear: der Haftungsverlust wächst mit
+  `abrieb^kurve` (Standard 3). Ein zu 60 % abgefahrener Reifen hat erst 5 % Haftung
+  eingebüßt, ein ganz abgefahrener 25 % (M4) bzw. 30 % (TS030)
+- **Unter- und Übersteuern** entstehen aus dem Verhältnis der Achsen: schwache
+  Vorderreifen lassen das Auto über die Front schieben, ein schwaches Heck schiebt
+  mit. Der seitliche Zug bei Reifenschaden folgt aus der Links-rechts-Bilanz –
+  es gibt keine Sonderfälle für einzelne Räder
 - **Lastverlagerung**: beim Beschleunigen wandert Achslast nach hinten, das Heck kann
   also mehr Kraft absetzen als im Stand. Ohne diesen Anteil würden die Hinterräder
   schon bei normalem Vollgas rechnerisch durchdrehen
@@ -77,7 +85,11 @@ Beide Autos nutzen dasselbe Kraftmodell, aber je Auto eigene Kennwerte
 | …mit abgefahrenen Reifen | 142 m | 131 m |
 | Hinterreifen auf Temperatur | nach ~1 Runde | nach ~1 Runde |
 | Vorderreifen auf Temperatur | nach ~2 Runden | nach ~3 Runden |
-| Reifen abgefahren nach | ~20 Runden | ~14 Runden |
+| Reifen abgefahren nach | ~15 Runden | ~10 Runden |
+| Haftung bei 60 % Verschleiß | −5 % | −6 % |
+| …bei 100 % Verschleiß | −25 % | −30 % |
+| Platter Reifen: Seitenführung | 30 % | 26 % |
+| Platter Reifen: Rollwiderstand | +423 % | +500 % |
 
 Der Toyota startet kälter und braucht länger, bis die Reifen greifen – dafür hat er warm
 den klar besseren Grip, verschleißt aber schneller. Der M4 ist von Anfang an gutmütiger

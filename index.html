@@ -438,6 +438,20 @@
       background: repeating-linear-gradient(45deg,
         rgba(0,0,0,0.72) 0 3px, rgba(0,0,0,0.42) 3px 6px);
     }
+    /* Platter Reifen: roter Rahmen, der im Takt blinkt */
+    .tyre.platt {
+      border-color: #ff2d20;
+      box-shadow: 0 0 0 2px rgba(255,45,32,0.55), 0 2px 6px rgba(0,0,0,0.7);
+      animation: plattblink 0.9s ease-in-out infinite;
+    }
+    @keyframes plattblink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+    /* Diagonales Kreuz über dem defekten Reifen */
+    .tyre.platt::after {
+      content: ''; position: absolute; inset: 0; z-index: 2;
+      background:
+        linear-gradient(to bottom right, transparent 44%, #ff2d20 44% 56%, transparent 56%),
+        linear-gradient(to bottom left,  transparent 44%, #ff2d20 44% 56%, transparent 56%);
+    }
     #tyre-label {
       margin-top: 6px; text-align: center;
       font-size: 11px; font-weight: bold; letter-spacing: 1.2px;

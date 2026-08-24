@@ -617,8 +617,22 @@ const CARS = [
         kuehlDauer: 70,      // Sekunden ohne Last bis wieder kalt
         gleitFaktor: 0.72,   // Reibung im blockierten Zustand, Anteil vom Haftmaximum
         lenkImBlock: 0.25,   // verbleibende Lenkwirkung, wenn die Vorderräder blockieren
-        abnutzDauer: 1800,   // Sekunden unter voller Last bis der Reifen runter ist
-        abnutzVerlust: 0.25, // so viel Haftung fehlt dem völlig abgefahrenen Reifen
+        abnutzDauer: 1333,   // Sekunden unter voller Last bis der Reifen runter ist
+        abnutzVerlust: 0.25, // so viel Haftung fehlt dem abgefahrenen (noch heilen) Reifen
+        // Verschleiß wirkt progressiv: Haftungsverlust ∝ abrieb^kurve. Mit 3 ist
+        // ein zu 60 % abgefahrener Reifen erst 22 % seines Verlusts weit – danach
+        // geht es schnell. 1 wäre linear.
+        kurve: 3.0,
+        warnAb: 0.78,        // ab hier warnt das HUD vor kritischem Verschleiß
+        platt: {
+          quer: 0.30,        // verbleibende Seitenführung des platten Reifens
+          laengs: 0.40,      // … und verbleibende Längskraft (Antrieb/Bremse)
+          rollWiderstand: 0.055, // Aufschlag auf den Rollwiderstandsbeiwert je Platten
+          ziehen: 0.55,      // wie stark das Auto zur Seite des Platten zieht
+          instabil: 0.30,    // Amplitude des Gierzappelns (wächst mit Tempo)
+          felgeDauer: 55,    // Sekunden bei 30 m/s, bis man auf der Felge fährt
+          felgeZusatz: 0.55, // wie viel Haftung die zerstörte Felge zusätzlich kostet
+        },
       },
     },
     // Lenkrad wird aus dem Innenraum-Mesh herausgelöst – Maße relativ zum Fahrerauge
@@ -717,8 +731,16 @@ const CARS = [
         kuehlDauer: 55,
         gleitFaktor: 0.68,   // blockiert rutschen sie stärker weg
         lenkImBlock: 0.18,
-        abnutzDauer: 1250,   // weicherer Renngummi: schneller runter als die GT3-Slicks
+        abnutzDauer: 926,    // weicherer Renngummi: schneller runter als die GT3-Slicks
         abnutzVerlust: 0.30, // …und büßt abgefahren mehr Haftung ein
+        kurve: 3.0,
+        warnAb: 0.78,
+        // Der Prototyp ist leichter und hat mehr Abtrieb: ein Platten wirft ihn
+        // stärker aus der Bahn als den schwereren GT3.
+        platt: {
+          quer: 0.26, laengs: 0.36, rollWiderstand: 0.060,
+          ziehen: 0.62, instabil: 0.36, felgeDauer: 45, felgeZusatz: 0.60,
+        },
       },
     },
     // Lenkradmitte laut Modellvermessung 0,30 m vor und 0,26 m unter dem Fahrerauge
@@ -2220,28 +2242,32 @@ function updateReifenAnzeige() {
     for (let i = 0; i < 4; i++) {
       const el = document.getElementById(`tyre-${i}`);
       if (!el) return;
-      _tyreEls.push({ farbe: el.querySelector('i'), abrieb: el.querySelector('b') });
+      _tyreEls.push({ kasten: el, farbe: el.querySelector('i'), abrieb: el.querySelector('b') });
     }
     _tyreEls.label = document.getElementById('tyre-label');
   }
   let schlechtester = 0;
   for (let i = 0; i < 4; i++) {
     // nur neu zeichnen, wenn sich etwas sichtbar geändert hat
-    const stand = Math.round(reifenTemp[i] * 100) * 1000 + Math.round(reifenAbrieb[i] * 100);
+    const stand = Math.round(reifenTemp[i] * 100) * 10000
+      + Math.round(reifenAbrieb[i] * 100) * 10 + (reifenPlatt[i] ? 1 : 0);
     if (stand !== _tyreLetzt[i]) {
       _tyreLetzt[i] = stand;
       _tyreEls[i].farbe.style.background = tempFarbe(reifenTemp[i]);
       _tyreEls[i].abrieb.style.height = `${(reifenAbrieb[i] * 100).toFixed(0)}%`;
+      _tyreEls[i].kasten.classList.toggle('platt', reifenPlatt[i]);
     }
     schlechtester = Math.max(schlechtester, reifenAbrieb[i]);
   }
-  // Beschriftung nennt die verbleibende Lauffläche des am stärksten belasteten Reifens
+  // Beschriftung: verbleibende Lauffläche des am stärksten belasteten Reifens –
+  // oder die Warnung, sobald einer platt ist.
   const rest = Math.round((1 - schlechtester) * 100);
-  if (_tyreEls.label && _tyreEls.label.dataset.rest !== String(rest)) {
-    _tyreEls.label.dataset.rest = String(rest);
-    _tyreEls.label.textContent = `REIFEN ${rest}%`;
-    _tyreEls.label.style.color = rest < 25 ? '#e0603c'
-      : rest < 50 ? '#dea82c' : 'rgba(255,255,255,0.72)';
+  const text = reifenPlatt.some(Boolean) ? 'REIFEN PLATT' : `REIFEN ${rest}%`;
+  if (_tyreEls.label && _tyreEls.label.dataset.rest !== text) {
+    _tyreEls.label.dataset.rest = text;
+    _tyreEls.label.textContent = text;
+    _tyreEls.label.style.color = reifenPlatt.some(Boolean) ? '#ff2d20'
+      : rest < 25 ? '#e0603c' : rest < 50 ? '#dea82c' : 'rgba(255,255,255,0.72)';
   }
 }
 function renderTrackScreen() {
@@ -2542,21 +2568,70 @@ let REIFEN = {
 const REIFEN_VL = 0, REIFEN_VR = 1, REIFEN_HL = 2, REIFEN_HR = 3;
 const reifenTemp = [0, 0, 0, 0];    // 0 = kalt, 1 = auf Betriebstemperatur
 const reifenAbrieb = [0, 0, 0, 0];  // 0 = neu, 1 = völlig abgefahren
+const reifenPlatt = [false, false, false, false]; // bei 100 % Abrieb: Reifen defekt
+const felgenSchaden = [0, 0, 0, 0]; // Folgeschaden vom Weiterfahren auf dem Platten
 let blockierStaerke = 0;            // 0 = Haftung, 1 = voll blockiert (geglättet)
-// Haftungsfaktor EINES Reifens: warm greift er besser, abgefahren schlechter.
-function griffVon(i) {
-  const warm = REIFEN.haftungKalt + (REIFEN.haftungWarm - REIFEN.haftungKalt) * reifenTemp[i];
-  return warm * (1 - REIFEN.abnutzVerlust * reifenAbrieb[i]);
+let reifenWarnung = 0;              // 0 = keine, 1 = Verschleiß kritisch, 2 = Platten gemeldet
+let gierZappeln = 0;                // geglättetes Gierzappeln bei Reifenschaden
+
+// Verschleiß wirkt progressiv, nicht linear: bis rund zwei Drittel bleibt der
+// Reifen brauchbar, danach bricht die Haftung schnell weg.
+const verschleissKurve = (a) => Math.pow(Math.min(1, Math.max(0, a)), REIFEN.kurve ?? 3);
+
+// Schadensanteil EINES Reifens: 1 = heil, kleiner = abgefahren oder platt.
+// Bewusst OHNE Temperatur – die steckt schon im Grip-Budget. So bleibt das
+// Fahrverhalten mit heilen Reifen (auch kalten) unverändert.
+// `quer` unterscheidet Seitenführung von Längskraft: ein platter Reifen verliert
+// beim Lenken mehr als beim Bremsen oder Beschleunigen.
+function schadenFaktor(i, quer) {
+  const P = REIFEN.platt;
+  let f = 1 - REIFEN.abnutzVerlust * verschleissKurve(reifenAbrieb[i]);
+  if (reifenPlatt[i]) {
+    f *= quer ? P.quer : P.laengs;
+    // Wer auf dem Platten weiterfährt, ruiniert Karkasse und Felge – das kostet
+    // zusätzlich Haftung, bis am Ende nur noch die blanke Felge übrig ist.
+    f *= 1 - P.felgeZusatz * felgenSchaden[i];
+  }
+  return f;
 }
+// Haftungsfaktor EINES Reifens: Temperatur mal Schadensanteil
+function griffVon(i, quer) {
+  const warm = REIFEN.haftungKalt + (REIFEN.haftungWarm - REIFEN.haftungKalt) * reifenTemp[i];
+  return warm * schadenFaktor(i, quer);
+}
+// Achs- und Seitenbilanz des Schadens – daraus folgen Unter-/Übersteuern und Ziehen
+const schadenVorn   = (q) => (schadenFaktor(REIFEN_VL, q) + schadenFaktor(REIFEN_VR, q)) / 2;
+const schadenHinten = (q) => (schadenFaktor(REIFEN_HL, q) + schadenFaktor(REIFEN_HR, q)) / 2;
+const schadenLinks  = () => (schadenFaktor(REIFEN_VL, false) + schadenFaktor(REIFEN_HL, false)) / 2;
+const schadenRechts = () => (schadenFaktor(REIFEN_VR, false) + schadenFaktor(REIFEN_HR, false)) / 2;
+const schlimmsterReifen = () => 1 - Math.min(
+  schadenFaktor(REIFEN_VL, true), schadenFaktor(REIFEN_VR, true),
+  schadenFaktor(REIFEN_HL, true), schadenFaktor(REIFEN_HR, true));
 // Die Bremse wirkt vorwiegend vorne, der Antrieb hinten, die Kurvenkraft auf allen vieren.
-const griffVorn   = () => (griffVon(REIFEN_VL) + griffVon(REIFEN_VR)) / 2;
-const griffHinten = () => (griffVon(REIFEN_HL) + griffVon(REIFEN_HR)) / 2;
-const griffAlle   = () => (griffVorn() + griffHinten()) / 2;
+const griffVorn   = () => (griffVon(REIFEN_VL, false) + griffVon(REIFEN_VR, false)) / 2;
+const griffHinten = () => (griffVon(REIFEN_HL, false) + griffVon(REIFEN_HR, false)) / 2;
+const querVorn    = () => (griffVon(REIFEN_VL, true) + griffVon(REIFEN_VR, true)) / 2;
+const querHinten  = () => (griffVon(REIFEN_HL, true) + griffVon(REIFEN_HR, true)) / 2;
+const griffAlle   = () => (querVorn() + querHinten()) / 2;
+// Haftung, die ein heiler, warmer Reifen hätte – Bezugsgröße für Unter-/Übersteuern
+const griffHeil = () => REIFEN.haftungWarm;
+// Rollwiderstand: jeder Platten bremst zusätzlich, die zerstörte Felge noch mehr
+function rollWiderstand() {
+  let r = ROLL_RES;
+  for (let i = 0; i < 4; i++) {
+    if (reifenPlatt[i]) r += REIFEN.platt.rollWiderstand * (1 + felgenSchaden[i]);
+  }
+  return r;
+}
 // Frische, kalte Reifen aufziehen (Boxenstopp, Neustart, Auto-Wechsel)
 function resetReifen() {
   reifenTemp.fill(0);
   reifenAbrieb.fill(0);
+  reifenPlatt.fill(false);
+  felgenSchaden.fill(0);
   blockierStaerke = 0;
+  reifenWarnung = 0;
+  gierZappeln = 0;
 }
 let gear = 1; // 0 = Rückwärtsgang (R), 1…6 = Vorwärtsgänge
 let prevGearSound = 1; // letzter Gang – für den Schaltsound (Hoch-/Runterschalten)
@@ -2898,7 +2973,7 @@ function updateCar(dt) {
   // Längsdynamik: Kräftebilanz aus Antrieb, Luft- und Rollwiderstand
   const v = Math.abs(speed);
   const fDrag = 0.5 * RHO_AIR * CD_AREA * v * v;          // Luftwiderstand
-  const fRoll = v > 0.1 ? MASS * 9.81 * ROLL_RES : 0;      // Rollwiderstand
+  const fRoll = v > 0.1 ? MASS * 9.81 * rollWiderstand() : 0; // Rollwiderstand (Platten bremsen zusätzlich)
   let accel = 0;
   let slipTarget = 0; // angeforderter Heck-Schlupf dieses Frames (für den Oversteer)
   let longUse = 0;    // genutzte Längs-Haftung (Reibkreis): Gas/Bremse zehrt am Kurven-Grip
@@ -2983,7 +3058,9 @@ function updateCar(dt) {
     const speedGrip = THREE.MathUtils.clamp(1 - Math.max(0, v - 15) * 0.005, 0.72, 1) * aeroGrip(v);
     // Beim Gasgeben in der Kurve etwas mehr Grip (+10 % bei Vollgas) – stabilerer Kurvenausgang
     const throttleGrip = 1 + 0.1 * Math.min(1, throttle);
-    const aMax = MAX_LAT_ACC * surfaceGrip * speedGrip * throttleGrip * griffAlle(); // Grip-Budget (kalte oder abgefahrene Reifen halten weniger)
+    // Grip-Budget: kalte, abgefahrene oder platte Reifen halten weniger.
+    // griffAlle() mittelt die QUERhaftung aller vier Reifen.
+    const aMax = MAX_LAT_ACC * surfaceGrip * speedGrip * throttleGrip * griffAlle();
     const longShare = Math.min(longUse, aMax);                 // davon längs belegt
     const latMax = Math.max(0.1 * aMax, Math.sqrt(aMax * aMax - longShare * longShare));
 
@@ -2998,12 +3075,34 @@ function updateCar(dt) {
     // Blockierte Vorderräder schieben geradeaus – Lenkeinschlag wirkt kaum noch.
     omega *= 1 - (1 - REIFEN.lenkImBlock) * blockierStaerke;
 
-    // Übersteuern: das ausbrechende Heck dreht das Auto zusätzlich um die Hochachse.
-    // Auf Gras stark, auf Kies mittel, auf der Strecke nur leicht (mehr Grip).
-    const overshoot = OVERSTEER_GAIN * overMul * Math.min(slide, 2) * Math.min(1, Math.abs(speed) / 6);
-    omega += Math.sign(steerAngle) * Math.sign(speed) * overshoot;
+    // --- Reifenschaden wirkt auf die Balance der Achsen ---
+    // Alle Faktoren sind bei heilen Reifen exakt 1, das Fahrverhalten bleibt dann
+    // unverändert. Unter- und Übersteuern entstehen aus dem Verhältnis der Achsen,
+    // nicht aus Sonderfällen für „vorne platt" oder „hinten platt".
+    const sVorn = schadenVorn(true), sHinten = schadenHinten(true);
+    // Schwache Vorderreifen folgen dem Lenkeinschlag weniger → Untersteuern
+    omega *= sVorn;
+    // Schwächeres Heck als Front → das Heck schiebt mit, auch auf Asphalt
+    const heckDefizit = Math.max(0, sVorn - sHinten);
+    omega += Math.sign(steerAngle) * Math.sign(speed)
+      * heckDefizit * OVERSTEER_GAIN * 2.2 * Math.min(1, Math.abs(speed) / 12);
 
     carYaw += omega * dt;
+  }
+
+  // --- Ziehen und Unruhe durch Reifenschaden ---
+  // Bewusst AUSSERHALB des Lenk-Blocks oben: ein Platten zieht das Auto auch
+  // dann zur Seite, wenn man geradeaus fährt und das Lenkrad nicht bewegt.
+  if (Math.abs(speed) > 0.05) {
+    const seitenDiff = schadenRechts() - schadenLinks(); // >0 = links schwächer → zieht nach links
+    if (seitenDiff !== 0) {
+      // Der höhere Rollwiderstand auf der kaputten Seite erzeugt ein Giermoment.
+      // Beim Bremsen wirkt es am stärksten – da wird das Auto richtig unruhig.
+      const bremsAnteil = braking ? 1 + 1.2 * brakeInput : 1;
+      carYaw += seitenDiff * REIFEN.platt.ziehen * bremsAnteil
+        * Math.sign(speed) * Math.min(1, Math.abs(speed) / 20) * dt;
+    }
+    carYaw += gierZappeln * dt;
   }
 
   // Heck-Schlupf glätten
@@ -3041,6 +3140,33 @@ function updateCar(dt) {
     const heiss = 0.6 + 0.4 * reifenTemp[i];
     const rutschen = 1 + 2.5 * blockierStaerke + 1.5 * Math.min(1, rearSlip);
     reifenAbrieb[i] = Math.min(1, reifenAbrieb[i] + (arbeit[i] * heiss * rutschen / REIFEN.abnutzDauer) * dt);
+    // Bei 100 % Abrieb ist der Reifen defekt – ab da hilft nur noch die Box.
+    if (reifenAbrieb[i] >= 1) reifenPlatt[i] = true;
+    // Weiterfahren auf dem Platten zerstört Karkasse und Felge. Wie schnell,
+    // hängt am Tempo: im Schritttempo passiert kaum etwas.
+    if (reifenPlatt[i] && v > 1) {
+      felgenSchaden[i] = Math.min(1, felgenSchaden[i]
+        + (v / 30) / REIFEN.platt.felgeDauer * dt);
+    }
+  }
+
+  // --- Unruhe durch Reifenschaden ---
+  // Ein kaputter Reifen läuft unrund. Das Zappeln wächst mit Schaden und Tempo
+  // und wird geglättet, damit es rüttelt statt zu flackern.
+  const schaden = schlimmsterReifen();
+  const zappelZiel = schaden < 0.05 ? 0
+    : (Math.random() - 0.5) * REIFEN.platt.instabil * schaden * Math.min(1, v / 30);
+  gierZappeln += (zappelZiel - gierZappeln) * Math.min(1, dt * 14);
+
+  // --- Warnungen an den Fahrer ---
+  const plattDa = reifenPlatt.some(Boolean);
+  const schlimmsterAbrieb = Math.max(...reifenAbrieb);
+  if (plattDa && reifenWarnung < 2) {
+    reifenWarnung = 2;
+    showRaceMsg('REIFENSCHADEN — langsam an die Box', '#ff5252');
+  } else if (!plattDa && schlimmsterAbrieb > (REIFEN.warnAb ?? 0.78) && reifenWarnung < 1) {
+    reifenWarnung = 1;
+    showRaceMsg('Reifen kritisch abgefahren', '#ffb300');
   }
 
   // Rauch und Spuren, solange die Reifen rutschen (blockiert oder durchdrehend)
@@ -3122,6 +3248,8 @@ function updateCar(dt) {
   prevThrottleIn = throttle;
 
   engineAudio.update(rev, throttle, dt);
+  // Reifenschaden hörbar machen (Rumpeln, Takt steigt mit dem Tempo)
+  engineAudio.setReifenSchaden(schlimmsterReifen(), Math.abs(speed));
 }
 let prevThrottleIn = 0; // Gaspedal des Vorframes (für die Crackle-Erkennung)
 
@@ -3537,29 +3665,37 @@ function centerlineAt(arc) {
   return { x, z, tx: tx / tl, tz: tz / tl };
 }
 
+// Reifenzustand eines Bots als Haftungsfaktor – gleiche progressive Kurve wie
+// beim Spieler, damit KI und Spieler denselben Regeln folgen.
+function botGriff(bot) {
+  return 1 - REIFEN.abnutzVerlust * verschleissKurve(bot.abrieb || 0);
+}
+
 // Empfohlenes Bot-Tempo an Bogenlänge `s`: hoch auf Geraden, in Kurven nach dem
 // Kurvenradius begrenzt (v = sqrt(seitl.Beschl. · Radius)).
-function botTargetSpeed(s) {
+// griff: Reifenzustand des jeweiligen Bots (1 = frische Reifen). Dieselbe
+// Verschleisskurve wie beim Spieler, damit die KI nicht bevorteilt ist.
+function botTargetSpeed(s, griff = 1) {
   const L = 28;
   const p0 = centerlineAt(s), p1 = centerlineAt(s + L), p2 = centerlineAt(s + 2 * L);
   let d1x = p1.x - p0.x, d1z = p1.z - p0.z; const l1 = Math.hypot(d1x, d1z) || 1; d1x /= l1; d1z /= l1;
   let d2x = p2.x - p1.x, d2z = p2.z - p1.z; const l2 = Math.hypot(d2x, d2z) || 1; d2x /= l2; d2z /= l2;
   let cosA = d1x * d2x + d1z * d2z; cosA = Math.max(-1, Math.min(1, cosA));
   const kappa = Math.acos(cosA) / L; // Krümmung (Richtungsänderung pro Meter)
-  if (kappa < 1e-4) return BOT_MAX_SPEED;
+  if (kappa < 1e-4) return BOT_MAX_SPEED * (0.55 + 0.45 * griff); // abgefahrene Reifen bremsen auch geradeaus
   // Gleiche Querhaftung wie der Spieler: 1,25 g mechanisch + Aero-Abtrieb
   // (schnelle Kurven = MEHR Grip). v² = aLat(v)·Radius, iterativ gelöst.
   let v = 45;
   for (let it = 0; it < 6; it++) {
     const sg = Math.max(0.72, Math.min(1, 1 - Math.max(0, v - 15) * 0.005)) * aeroGrip(v); // wie speedGrip beim Spieler (inkl. Aero)
-    v = 0.5 * v + 0.5 * Math.sqrt((MAX_LAT_ACC * sg * BOT_GRIP) / kappa);
+    v = 0.5 * v + 0.5 * Math.sqrt((MAX_LAT_ACC * sg * BOT_GRIP * griff) / kappa);
   }
   return Math.max(BOT_MIN_SPEED, Math.min(BOT_MAX_SPEED, v));
 }
 
 // Längsbeschleunigung bei Vollgas (Automatik) – dasselbe Kraftmodell wie beim
 // Spieler, damit die Bots GENAU die gleiche Beschleunigung haben wie der Spieler.
-function engineAccel(v) {
+function engineAccel(v, griff = 1) {
   let g = 1;
   while (g < 6 && v >= 0.93 * GEAR_MAX_SPEED[g]) g++;
   const vmax = GEAR_MAX_SPEED[g];
@@ -3572,7 +3708,7 @@ function engineAccel(v) {
   // Bots rechnen mit Reifen auf Betriebstemperatur: sie kommen aus der Einführungs-
   // runde, während der Spieler mit kalten Reifen losfährt. Sonst würden sie seine
   // Reifentemperatur mitbenutzen, die sie gar nicht haben.
-  const heck = heckHaftung(fDrive, REIFEN.haftungWarm);
+  const heck = heckHaftung(fDrive, REIFEN.haftungWarm * griff);
   const slip = Math.max(0, (fDrive * DRIVE_REAR - heck) / heck);
   const grip = 1 - 0.12 * Math.min(1, slip);
   return (fDrive * grip - fDrag - fRoll) / MASS;
@@ -3625,7 +3761,7 @@ function createBots() {
     const wheelsClone = wheelPaths
       .map((w) => ({ spin: resolveNodePath(clone, w.path), axisLocal: w.axisLocal, radius: w.radius }))
       .filter((w) => w.spin);
-    bots.push({ group, s: 0, offset: 0, wheels: wheelsClone, tailMats, headMats });
+    bots.push({ group, s: 0, offset: 0, wheels: wheelsClone, tailMats, headMats, abrieb: 0 });
   }
   applyBotLights(); // Scheinwerfer je nach Tag/Nacht setzen
 }
@@ -3678,7 +3814,8 @@ function updateBots(dt) {
         // Jeder Bot fährt für sich: eigenes Kurventempo (cornerF = später/früher bremsen)
         // und eigene Beschleunigung (accelF). cornerF>1 = mutiger, bremst später.
         const look = 14 * (bot.cornerF || 1);       // mutigere Bots schauen kürzer voraus → bremsen später
-        let target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + look) * (bot.cornerF || 1));
+        const bGriff = botGriff(bot);
+        let target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + look, bGriff) * (bot.cornerF || 1));
         // Auffahrschutz: dichter, gleichspuriger Gegner voraus → Tempo angleichen (nicht reinfahren)
         for (const o of bots) {
           if (o === bot) continue;
@@ -3688,12 +3825,16 @@ function updateBots(dt) {
         }
         // Totband um die Zieldrehzahl: kein Hin-und-Her zwischen Gas und Bremse (kein Rucken/Flackern)
         if (bot.v < target - 0.4) {
-          const a = Math.max(0, engineAccel(bot.v)); // exakt dieselbe Beschleunigung wie der Spieler
+          const a = Math.max(0, engineAccel(bot.v, bGriff)); // dasselbe Kraftmodell wie beim Spieler
           bot.v = Math.min(target, bot.v + a * dt);
         } else if (bot.v > target + 0.4) {
-          bot.v = Math.max(target, bot.v - BOT_BRAKE * BOT_GRIP * dt);   // Bremse vor Kurven (10 % schwächer)
+          bot.v = Math.max(target, bot.v - BOT_BRAKE * BOT_GRIP * bGriff * dt); // Bremse vor Kurven (10 % schwächer)
           braking = true;
         }
+        // Reifen der Bots nutzen sich mit der gefahrenen Arbeit ab – vereinfacht
+        // ueber Tempo und Kurvenanteil, aber mit derselben Zeitkonstante.
+        bot.abrieb = Math.min(1, (bot.abrieb || 0)
+          + (0.35 + 0.65 * Math.min(1, bot.v / BOT_MAX_SPEED)) / REIFEN.abnutzDauer * dt);
         const ps = bot.s;
         bot.s = (bot.s + bot.v * dt) % total;
         if (bot.s < ps - total * 0.5) bot.crossings = (bot.crossings || 0) + 1; // Start/Ziel überfahren
@@ -3923,6 +4064,7 @@ function setupGrid() {
       bot.s = arc; bot.offset = gridOffset(i);    // Startaufstellung gestaffelt
       bot._prevS = arc; bot.crossings = 0;        // Rundenzählung (Wrap der Bogenlänge)
       bot.v = 0;                                  // startet aus dem Stand
+      bot.abrieb = 0;                             // frische Reifen wie beim Spieler
       bot.launchTimer = 0;
       bot.reaction = 0.200 + Math.random() * 0.150; // eigene Reaktionszeit 0,200…0,350 s
       // eigene Ideallinie (seitlicher Versatz, je Bot unterschiedlich)
@@ -4443,6 +4585,14 @@ renderer.setAnimationLoop(() => {
       .addScaledVector(_camFwd, -COCKPIT_EYE.back - COCKPIT_CAM_BACK)
       .addScaledVector(_camSide, COCKPIT_EYE.side)
       .addScaledVector(UP, COCKPIT_EYE.height - COCKPIT_CAM_DROP);
+    // Ein defekter Reifen schlägt spürbar durch: die Sicht rüttelt mit Schaden
+    // und Tempo. Bei heilen Reifen ist der Ausschlag exakt null.
+    const ruettel = schlimmsterReifen() * Math.min(1, Math.abs(speed) / 25);
+    if (ruettel > 0.002) {
+      const a = ruettel * 0.014;
+      _eye.y += (Math.random() - 0.5) * a;
+      _eye.addScaledVector(_camSide, (Math.random() - 0.5) * a);
+    }
     camera.position.copy(_eye);
 
     // Blickrichtung = Fahrtrichtung, um Umseh-Yaw (um Hochachse) und -Pitch (um Seitenachse) gedreht

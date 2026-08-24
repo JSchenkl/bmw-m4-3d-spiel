@@ -10,6 +10,7 @@
 
 let ctx = null;
 let master, filter, engineGain, noiseGain, noiseFilter;
+let rumpelGain = null, rumpelOsc = null, rumpelTakt = null;
 const oscs = []; // { o, mult }
 let started = false;
 let enabled = false;
@@ -86,6 +87,24 @@ function ensure() {
   noiseGain.gain.value = 0;
   noiseSrc.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(engineGain);
   noiseSrc.start();
+
+  // Reifenschaden: dumpfes, langsames Rumpeln. Ein tiefer Oszillator wird von
+  // einem zweiten, sehr langsamen moduliert – das ergibt das Wummern eines
+  // unrund laufenden Rades statt eines gleichmaessigen Brummens.
+  rumpelGain = ctx.createGain();
+  rumpelGain.gain.value = 0;
+  const rumpelFilter = ctx.createBiquadFilter();
+  rumpelFilter.type = 'lowpass'; rumpelFilter.frequency.value = 220;
+  rumpelOsc = ctx.createOscillator();
+  rumpelOsc.type = 'sawtooth';
+  rumpelOsc.frequency.value = 28;
+  const takt = ctx.createOscillator();      // Umlauftakt des Rades
+  takt.type = 'sine'; takt.frequency.value = 6;
+  const taktGain = ctx.createGain(); taktGain.gain.value = 0.6;
+  takt.connect(taktGain); taktGain.connect(rumpelGain.gain);
+  rumpelOsc.connect(rumpelFilter); rumpelFilter.connect(rumpelGain); rumpelGain.connect(master);
+  rumpelOsc.start(); takt.start();
+  rumpelTakt = takt;
 }
 
 // Jeden Frame aufrufen: targetRev 0…1, throttle 0…1, dt in Sekunden
@@ -156,4 +175,18 @@ function exhaustPop(amp) {
   const ng = ctx.createGain(); ng.gain.value = amp * 0.6;
   nb.connect(nf); nf.connect(ng); ng.connect(master);
   nb.start(t);
+}
+
+// Reifenschaden hoerbar machen: staerke 0…1, tempo in m/s.
+// Der Umlauftakt steigt mit dem Tempo – ein Platten schlaegt schneller, je
+// schneller man faehrt.
+export function setReifenSchaden(staerke, tempo) {
+  if (!enabled || !ctx || !rumpelGain) return;
+  const t = ctx.currentTime;
+  const pegel = Math.min(1, Math.max(0, staerke)) * Math.min(1, tempo / 22);
+  rumpelGain.gain.setTargetAtTime(pegel * 0.55, t, 0.12);
+  if (pegel > 0.001) {
+    rumpelOsc.frequency.setTargetAtTime(24 + tempo * 0.9, t, 0.15);
+    rumpelTakt.frequency.setTargetAtTime(Math.max(1.5, tempo * 0.55), t, 0.15);
+  }
 }
