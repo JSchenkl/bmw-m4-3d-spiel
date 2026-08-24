@@ -94,17 +94,19 @@ export async function createTrack(file, opts = {}) {
 
   // Quads in zwei Farbbuffer einsammeln (ein Mesh pro Farbe statt vieler kleiner)
   const curbPos = { red: [], white: [] };
+  // Die Curb-Fläche ist eine RAMPE: innen bündig mit dem Asphalt, nach außen auf
+  // CURB_Y ansteigend. Dadurch entsteht an der Fahrbahnkante keine Stufe – man
+  // fährt auf den Randstein herauf, statt gegen eine Kante zu stoßen.
   const pushQuad = (buf, a, b, c, d) => {
-    // a/b = innere, c/d = äußere Kante des Segments
-    buf.push(a.x, CURB_Y, a.z, c.x, CURB_Y, c.z, b.x, CURB_Y, b.z);
-    buf.push(b.x, CURB_Y, b.z, c.x, CURB_Y, c.z, d.x, CURB_Y, d.z);
+    // a/b = innere Kante (Fahrbahnhöhe), c/d = äußere Kante (Curb-Oberkante)
+    buf.push(a.x, ASPHALT_Y, a.z, c.x, CURB_Y, c.z, b.x, ASPHALT_Y, b.z);
+    buf.push(b.x, ASPHALT_Y, b.z, c.x, CURB_Y, c.z, d.x, CURB_Y, d.z);
   };
-  // Senkrechte Stufe von der Fahrbahn hoch zur Curb-Oberkante. Ohne sie schwebt
-  // der Randstein als reine Fläche über dem Asphalt, mit einer offenen Lücke
-  // dazwischen – aus dem Cockpit sieht er dadurch eher versenkt als erhöht aus.
-  const pushStufe = (buf, a, b) => {
-    buf.push(a.x, ASPHALT_Y, a.z, a.x, CURB_Y, a.z, b.x, ASPHALT_Y, b.z);
-    buf.push(b.x, ASPHALT_Y, b.z, a.x, CURB_Y, a.z, b.x, CURB_Y, b.z);
+  // Schürze an der AUSSENkante: schließt die Lücke zwischen Curb-Oberkante und
+  // Gras, sonst schwebt der Randstein dort als offene Fläche.
+  const pushSchuerze = (buf, c, d) => {
+    buf.push(c.x, 0, c.z, c.x, CURB_Y, c.z, d.x, 0, d.z);
+    buf.push(d.x, 0, d.z, c.x, CURB_Y, c.z, d.x, CURB_Y, d.z);
   };
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
@@ -119,7 +121,7 @@ export async function createTrack(file, opts = {}) {
       const d = pts[j].clone().addScaledVector(leftNs[j], side * (wj + CURB_WIDTH));
       if (side === 1) pushQuad(curbPos[color], a, b, c, d);
       else pushQuad(curbPos[color], b, a, d, c); // Wicklung spiegeln → Fläche zeigt nach oben
-      pushStufe(curbPos[color], a, b);
+      pushSchuerze(curbPos[color], c, d);
     }
   }
   const curbColors = { red: 0xc62828, white: 0xf5f5f5 };
@@ -500,6 +502,7 @@ export async function createTrack(file, opts = {}) {
   // und Fahrbahnbreiten je Punkt. main.js prüft damit, ob ein Rad auf einem Curb steht.
   const curbData = {
     width: CURB_WIDTH,
+    rise: CURB_Y - ASPHALT_Y, // Höhenunterschied innen → außen (für Neigung und Aufstandshöhe)
     grassMaxWidth: GRASS_WIDTH,
     pitHalfWidth: PIT_HALF_WIDTH,
     gravelL: gravelL ? gravelL.slice() : null,

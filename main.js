@@ -733,7 +733,7 @@ let currentCarIndex = Math.max(0, CARS.findIndex((c) => c.id === urlCar));
 let currentCar = null; // Szenen-Objekt des aktuell geladenen Autos
 
 const carGroup = new THREE.Group();
-carGroup.position.y = 0.05; // Höhe der Asphalt-Oberfläche
+carGroup.position.y = 0.05; // Höhe der Asphalt-Oberfläche (siehe ROAD_Y)
 scene.add(carGroup);
 
 // Richtung, in die die Fahrzeugfront zeigt (wird beim Laden des Autos bestimmt)
@@ -764,7 +764,8 @@ let carRoll = 0; // aktuelle Seitenneigung (Roll) – z. B. wenn ein Rad auf dem
 let carPitch = 0; // Nick-Winkel am Hang (nur mit Szenerie-Höhenprofil)
 let rearSlip = 0; // geglätteter Heck-Schlupf (0 = Grip, >0 = Räder drehen durch → Heck bricht aus)
 const UP = new THREE.Vector3(0, 1, 0);
-const CURB_TILT = 0.056; // max. Neigung auf dem Randstein (rad, ~3,2°; 20 % flacher)
+const ROAD_Y = 0.05;     // Höhe der Asphalt-Oberfläche (wie ASPHALT_Y in track.js)
+let curbHebung = 0;      // wie weit der Wagenkasten gerade auf dem Randstein steht
 const _yawQ = new THREE.Quaternion();
 const _rollQ = new THREE.Quaternion();
 
@@ -790,9 +791,21 @@ function applyCarOrientation() {
   }
 }
 
-// Prüft, ob ein Rad auf einem Randstein steht, und führt die Neigung weich nach.
+// Höhe des Bodens unter einer Radspur: 0 auf der Fahrbahn, auf dem Randstein
+// linear ansteigend (er ist eine Rampe), außerhalb wieder 0. `lat` ist der
+// seitliche Abstand zur Streckenmitte, links positiv.
+function curbHoehe(lat, i) {
+  const w = curbData.width, rise = curbData.rise ?? 0.11;
+  const innen = lat >= 0 ? curbData.wl[i] : curbData.wr[i];
+  const d = Math.abs(lat) - innen;          // wie weit auf dem Randstein
+  if (d <= 0 || d >= w) return 0;           // Fahrbahn bzw. schon im Gras
+  return rise * (d / w);
+}
+
+// Randstein-Neigung und Aufstandshöhe. Beide folgen der tatsächlichen Rampe:
+// je weiter ein Rad außen auf dem Curb steht, desto höher liegt es.
 function updateCurbTilt(dt) {
-  let target = 0;
+  let target = 0, hebung = 0;
   if (curbData && carForward) {
     const px = carGroup.position.x, pz = carGroup.position.z;
     // nächstgelegenen Mittellinienpunkt suchen
@@ -805,16 +818,18 @@ function updateCurbTilt(dt) {
     }
     const c = P[best], nv = curbData.nrm[best];
     const lat = (px - c.x) * nv.x + (pz - c.z) * nv.z; // seitl. Abstand zur Mitte (links = +)
-    const hw = carHalf.wid, w = curbData.width;
-    const leftWheel = lat + hw;   // linke Radspur
-    const rightWheel = lat - hw;  // rechte Radspur
-    const onLeft = leftWheel > curbData.wl[best] - 0.2 && leftWheel < curbData.wl[best] + w;
-    const onRight = rightWheel < -(curbData.wr[best] - 0.2) && rightWheel > -(curbData.wr[best] + w);
-    // Vorzeichen passend zur Vorwärtsachse des GT3-Modells (Roll dreht um carForward)
-    if (onLeft && !onRight) target = -CURB_TILT;      // linke Räder hoch → Auto neigt sich nach rechts
-    else if (onRight && !onLeft) target = CURB_TILT;  // rechte Räder hoch → nach links
+    const hw = carHalf.wid;
+    const hLinks = curbHoehe(lat + hw, best);
+    const hRechts = curbHoehe(lat - hw, best);
+    // Neigung aus dem Höhenunterschied der beiden Radspuren – dadurch kippt das
+    // Auto beim Auffahren allmählich und nicht schlagartig.
+    // Vorzeichen passend zur Vorwärtsachse (Roll dreht um carForward):
+    // linke Räder hoch → Auto neigt sich nach rechts.
+    target = -Math.atan2(hLinks - hRechts, 2 * hw);
+    hebung = (hLinks + hRechts) / 2; // Wagenkasten steigt mit
   }
   carRoll += (target - carRoll) * Math.min(1, dt * 9);
+  curbHebung += (hebung - curbHebung) * Math.min(1, dt * 9);
 }
 
 // Dreht das Auto so, dass seine Front in die gewünschte Weltrichtung zeigt
@@ -3043,8 +3058,8 @@ function updateCar(dt) {
 
   // Höhenprofil der Szenerie folgen (z. B. Eau Rouge bergauf) + Nick-Winkel am Hang
   if (sceneryHeight && carForward) {
+    // die Höhe selbst setzt updateCurbTilt weiter unten (inkl. Randstein-Anteil)
     const px = carGroup.position.x, pz = carGroup.position.z;
-    carGroup.position.y = groundY(px, pz) + 0.05;
     const fwd = carForward.clone().applyAxisAngle(UP, carYaw);
     const hA = groundY(px + fwd.x * 2.5, pz + fwd.z * 2.5);
     const hB = groundY(px - fwd.x * 2.5, pz - fwd.z * 2.5);
@@ -3056,6 +3071,11 @@ function updateCar(dt) {
 
   // Seitenneigung auf Randsteinen bestimmen und Auto-Ausrichtung (Yaw + Roll) setzen
   updateCurbTilt(dt);
+  // Auf dem Randstein steht das Auto höher – ohne das würde es in die Rampe schneiden.
+  // Auf Strecken mit Höhenprofil ist die Höhe oben schon gesetzt, dort nur aufaddieren.
+  carGroup.position.y = (sceneryHeight && carForward
+    ? groundY(carGroup.position.x, carGroup.position.z) + ROAD_Y
+    : ROAD_Y) + curbHebung;
   applyCarOrientation();
 
   // Räder: Abrollen passend zum Tempo (ω = v/r), Vorderräder lenken sichtbar mit
@@ -3427,7 +3447,7 @@ btnPit.addEventListener('click', () => {
   carGroup.position.set(0, 0.05, 0);
   speed = 0;
   steerAngle = 0;
-  carRoll = 0;
+  carRoll = 0; curbHebung = 0;
   gear = 1;
   autoReverse = false;
   prevGearSound = 1;
@@ -3448,7 +3468,7 @@ btnHome.addEventListener('click', () => {
 
   // Auto an den Startplatz, Tempo/Gang zurück
   carGroup.position.set(0, 0.05, 0);
-  speed = 0; steerAngle = 0; carRoll = 0; gear = 1; autoReverse = false; prevGearSound = 1;  alignCarToPitlane();
+  speed = 0; steerAngle = 0; carRoll = 0; curbHebung = 0; gear = 1; autoReverse = false; prevGearSound = 1;  alignCarToPitlane();
   prevCarPos.copy(carGroup.position);
 
   // Ton stumm – beim nächsten Start wieder ab erstem Knopfdruck
@@ -3632,7 +3652,9 @@ function positionBot(bot, dt) {
   const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
   const nx = -dz, nz = dx; // Quernormale für den seitlichen Versatz
   const x = c.x + nx * bot.offset, z = c.z + nz * bot.offset;
-  bot.group.position.set(x, sceneryHeight ? groundY(x, z) + 0.05 : carGroup.position.y, z);
+  // ROAD_Y statt der Spielerhöhe: sonst würden die Bots mitsteigen, wenn der
+  // Spieler auf einem Randstein fährt.
+  bot.group.position.set(x, sceneryHeight ? groundY(x, z) + ROAD_Y : ROAD_Y, z);
   // Blickrichtung exponentiell glätten (gegen Rucken)
   const k = dt ? 1 - Math.exp(-9 * dt) : 1;
   if (bot.fx === undefined) { bot.fx = dx; bot.fz = dz; }
@@ -3891,7 +3913,7 @@ function setupGrid() {
       race.playerGrid = i;
       const c = centerlineAt(arc);
       const nx = -c.tz, nz = c.tx;
-      carGroup.position.set(c.x + nx * gridOffset(i), carGroup.position.y, c.z + nz * gridOffset(i));
+      carGroup.position.set(c.x + nx * gridOffset(i), ROAD_Y, c.z + nz * gridOffset(i));
       _hd.set(c.tx, 0, c.tz);
       setHeading(_hd);
       prevCarPos.copy(carGroup.position);
@@ -3998,7 +4020,7 @@ function buildGridBoxes() {
   // eine Linie (flaches weißes Band) bei (cx,cz), ausgerichtet nach ang; len=Länge entlang Strecke, wid=quer
   const line = (cx, cz, ang, len, wid) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(wid, 0.04, len), mat);
-    m.position.set(cx, sceneryHeight ? groundY(cx, cz) + 0.08 : carGroup.position.y + 0.03, cz);
+    m.position.set(cx, sceneryHeight ? groundY(cx, cz) + 0.08 : ROAD_Y + 0.03, cz);
     m.rotation.y = ang; gridBoxes.add(m);
   };
   for (let i = 0; i <= BOT_COUNT; i++) {
@@ -4047,7 +4069,7 @@ function buildPitScene() {
   for (const b of garageBays) {
     const carG = new THREE.Group();
     carG.add(currentCar.clone(true));
-    carG.position.set(b.x, carGroup.position.y, b.z);
+    carG.position.set(b.x, ROAD_Y, b.z);
     _bayFwd.set(b.fx, 0, b.fz);
     carG.quaternion.setFromUnitVectors(carForward, _bayFwd); // Front zur Gasse
     pitScene.add(carG);
