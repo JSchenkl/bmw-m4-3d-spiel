@@ -1076,15 +1076,17 @@ function updateDashScreen() {
 
     // Schaltlichter: 15 Punkte wie im Modell, nur die brennenden zeichnen –
     // erloschene bleiben durchsichtig und die Punkte des Modells scheinen durch.
-    // Der aeusserste links und rechts bleibt dunkel, es leuchten also 13.
-    const LEDS = 13;
+    // Alle 15 Punkte der Leiste leuchten mit.
+    const LEDS = 15;
     const anLeds = frac < REV_TH[0] ? 0 : Math.round(((frac - REV_TH[0]) / (1 - REV_TH[0])) * LEDS);
     w.save();
     w.translate(Lo.leds.x, Lo.leds.y); w.scale(Lo.leds.sx, Lo.leds.sy);
     for (let i = 0; i < LEDS; i++) {
       if (!(atLimit ? blink : i < anLeds)) continue;
       w.beginPath();
-      w.arc(86 + i * 71, 51, 18, 0, Math.PI * 2); // Punkt 2 bis 14 der Leiste
+      // Abstand 71 px bleibt (er ist auf die Punktabstände des Modells eingemessen),
+      // der Startpunkt rückt um einen Abstand nach links: 15 statt 86.
+      w.arc(15 + i * 71, 51, 18, 0, Math.PI * 2); // Punkt 1 bis 15 der Leiste
       w.fillStyle = DASH_LED_COLORS[Math.min(4, Math.floor(i * 5 / LEDS))];
       w.fill();
     }
