@@ -38,6 +38,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - **Reifenanzeige unten rechts**: Grundriss mit allen vier Reifen – die Farbe zeigt die Temperatur (blau kalt → grün bereit → rot heiß), der schraffierte Anteil die Abnutzung, darunter die verbleibende Lauffläche in Prozent. Ein platter Reifen wird rot durchgekreuzt, dazu warnt das HUD und es rumpelt hörbar
 - **Minikarte unten rechts** (ohne Kasten) mit blauem Punkt für die eigene Position
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; **4 KI-Gegner** (Feld also 5 Autos) mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
+- **Rundenzählung unabhängig von der Zeitmessung**: Wer alle vier Räder neben die Strecke setzt, verliert die *Zeit* der laufenden Runde (Track-Limits) – die **gefahrene Runde zählt trotzdem**. Im Rundentimer steht dann „ungültig" statt einer Zeit, der Rundenzähler läuft weiter. Bestzeit und Quali-Zeit nimmt eine ungültige Runde nicht an. Ein Boxenstopp startet die Zeitmessung neu, setzt den Rundenzähler aber nicht zurück
 - **Karrieremodus** (Knopf „KARRIERE" auf dem Startbildschirm) – siehe unten
 - Scheinwerfer & Rücklichter mit Lichtkegeln
 - Tag-/Nachtmodus

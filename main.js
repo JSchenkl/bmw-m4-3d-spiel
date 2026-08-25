@@ -3346,11 +3346,19 @@ const ghost = {
   cursor: 0,       // Abspiel-Cursor in best[]
   maxProgress: 0,  // höchster Streckenfortschritt der laufenden Runde (gegen Fehl-Überfahrten)
   offTrack: false, // alle vier Reifen abseits der Strecke (entprellt die Meldung)
+  // Rundenzählung unabhängig von der Zeitmessung: `gestartet` merkt sich, dass die
+  // Linie schon einmal überfahren wurde. `timing` allein taugt dafür nicht – es wird
+  // bei ungültiger Zeit gelöscht, und die fertige Runde sähe dann aus wie die erste.
+  gestartet: false, // Start/Ziel mindestens einmal überfahren (Aus-Runde vorbei)
+  laps: 0,          // abgeschlossene Runden, gültig ODER ungültig
+  lastUngueltig: false, // letzte abgeschlossene Runde war ohne gültige Zeit
 };
 
 // Startet als Aus-Runde (Warm-up): Die Zeit wird erst ab dem ersten Überfahren der
 // Start/Ziel-Linie gezählt.
-function armLap() {
+// `zaehlerZuruecksetzen = false` behaelt die bereits gefahrenen Runden – ein
+// Boxenstopp macht die Zeitmessung neu, nimmt aber keine gefahrene Runde zurueck.
+function armLap(zaehlerZuruecksetzen = true) {
   ghost.timing = false;
   ghost.lapElapsed = 0;
   ghost.recording = [];
@@ -3359,6 +3367,8 @@ function armLap() {
   ghost.prevProgress = 0;
   ghost.maxProgress = 0;
   ghost.offTrack = false;
+  ghost.gestartet = false;
+  if (zaehlerZuruecksetzen) { ghost.laps = 0; ghost.lastUngueltig = false; }
 }
 
 // True, wenn alle vier Reifen abseits der Strecke sind (jenseits der äußeren
@@ -3387,6 +3397,7 @@ function allWheelsOffTrack(px, pz) {
 const ltCur = document.getElementById('lt-cur');
 const ltLast = document.getElementById('lt-last');
 const ltBest = document.getElementById('lt-best');
+const ltLaps = document.getElementById('lt-laps');
 const _gYawQ = new THREE.Quaternion();
 const _gRollQ = new THREE.Quaternion();
 
@@ -3483,8 +3494,10 @@ function updateGhost() {
 
 function updateLapHud() {
   ltCur.textContent = ghost.timing ? fmtTime(ghost.lapElapsed) : '--:--';
-  ltLast.textContent = fmtTime(ghost.lastLap);
+  // Ungültige Runde: die Runde zählt, ihre Zeit nicht – deshalb „ungültig" statt --:--
+  ltLast.textContent = ghost.lastUngueltig ? 'ungültig' : fmtTime(ghost.lastLap);
   ltBest.textContent = fmtTime(ghost.bestLap === Infinity ? null : ghost.bestLap);
+  ltLaps.textContent = String(ghost.laps);
 }
 
 function updateTimeAttack(dt) {
@@ -3499,6 +3512,14 @@ function updateTimeAttack(dt) {
   // Vorwärts-Überfahrt der Start/Ziel-Linie: Fortschritt springt von ~Ende auf ~Anfang.
   // maxProgress-Guard verhindert Fehl-Überfahrten durch Springen des Fortschritts an der Linie.
   if (hadProgress && prev > total * 0.7 && progress < total * 0.3 && ghost.maxProgress > total * 0.5) {
+    // Runde zählen, sobald die Linie nicht zum ersten Mal überfahren wird – auch
+    // dann, wenn die Zeit unterwegs ungültig geworden ist. Gezählt wird die
+    // gefahrene Runde, gewertet nur eine saubere.
+    const rundeFertig = ghost.gestartet;
+    if (rundeFertig) ghost.laps++;
+    ghost.gestartet = true;
+    ghost.lastUngueltig = rundeFertig && !ghost.timing;
+
     if (ghost.timing) {
       // Abgeschlossene gemessene Runde (Training/Quali-Zeit + Ghost-Aufzeichnung)
       ghost.lastLap = ghost.lapElapsed;
@@ -3517,7 +3538,7 @@ function updateTimeAttack(dt) {
         const delta = (prevBest - ghost.lapElapsed).toFixed(2).replace('.', ',');
         showRaceMsg(`Bestzeit ${fmtTime(ghost.lapElapsed)} — ${delta} s schneller`, '#69f0ae');
       } else if (!raceMode || race.phase !== 'go') {
-        showRaceMsg(`Runde: ${fmtTime(ghost.lapElapsed)}`, '#69f0ae');
+        showRaceMsg(`Runde ${ghost.laps}: ${fmtTime(ghost.lapElapsed)}`, '#69f0ae');
       }
       // Rennmodus: erste gültige Runde ist die Quali-Zeit → „Rennen starten" anbieten
       if (raceMode && race.phase === 'quali') {
@@ -3525,6 +3546,12 @@ function updateTimeAttack(dt) {
         race.phase = 'qualiDone';
         setRaceStartVisible(true);
         setRaceInfo(`Quali: ${fmtTime(race.qualiTime)} — bereit? „Rennen starten" drücken`);
+      }
+    } else if (rundeFertig) {
+      // Runde ist voll, aber die Zeit war ungültig: die Runde trotzdem melden –
+      // nur eben ohne Zeit. Bestzeit und Quali-Zeit bleiben davon unberührt.
+      if (!(raceMode && race.phase === 'go')) {
+        showRaceMsg(`Runde ${ghost.laps}: ungültig`, '#ff9f5a');
       }
     } else if (!(raceMode && race.phase === 'go')) {
       // Erste Linienüberfahrt (außerhalb des laufenden Rennens): ab jetzt wird die Zeit gemessen
@@ -3617,7 +3644,7 @@ btnPit.addEventListener('click', () => {
    alignCarToPitlane();                 // in Fahrtrichtung der Boxengasse ausrichten
   prevCarPos.copy(carGroup.position);  // keinen Kamerasprung erzeugen
   resetReifen();                       // Boxenstopp = frische Reifen (wieder kalt!)
-  armLap();                            // frische, gemessene Runde ab der Box
+  armLap(false);                       // frische, gemessene Runde ab der Box – Rundenzähler bleibt
   updateLapHud();
 });
 
