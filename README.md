@@ -38,6 +38,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - **Reifenanzeige unten rechts**: Grundriss mit allen vier Reifen – die Farbe zeigt die Temperatur (blau kalt → grün bereit → rot heiß), der schraffierte Anteil die Abnutzung, darunter die verbleibende Lauffläche in Prozent. Ein platter Reifen wird rot durchgekreuzt, dazu warnt das HUD und es rumpelt hörbar
 - **Minikarte unten rechts** (ohne Kasten) mit blauem Punkt für die eigene Position
 - **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
+- **Karrieremodus** (Knopf „KARRIERE" auf dem Startbildschirm) – siehe unten
 - Scheinwerfer & Rücklichter mit Lichtkegeln
 - Tag-/Nachtmodus
 - Motorgeräusch (synthetisierter GT3-Rennmotor, P58-Charakter) mit Auspuff-Crackles beim Gaswegnehmen
@@ -46,6 +47,61 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - Automatik- und sequenzielles Schaltgetriebe (6 Gänge)
 - Kollisionserkennung (Mauern, Gebäude)
 - Startbildschirm mit Auto-Rotation im Nachtmodus
+
+## Karrieremodus
+
+Der Karrieremodus liegt **neben** dem Einzelrennen, nicht darüber: „SPIELEN" führt
+unverändert in Training und Einzelrennen, „KARRIERE" in eine eigene Fortschritts-
+welt. Ist kein Karriere-Rennen aktiv, verhält sich das Spiel exakt wie vorher.
+
+- **Fahrerprofil**: Level 1–50 mit Titeln (Anfänger → Legende), XP aus Platzierung,
+  Renndistanz, Pole, schnellster Runde, sauberem Rennen und gutgemachten Positionen;
+  dazu **Reputation**, die Events und Fahrzeuge freischaltet
+- **Wirtschaft**: Startkapital, Startgelder, Preisgelder nach Platz, Reparaturkosten
+  nach Fahrzeugzustand, Kauf und Verkauf mit Wertverlust
+- **Garage** mit persistenten Daten je Auto: Kilometer, Rennen, Siege, Podien,
+  Zustand, Upgrade-Stufen. Ein vernachlässigtes Auto fährt messbar schlechter
+- **Fahrzeugklassen D → C → B → A → S → R.** Das Spiel liefert zwei 3D-Modelle;
+  die sechs Karrierefahrzeuge sind deshalb **Tuning-Varianten dieser beiden
+  Modelle** (`career-data.js`, Feld `tuning`) – vom abgerüsteten Clubsport bis
+  zum vollen TS030
+- **Upgrades** in sechs Kategorien (Motor, Getriebe, Fahrwerk, Bremsen, Reifen,
+  Gewicht) mit je drei Stufen. Sie sind **keine Zahlenkosmetik**: die Stufen wirken
+  als Multiplikatoren direkt auf `CARS[i].phys` (Leistung, Zugkraft, Querhaftung,
+  Bremsverzögerung, Abtrieb, Masse, Reifenhaftung und -haltbarkeit)
+- **Eventtypen**: Einzelrennen, Sprint, Langstrecke, Zeitfahren, Markenpokal,
+  Klassen-Cup, Einladungsevent, Spezialevent – je mit eigener Distanz,
+  Gegnerstärke und Preisgeldstaffel
+- **Meisterschaften** über mehrere Läufe mit Punktetabelle (25/18/15/12/10/8/6/4/2/1),
+  Titelprämie und Reputationsbonus
+- **Persistente KI-Fahrer** mit Namen und Charakter (Tempo, Aggressivität,
+  Konstanz, Fehlerquote). Sie behalten ihre Identität über die ganze Meisterschaft
+- **Rennwochenende**: Startaufstellung aus dem Können der Gegner, Quali, Ampel,
+  Rennen, Ergebnisbericht mit XP-Aufschlüsselung und Meisterschaftsstand
+- **Statistik**: Rennen, Siege, Podien, Poles, schnellste Runden, Titel,
+  Durchschnittsplatzierung, Kilometer, Höchstgeschwindigkeit, Geldfluss
+- **Saisons**: nach genug absolvierten Events lässt sich die Saison abschließen –
+  Bonus kassieren, Events werden wieder fahrbar, aller Besitz bleibt erhalten
+- **Dynamische Schwierigkeit ohne Rubberbanding**: die KI wird mit dem Karrierelevel
+  besser, aber über **Können** (späteres Bremsen, weniger Patzer, konstantere
+  Rundenzeiten) – nie über künstliches Mehrtempo, und **ohne jeden Bezug zur
+  aktuellen Position des Spielers** im laufenden Rennen
+- **Speichern**: versioniert in `localStorage` (`bmwM4Career`), automatisch nach
+  jedem Rennen und Kauf. Alte Stände werden migriert, beschädigte oder
+  unvollständige Stände werden Sektion für Sektion mit Vorgaben aufgefüllt statt
+  das Spiel abstürzen zu lassen
+
+### Aufbau
+
+| Datei | Inhalt |
+| --- | --- |
+| `career-data.js` | reine Daten: Klassen, Fahrzeuge, Upgrades, Events, Meisterschaften, KI-Fahrer, Levelkurve, Balance-Werte |
+| `career.js` | Logik ohne DOM: `CareerSave`, `PlayerCareer`, `CareerEconomy`, `GarageManager`, `VehicleUpgradeManager`, `CareerProgression`, `EventManager`, `ChampionshipManager`, `CareerAIManager`, `CareerStatistics` und die Fassade `CareerManager` |
+| `career-ui.js` | die Karriere-Bildschirme; spricht mit `main.js` nur über `onRaceStart` / `onExit` / `rennenBeendet` |
+| `career.test.mjs` | 31 Tests des kompletten Ablaufs, laufen ohne Browser: `node career.test.mjs` |
+
+Neue Events, Fahrzeuge oder Meisterschaften entstehen durch Ergänzen der Tabellen
+in `career-data.js` – ohne `career.js` oder `main.js` anzufassen.
 
 ## Physik
 

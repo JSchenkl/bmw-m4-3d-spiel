@@ -38,6 +38,10 @@ jobs:
           sed -i "s#src=\"main.js\"#src=\"main.js?v=$V\"#g" index.html
           sed -i "s#from './track.js'#from './track.js?v=$V'#g" main.js
           sed -i "s#from './audio.js'#from './audio.js?v=$V'#g" main.js
+          sed -i "s#from './career-ui.js'#from './career-ui.js?v=$V'#g" main.js
+          # career-ui.js laedt seinerseits career.js und career-data.js nach
+          sed -i "s#from './career.js'#from './career.js?v=$V'#g" career-ui.js
+          sed -i "s#from './career-data.js'#from './career-data.js?v=$V'#g" career-ui.js career.js
           echo "Cache-Busting-Version: $V"
 
       - name: Upload artifact

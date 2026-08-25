@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createTrack } from './track.js';
 import * as engineAudio from './audio.js';
+import { CareerUI } from './career-ui.js';
 
 // Alle Modelle sind meshopt-komprimiert (kleinere Downloads) → Dekoder anhängen
 function newGLTFLoader() {
@@ -2011,6 +2012,7 @@ btnSound.addEventListener('click', () => {
 
 // ---------- Startbildschirm & Modus-Auswahl ----------
 let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots)
+let spielStarten = null; // wird unten auf startGame() gesetzt (auch der Karrieremodus startet darüber)
 {
   const startScreen = document.getElementById('start-screen');
   const modeScreen = document.getElementById('mode-screen');
@@ -2078,6 +2080,7 @@ let raceMode = false; // false = Training (ohne Gegner), true = Rennen (mit Bots
 
   document.getElementById('btn-training').addEventListener('click', () => startGame(false));
   document.getElementById('btn-rennen').addEventListener('click', () => startGame(true));
+  spielStarten = startGame; // der Karrieremodus nutzt denselben Weg ins Rennen
 }
 
 // ---------- Menü ein-/ausblenden (Taste M, Klick auf den Menü-Button, Esc schließt) ----------
@@ -2508,10 +2511,38 @@ let MAX_STEER   = 27.2 * Math.PI / 180; // max. Radeinschlag (rad)
 let STEER_RATE  = 3.0;               // Lenkgeschwindigkeit
 let steerAngle = 0;                    // aktueller Radeinschlag
 
+// Karriere-Tuning: Multiplikatoren auf die Kennwerte des Basisautos. Ist nichts
+// gesetzt (Einzelrennen/Training), bleibt CARS[i].phys unverändert – tunePhys()
+// gibt dann dasselbe Objekt zurück, der normale Modus fährt also exakt wie bisher.
+let careerPhysFaktoren = null;
+const CAREER_SKALAR = ['mass', 'powerWheel', 'fTraction', 'accelBoost', 'brakeDecel',
+                       'cdArea', 'rollRes', 'maxLatG', 'aeroMax', 'oversteerGain'];
+function tunePhys(p, f) {
+  if (!f || !Object.keys(f).length) return p;
+  const q = { ...p };
+  for (const k of CAREER_SKALAR) if (f[k]) q[k] = p[k] * f[k];
+  // Topspeed und Gang-Limits gehören zusammen – sonst dreht ein schwaches Auto
+  // in keinem Gang aus.
+  if (f.vmaxKmh) {
+    q.vmaxKmh = p.vmaxKmh * f.vmaxKmh;
+    q.gearMaxKmh = p.gearMaxKmh.map((v) => v * f.vmaxKmh);
+  }
+  if (f.gearPull) q.gearPull = p.gearPull.map((v) => v * f.gearPull);
+  if (f.reifenHaftung || f.reifenDauer) {
+    q.reifen = { ...p.reifen };
+    if (f.reifenHaftung) {
+      q.reifen.haftungKalt = p.reifen.haftungKalt * f.reifenHaftung;
+      q.reifen.haftungWarm = p.reifen.haftungWarm * f.reifenHaftung;
+    }
+    if (f.reifenDauer) q.reifen.abnutzDauer = p.reifen.abnutzDauer * f.reifenDauer;
+  }
+  return q;
+}
+
 // Fahrphysik auf das gewählte Auto umstellen. Wird vor jedem Laden eines Modells
 // aufgerufen, damit Getriebe, Gewicht und Grip zu den Originaldaten passen.
 function applyCarPhysics(cfg) {
-  const p = cfg.phys;
+  const p = tunePhys(cfg.phys, careerPhysFaktoren);
   MASS = p.mass;
   POWER_WHEEL = p.powerWheel;
   F_TRACTION = p.fTraction;
@@ -2832,6 +2863,8 @@ function resolveCollisions() {
     const align = fwd.x * push.nx + fwd.z * push.nz;
     if (speed * align < 0) {
       const before = speed;
+      // Für die Karriere-Wertung zählen nur spürbare Treffer im laufenden Rennen
+      if (race.phase === 'go' && Math.abs(before) > 8) race.kontakte++;
       const slide = Math.sqrt(Math.max(0, 1 - align * align));
       speed *= slide * 0.9;
       // Crash mit einem Auto (Bot): nicht auf 0, sondern auf das Tempo des anderen abbremsen
@@ -3588,9 +3621,11 @@ btnPit.addEventListener('click', () => {
   updateLapHud();
 });
 
-// Zurück zum Start: laufendes Spiel beenden und den Startbildschirm wieder zeigen
+// Zurück zum Start: laufendes Spiel beenden und den Startbildschirm wieder zeigen.
+// `zeigeStart = false` beendet nur das Spiel (der Karrieremodus blendet danach
+// seinen eigenen Bildschirm ein).
 const btnHome = document.getElementById('btn-home');
-btnHome.addEventListener('click', () => {
+function spielBeenden(zeigeStart = true) {
   gameStarted = false;
   raceMode = false;
   removeBots();
@@ -3632,15 +3667,24 @@ btnHome.addEventListener('click', () => {
   document.getElementById('mode-screen').classList.remove('visible');
   document.getElementById('track-screen').classList.remove('visible');
   document.getElementById('car-screen').classList.remove('visible');
+  if (!zeigeStart) return;
   const ss = document.getElementById('start-screen');
   ss.style.display = '';
   requestAnimationFrame(() => ss.classList.add('visible'));
+}
+btnHome.addEventListener('click', () => {
+  // Aus einem laufenden Karriere-Rennen aussteigen: Rennen verfällt, zurück ins
+  // Karrieremenü (der Fortschritt ist gespeichert, das Startgeld ist weg).
+  if (careerRennen) { careerAbbrechen(); return; }
+  spielBeenden(true);
 });
 
 // ---------- Gegner-Bots ----------
 // Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
-const BOT_COUNT = 5;            // 5 Gegner + Spieler = 6 Autos
+// 5 Gegner + Spieler = 6 Autos. Im Karrieremodus gibt das Event die Feldgröße vor,
+// deshalb `let` – im Einzelrennen bleibt es bei 5.
+let BOT_COUNT = 5;
 let BOT_MAX_SPEED = 280 / 3.6;  // m/s – wird von applyCarPhysics() auf den Topspeed des gewählten Autos gesetzt
 const BOT_MIN_SPEED = 16;       // m/s Mindesttempo in engen Kurven (wie der Spieler dort)
 // (Kurven-Grip der Bots = Spieler-Querhaftung MAX_LAT_ACC, siehe botTargetSpeed)
@@ -3815,9 +3859,17 @@ function updateBots(dt) {
       if (bot.launchTimer >= bot.reaction) {        // erst nach eigener Reaktionszeit losfahren
         // Jeder Bot fährt für sich: eigenes Kurventempo (cornerF = später/früher bremsen)
         // und eigene Beschleunigung (accelF). cornerF>1 = mutiger, bremst später.
-        const look = 14 * (bot.cornerF || 1);       // mutigere Bots schauen kürzer voraus → bremsen später
+        // Tagesform: unstete Fahrer schwanken über das ganze Rennen hinweg.
+        const form = bot.tagesform || 1;
+        const mut = (bot.cornerF || 1) * form;
+        const look = 14 * mut;                      // mutigere Bots schauen kürzer voraus → bremsen später
         const bGriff = botGriff(bot);
-        let target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + look, bGriff) * (bot.cornerF || 1));
+        // Fahrfehler: kurzer Tempoeinbruch, Wahrscheinlichkeit aus der Fehlerquote
+        // des Fahrers. Ohne Karriere ist fehlerQuote 0 → passiert nie.
+        if (bot.patzer > 0) bot.patzer = Math.max(0, bot.patzer - dt);
+        else if (bot.fehlerQuote > 0 && Math.random() < bot.fehlerQuote * 0.06 * dt) bot.patzer = 0.6 + Math.random() * 1.4;
+        let target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + look, bGriff) * mut);
+        if (bot.patzer > 0) target *= 0.62;         // verbremst/verschätzt – kostet Zeit
         // Auffahrschutz: dichter, gleichspuriger Gegner voraus → Tempo angleichen (nicht reinfahren)
         for (const o of bots) {
           if (o === bot) continue;
@@ -3827,7 +3879,9 @@ function updateBots(dt) {
         }
         // Totband um die Zieldrehzahl: kein Hin-und-Her zwischen Gas und Bremse (kein Rucken/Flackern)
         if (bot.v < target - 0.4) {
-          const a = Math.max(0, engineAccel(bot.v, bGriff)); // dasselbe Kraftmodell wie beim Spieler
+          // dasselbe Kraftmodell wie beim Spieler; accelF = wie beherzt der Fahrer
+          // das Gaspedal einsetzt (war bisher gesetzt, aber ungenutzt).
+          const a = Math.max(0, engineAccel(bot.v, bGriff)) * (bot.accelF || 1);
           bot.v = Math.min(target, bot.v + a * dt);
         } else if (bot.v > target + 0.4) {
           bot.v = Math.max(target, bot.v - BOT_BRAKE * BOT_GRIP * bGriff * dt); // Bremse vor Kurven (10 % schwächer)
@@ -3839,7 +3893,12 @@ function updateBots(dt) {
           + (0.35 + 0.65 * Math.min(1, bot.v / BOT_MAX_SPEED)) / REIFEN.abnutzDauer * dt);
         const ps = bot.s;
         bot.s = (bot.s + bot.v * dt) % total;
-        if (bot.s < ps - total * 0.5) bot.crossings = (bot.crossings || 0) + 1; // Start/Ziel überfahren
+        if (bot.s < ps - total * 0.5) {            // Start/Ziel überfahren
+          bot.crossings = (bot.crossings || 0) + 1;
+          // Rundenzeit mitschreiben – daraus ergibt sich die schnellste Rennrunde
+          if (bot.crossings > 1) bot.crossTimes.push(race.clock - bot.lastCross);
+          bot.lastCross = race.clock;
+        }
 
         // Überholen mit Hysterese: dicht hinter einem langsameren Bot seitlich ausweichen.
         // Die Seite bleibt während des Manövers fest (kein seitliches Zittern), erst wenn
@@ -3893,7 +3952,10 @@ function removeBots() {
 
 // ---------- Rennmodus: Quali → Startaufstellung → F1-Ampel → Frühstart-Strafe ----------
 const BOT_QUALI_FACTOR = [0.94, 0.98, 1.03, 1.08, 1.13]; // Bot-Quali-Zeiten relativ zur Spielerzeit
-const RACE_LAPS = 5;  // Renndistanz: 5 Runden
+// Im Karrieremodus kommen die Quali-Faktoren aus dem Können der KI-Fahrer;
+// null = Einzelrennen, dann gilt BOT_QUALI_FACTOR wie bisher.
+let botQualiFaktoren = null;
+let RACE_LAPS = 5;  // Renndistanz: 5 Runden (Karriere-Events setzen ihre eigene)
 const race = {
   phase: 'off',     // 'off' | 'quali' | 'qualiDone' | 'lights' | 'go' | 'finished'
   qualiTime: null,
@@ -3907,6 +3969,10 @@ const race = {
   crossings: 0,     // Start/Ziel-Überfahrten des Spielers (1. = Startlinie, dann je Runde +1)
   lapClock: 0,      // Zeit der laufenden Rennrunde (läuft unabhängig von den Track-Limits)
   lapTimes: [],     // Zeit je abgeschlossener Rennrunde (für die Ergebnisliste)
+  clock: 0,         // Gesamtzeit seit dem Start (gemeinsame Uhr für Spieler und Bots)
+  kontakte: 0,      // Karambolagen im Rennen (für die Karriere-Wertung „sauberes Rennen")
+  strafen: 0,       // kassierte Strafen (Frühstart)
+  topSpeed: 0,      // höchstes Tempo im Rennen (km/h)
 };
 const lightsEl = document.getElementById('start-lights');
 const raceStartBtn = document.getElementById('race-start-btn');
@@ -3947,11 +4013,14 @@ function setRaceInfo(text) {
 function finishRace() {
   const total = centerline.total;
   const playerDist = race.crossings * total + trackProgress(carGroup.position.x, carGroup.position.z);
-  let ahead = 0;
-  for (const b of bots) if ((b.crossings || 0) * total + b.s > playerDist) ahead++;
-  const pos = ahead + 1;
+  // Gesamtwertung über die zurückgelegte Strecke – Spieler und Bots in einer Liste
+  const feld = [{ wer: 'player', dist: playerDist }];
+  for (const b of bots) feld.push({ wer: b, dist: (b.crossings || 0) * total + b.s });
+  feld.sort((a, b) => b.dist - a.dist);
+  const pos = feld.findIndex((e) => e.wer === 'player') + 1;
   race.phase = 'finished';
   setRaceInfo(`🏁 Rennen beendet — Platz ${pos} von ${BOT_COUNT + 1}`);
+  if (careerRennen) { careerRennenBeenden(pos, feld, total); return; }
   showResultScreen(pos);
 }
 
@@ -3983,6 +4052,7 @@ function startRaceQuali() {
   race.phase = 'quali';
   race.qualiTime = null;
   race.crossings = 0; race.lapClock = 0; race.lapTimes = [];
+  race.clock = 0; race.kontakte = 0; race.topSpeed = 0; race.strafen = 0;
   if (resultScreenEl) resultScreenEl.classList.remove('visible');
   race.skipped = false;
   race.jumpStart = false;
@@ -4004,6 +4074,7 @@ function raceReset() {
   race.crossings = 0;
   race.lapClock = 0;
   race.lapTimes = [];
+  race.clock = 0; race.kontakte = 0; race.topSpeed = 0; race.strafen = 0;
   if (resultScreenEl) resultScreenEl.classList.remove('visible');
   setRaceStartVisible(false);
   setRaceSkipVisible(false);
@@ -4022,7 +4093,10 @@ function computeGridEntries() {
   const baseRef = (race.qualiTime != null && isFinite(race.qualiTime)) ? race.qualiTime : 90;
   const playerTime = race.skipped ? Infinity : race.qualiTime;
   const entries = [{ who: 'player', time: playerTime }];
-  for (let k = 0; k < BOT_COUNT; k++) entries.push({ who: k, time: baseRef * BOT_QUALI_FACTOR[k] });
+  for (let k = 0; k < BOT_COUNT; k++) {
+    const f = botQualiFaktoren?.[k] ?? BOT_QUALI_FACTOR[k] ?? (1.13 + 0.05 * (k - 4));
+    entries.push({ who: k, time: baseRef * f });
+  }
   entries.sort((a, b) => a.time - b.time);
   return entries;
 }
@@ -4033,7 +4107,8 @@ function showGridLineup() {
   const entries = computeGridEntries();
   gridListEl.innerHTML = entries.map((e, i) => {
     const me = e.who === 'player';
-    const name = me ? 'DU' : `GEGNER ${e.who + 1}`;
+    // Im Karrieremodus stehen die Namen der KI-Fahrer in der Aufstellung
+    const name = me ? 'DU' : (careerBotWerte?.[e.who]?.name || `GEGNER ${e.who + 1}`);
     const t = isFinite(e.time) ? fmtTime(e.time) : '—';
     return `<div class="grid-row${me ? ' me' : ''}"><span class="pos">P${i + 1}</span><span class="nm">${name}</span><span class="tm">${t}</span></div>`;
   }).join('');
@@ -4046,9 +4121,11 @@ function setupGrid() {
   if (!centerline || (race.qualiTime == null && !race.skipped)) return;
   const entries = computeGridEntries();
 
-  if (!bots.length) createBots();
+  // Feldgröße kann sich zwischen Karriere-Events ändern → Bots neu aufbauen
+  if (bots.length !== BOT_COUNT) { removeBots(); createBots(); }
   race.crossings = 0;        // Rundenzähler des Spielers zurücksetzen
   race.lapClock = 0; race.lapTimes = []; // Rundenzeiten fürs Ergebnis zurücksetzen
+  race.clock = 0; race.kontakte = 0; race.topSpeed = 0; race.strafen = 0;
   const total = centerline.total;
   entries.forEach((e, i) => {
     const arc = ((gridArc(i) % total) + total) % total;
@@ -4068,12 +4145,33 @@ function setupGrid() {
       bot.v = 0;                                  // startet aus dem Stand
       bot.abrieb = 0;                             // frische Reifen wie beim Spieler
       bot.launchTimer = 0;
-      bot.reaction = 0.200 + Math.random() * 0.150; // eigene Reaktionszeit 0,200…0,350 s
+      bot.crossTimes = [];                        // Rundenzeiten des Bots (für „schnellste Runde")
+      bot.lastCross = 0;
       // eigene Ideallinie (seitlicher Versatz, je Bot unterschiedlich)
       bot.lineOffset = (e.who - (BOT_COUNT - 1) / 2) * 1.7 + (Math.random() - 0.5) * 1.2;
-      // eigene Fahr-Charakteristik: Kurvenmut (später/früher bremsen) + Beschleunigung
-      bot.cornerF = 0.96 + Math.random() * 0.08;   // 0,96…1,04 → kleine Streuung um Spieler-Grip
-      bot.accelF = 0.96 + Math.random() * 0.1;     // 0,96…1,06 → früher/später am Gas
+      // Fahr-Charakteristik: im Karrieremodus aus dem Können des jeweiligen
+      // KI-Fahrers, sonst wie bisher zufällig gestreut.
+      const kw = careerBotWerte?.[e.who];
+      if (kw) {
+        bot.careerId = kw.id; bot.name = kw.name;
+        bot.cornerF = kw.cornerF;                  // Kurvenmut: später/früher bremsen
+        bot.accelF = kw.accelF;                    // wie früh und voll ans Gas
+        bot.reaction = kw.reaktion;                // Reaktionszeit am Start
+        bot.streuung = kw.streuung;                // Schwankung von Runde zu Runde
+        bot.fehlerQuote = kw.fehler;               // Patzerwahrscheinlichkeit
+        // Streuung einmal pro Rennen auswürfeln – ein unsteter Fahrer erwischt
+        // mal einen guten, mal einen schlechten Tag.
+        bot.tagesform = 1 + (Math.random() - 0.5) * 2 * (kw.streuung || 0);
+      } else {
+        bot.careerId = null; bot.name = null;
+        bot.cornerF = 0.96 + Math.random() * 0.08; // 0,96…1,04 → kleine Streuung um Spieler-Grip
+        // accelF bleibt im Einzelrennen bei 1: die Bots beschleunigen dort weiterhin
+        // exakt wie der Spieler (nur die Karriere staffelt das je Fahrer).
+        bot.accelF = 1;
+        bot.reaction = 0.200 + Math.random() * 0.150; // eigene Reaktionszeit 0,200…0,350 s
+        bot.streuung = 0; bot.fehlerQuote = 0; bot.tagesform = 1;
+      }
+      bot.patzer = 0;                              // laufender Fahrfehler (Sekunden)
       bot.ovSide = 0;                              // kein Überholmanöver aktiv
       positionBot(bot);                            // sofort ausrichten (ohne dt)
     }
@@ -4116,6 +4214,7 @@ function updateRace(dt) {
     // Frühstart: Bewegung vor „Lichter aus"
     if (!race.jumpStart && Math.abs(speed) > 0.8) {
       race.jumpStart = true;
+      race.strafen = 1;   // fürs Karriere-Ergebnis: das Rennen war nicht sauber
       race.penalty = 15;
       showPenaltyMsg('⚠ FRÜHSTART — 15 Sek Zeitstrafe in der Boxengasse absitzen');
     }
@@ -4128,6 +4227,8 @@ function updateRace(dt) {
     }
   } else if (race.phase === 'go') {
     race.lapClock += dt; // Zeit der laufenden Rennrunde
+    race.clock += dt;    // Gesamtzeit seit „LOS!" (gemeinsame Uhr für Spieler und Bots)
+    race.topSpeed = Math.max(race.topSpeed, Math.abs(speed) * 3.6);
     if (race.penalty > 0) {
       if (inPitZone() && Math.abs(speed) < 2) race.penalty = Math.max(0, race.penalty - dt);
     } else if (race.jumpStart) {
@@ -4634,6 +4735,126 @@ renderer.setAnimationLoop(() => {
   updateSunGlare(); // Blenden, wenn man in die Sonne schaut
   renderer.render(scene, camera);
 });
+
+// ---------- Karrieremodus ----------
+// Die gesamte Karriere-Logik steckt in career.js/career-data.js (ohne DOM, in Node
+// testbar), die Bildschirme in career-ui.js. Hier ist NUR die Brücke zum Spiel:
+// ein Karriere-Rennen setzt Strecke, Auto, Physik, Renndistanz und Gegnerfeld und
+// startet danach denselben Rennablauf wie ein Einzelrennen. Ist kein Karriere-
+// Rennen aktiv, ist careerRennen null und alles läuft exakt wie bisher.
+let careerRennen = null;    // Parameter des laufenden Karriere-Rennens
+let careerBotWerte = null;  // Können der KI-Gegner dieses Rennens
+
+const careerUI = new CareerUI({
+  trackName: (id) => TRACKS.find((t) => t.id === id)?.name || id,
+  onRaceStart: (rennen, physik) => careerRennenStarten(rennen, physik),
+  onExit: () => {
+    const ss = document.getElementById('start-screen');
+    ss.style.display = '';
+    requestAnimationFrame(() => ss.classList.add('visible'));
+  },
+});
+
+document.getElementById('btn-career').addEventListener('click', () => {
+  const ss = document.getElementById('start-screen');
+  ss.classList.remove('visible');
+  ss.addEventListener('transitionend', () => { ss.style.display = 'none'; }, { once: true });
+  careerUI.zeigen();
+});
+
+// Karriere-Rennen vorbereiten und starten
+function careerRennenStarten(rennen, physik) {
+  careerRennen = rennen;
+  careerBotWerte = rennen.gegnerWerte || null;
+  // Startaufstellung: besseres Können → schnellere Quali-Zeit
+  botQualiFaktoren = (careerBotWerte || []).map(
+    (w) => 1.04 - (w.cornerF - 1) * 1.9 + (Math.random() - 0.5) * 0.03);
+  RACE_LAPS = Math.max(1, Math.round(rennen.runden) || 3);
+  BOT_COUNT = Math.max(1, Math.min(8, careerBotWerte?.length || rennen.gegner || 5));
+  careerPhysFaktoren = physik?.faktoren || null;
+
+  const ti = TRACKS.findIndex((t) => t.id === rennen.strecke);
+  if (ti >= 0) selectedTrackIndex = ti;
+  const ci = Math.max(0, CARS.findIndex((c) => c.id === (physik?.basis || 'm4')));
+  const t = TRACKS[selectedTrackIndex];
+
+  const losfahren = () => {
+    removeBots();          // Gegner mit dem richtigen Modell und in richtiger Zahl neu bauen
+    spielStarten(true);    // derselbe Weg ins Rennen wie beim Einzelrennen
+    if (rennen.quali === false) {
+      // Eventtypen ohne Qualifikation (Sprint, Zeitfahren): Startplatz wird
+      // ausgelost statt gefahren – Referenzzeit setzen und direkt starten lassen.
+      race.qualiTime = 90;
+      race.skipped = false;
+      setRaceSkipVisible(false);
+      setRaceStartVisible(true);
+      setRaceInfo('Kein Qualifying – Startplatz ausgelost. „Rennen starten"');
+    }
+  };
+  const autoLaden = () => {
+    // Auch bei schon geladenem Auto neu anwenden – die Karriere-Faktoren haben sich geändert
+    if (ci === currentCarIndex && currentCar) { applyCarPhysics(CARS[ci]); losfahren(); }
+    else loadCar(ci, losfahren, () => {
+      alert('Das Fahrzeugmodell konnte nicht geladen werden.');
+      careerAbbrechen();
+    });
+  };
+  if (t.file !== trackLoadedFile) loadTrack(t.file).then(autoLaden); else autoLaden();
+}
+
+// Renn-Parameter zurück auf den Einzelrennen-Zustand
+function careerAufraeumen() {
+  careerRennen = null;
+  careerBotWerte = null;
+  botQualiFaktoren = null;
+  careerPhysFaktoren = null;
+  RACE_LAPS = 5;
+  BOT_COUNT = 5;
+  removeBots();
+  if (currentCar) applyCarPhysics(CARS[currentCarIndex]); // Serienphysik wiederherstellen
+}
+
+// Karriere-Rennen abgebrochen (☰ → „Zum Hauptmenü"): zurück ins Karrieremenü
+function careerAbbrechen() {
+  careerAufraeumen();
+  careerUI.aktivesRennen = null;
+  spielBeenden(false);
+  careerUI.zeigen();
+}
+
+// Karriere-Rennen zu Ende: Ergebnis zusammenstellen und der Karriere melden
+function careerRennenBeenden(pos, feld, total) {
+  const kiPlatzierungen = {};
+  feld.forEach((e, i) => {
+    if (e.wer !== 'player' && e.wer.careerId) kiPlatzierungen[e.wer.careerId] = i + 1;
+  });
+  // Schnellste Rennrunde: eigene beste Runde gegen die beste Rundenzeit aller Bots
+  const meineBeste = race.lapTimes.length ? Math.min(...race.lapTimes) : Infinity;
+  let botBeste = Infinity;
+  for (const b of bots) for (const z of (b.crossTimes || [])) botBeste = Math.min(botBeste, z);
+
+  const ergebnis = {
+    platz: pos,
+    gegner: BOT_COUNT,
+    runden: RACE_LAPS,
+    // crossings zaehlt die Startlinie mit: die erste Überfahrt ist Runde 1,
+    // gefahren sind also crossings-1 Runden.
+    km: (Math.max(0, race.crossings - 1) * total) / 1000,
+    tempo: race.topSpeed,
+    pole: race.playerGrid === 0 && !race.skipped,
+    schnellsteRunde: isFinite(meineBeste) && meineBeste < botBeste,
+    sauber: race.kontakte === 0 && !race.strafen,
+    // „Überholmanöver" = gegenüber dem Startplatz gutgemachte Positionen
+    ueberholungen: Math.max(0, race.playerGrid - (pos - 1)),
+    // Fahrzeugverschleiß: Renndistanz, Karambolagen und Reifenzustand
+    schaden: Math.min(45, 1.2 + RACE_LAPS * 0.35 + race.kontakte * 1.6
+                          + Math.max(0, ...reifenAbrieb) * 8),
+    kiPlatzierungen,
+  };
+  careerAufraeumen();
+  spielBeenden(false);
+  careerUI.rennenBeendet(ergebnis);
+}
 
 // ---------- Startauto laden ----------
 // Bewusst am Dateiende: loadCar() ruft applyCarPhysics() auf, und das setzt unter
