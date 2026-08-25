@@ -59,7 +59,8 @@ welt. Ist kein Karriere-Rennen aktiv, verhält sich das Spiel exakt wie vorher.
   Renndistanz, Pole, schnellster Runde, sauberem Rennen und gutgemachten Positionen.
   Freischaltungen laufen ausschließlich über **Level und Fahrzeugklasse**
 - **Wirtschaft**: Startkapital, Startgelder, Preisgelder nach Platz, Reparaturkosten
-  nach Fahrzeugzustand, Kauf und Verkauf mit Wertverlust
+  nach Fahrzeugzustand, Kauf und Verkauf mit Wertverlust. Das **Startfahrzeug wird
+  kostenlos repariert** – man kann sich also nie festfahren
 - **Garage** mit persistenten Daten je Auto: Kilometer, Rennen, Siege, Podien,
   Zustand, Upgrade-Stufen. Ein vernachlässigtes Auto fährt messbar schlechter
 - **Fahrzeugklassen D → C → B → A → S → R.** Das Spiel liefert zwei 3D-Modelle;

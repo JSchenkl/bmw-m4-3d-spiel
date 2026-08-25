@@ -182,7 +182,7 @@ export class CareerUI {
             <div class="kar-zustand"><i style="width:${f.zustand.toFixed(0)}%"></i></div>
             <div class="kar-knopfreihe">
               ${aktiv ? '' : `<button class="kar-btn" data-akt="waehlen" data-id="${f.id}">Einsetzen</button>`}
-              ${rep > 0 ? `<button class="kar-btn" data-akt="reparieren" data-id="${f.id}">Reparieren (${geld(rep)})</button>` : ''}
+              ${f.zustand < 100 ? `<button class="kar-btn" data-akt="reparieren" data-id="${f.id}">Reparieren (${rep > 0 ? geld(rep) : 'kostenlos'})</button>` : ''}
               ${k.garage.alle().length > 1 ? `<button class="kar-btn schlecht" data-akt="verkaufen" data-id="${f.id}">Verkaufen</button>` : ''}
             </div>
           </div>`;

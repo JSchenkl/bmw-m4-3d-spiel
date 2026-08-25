@@ -406,14 +406,34 @@ pruefe('Startgeld wird abgebucht und fehlt bei zu wenig Geld', () => {
 
 pruefe('Reparatur kostet und stellt den Zustand her', () => {
   const c = frischeKarriere();
-  const f = c.garage.aktiv();
+  c.state.player.level = 5; c.state.player.money = 500000;
+  const f = c.fahrzeugKaufen('sport_c').fahrzeug;   // gekauftes Auto, kein Startfahrzeug
   f.zustand = 60;
-  c.state.player.money = 500000;
+  const geldVor = c.state.player.money;
   const kosten = c.economy.reparaturKosten(f);
   groesser(kosten, 0, 'Kosten');
   const r = c.garage.reparieren(f.id);
   wahr(r.ok, 'repariert');
   gleich(f.zustand, 100, 'Zustand wieder 100');
+  gleich(c.state.player.money, geldVor - kosten, 'Kosten abgebucht');
+});
+
+pruefe('Startfahrzeug wird kostenlos repariert', () => {
+  const c = frischeKarriere();
+  const f = c.garage.aktiv();
+  wahr(FAHRZEUGE.find((d) => d.id === f.def).start, 'ist das Startfahrzeug');
+  f.zustand = 12;
+  c.state.player.money = 0;                          // pleite und Totalschaden
+  gleich(c.economy.reparaturKosten(f), 0, 'Kosten');
+  const r = c.garage.reparieren(f.id);
+  wahr(r.ok, `repariert: ${r.grund || ''}`);
+  gleich(r.kosten, 0, 'kostenlos');
+  gleich(f.zustand, 100, 'Zustand wieder 100');
+  gleich(c.state.player.money, 0, 'kein Geld abgebucht');
+  // Ein heiles Startfahrzeug bleibt trotzdem "in Ordnung"
+  const nochmal = c.garage.reparieren(f.id);
+  wahr(!nochmal.ok, 'heiles Auto nicht nochmal reparierbar');
+  gleich(nochmal.grund, 'Fahrzeug ist in Ordnung', 'Grund');
 });
 
 // --- 12. KI ------------------------------------------------------------------

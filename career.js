@@ -206,7 +206,10 @@ export class CareerEconomy {
   // Preisgeld nach Platzierung; Plaetze ohne Eintrag gehen leer aus
   preisgeld(tabelle, platz) { return Math.max(0, zahl(tabelle?.[platz], 0)); }
 
+  // Das Startfahrzeug wird kostenlos instandgesetzt – so bleibt man auch
+  // pleite und mit Totalschaden noch fahrfaehig.
   reparaturKosten(fahrzeug) {
+    if (fahrzeugDef(fahrzeug?.def)?.start) return 0;
     const fehlt = Math.max(0, 100 - zahl(fahrzeug.zustand, 100));
     return Math.round(fehlt * BALANCE.reparaturProZustand);
   }
@@ -281,8 +284,10 @@ export class GarageManager {
   reparieren(id) {
     const f = this.alle().find((x) => x.id === id);
     if (!f) return { ok: false, grund: 'Fahrzeug nicht gefunden' };
+    // Auf den Zustand pruefen, nicht auf die Kosten: beim Startfahrzeug sind
+    // die Kosten immer 0, repariert werden muss es trotzdem.
+    if (zahl(f.zustand, 100) >= 100) return { ok: false, grund: 'Fahrzeug ist in Ordnung' };
     const kosten = this.eco.reparaturKosten(f);
-    if (kosten === 0) return { ok: false, grund: 'Fahrzeug ist in Ordnung' };
     if (!this.eco.ausgeben(kosten)) return { ok: false, grund: 'Nicht genug Geld' };
     f.zustand = 100;
     return { ok: true, kosten };
