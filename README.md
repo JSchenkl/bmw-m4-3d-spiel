@@ -37,7 +37,7 @@ Kein Node.js oder Python erforderlich – der Server läuft rein über PowerShel
 - **Reifenschaden**: bei 100 % Verschleiß ist der Reifen **platt**. Das Auto bleibt fahrbar, verhält sich aber deutlich anders – es zieht zur Seite des Platten, wird beim Bremsen unruhig, der Rollwiderstand steigt stark. **Vorne platt** heißt Untersteuern und schlechtes Einlenken, **hinten platt** ein instabiles Heck. Wer weiterfährt, ruiniert zusätzlich die Felge; wie schnell, hängt am Tempo. Zurück an die Box kommt man im Schritttempo noch
 - **Reifenanzeige unten rechts**: Grundriss mit allen vier Reifen – die Farbe zeigt die Temperatur (blau kalt → grün bereit → rot heiß), der schraffierte Anteil die Abnutzung, darunter die verbleibende Lauffläche in Prozent. Ein platter Reifen wird rot durchgekreuzt, dazu warnt das HUD und es rumpelt hörbar
 - **Minikarte unten rechts** (ohne Kasten) mit blauem Punkt für die eigene Position
-- **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; KI-Gegner mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
+- **Rennmodus**: Qualifikation, F1-Startampel, **5 Runden** mit Rundenzähler und Platzierung; **4 KI-Gegner** (Feld also 5 Autos) mit gleicher Beschleunigung & gleichem Kurven-Grip wie der Spieler, die einander überholen und sich nicht überlappen
 - **Karrieremodus** (Knopf „KARRIERE" auf dem Startbildschirm) – siehe unten
 - Scheinwerfer & Rücklichter mit Lichtkegeln
 - Tag-/Nachtmodus

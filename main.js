@@ -3682,9 +3682,9 @@ btnHome.addEventListener('click', () => {
 // ---------- Gegner-Bots ----------
 // Immer aktive KI-Autos (nicht abschaltbar). Sie fahren das gleiche Modell wie der
 // Spieler entlang der Streckenmittellinie und haben eine Hitbox (Kollision mit dem Spieler).
-// 5 Gegner + Spieler = 6 Autos. Im Karrieremodus gibt das Event die Feldgröße vor,
-// deshalb `let` – im Einzelrennen bleibt es bei 5.
-let BOT_COUNT = 5;
+// 4 Gegner + Spieler = 5 Autos. Im Karrieremodus gibt das Event die Feldgröße vor,
+// deshalb `let` – im Einzelrennen bleibt es bei 4.
+let BOT_COUNT = 4;
 let BOT_MAX_SPEED = 280 / 3.6;  // m/s – wird von applyCarPhysics() auf den Topspeed des gewählten Autos gesetzt
 const BOT_MIN_SPEED = 16;       // m/s Mindesttempo in engen Kurven (wie der Spieler dort)
 // (Kurven-Grip der Bots = Spieler-Querhaftung MAX_LAT_ACC, siehe botTargetSpeed)
@@ -3951,7 +3951,7 @@ function removeBots() {
 }
 
 // ---------- Rennmodus: Quali → Startaufstellung → F1-Ampel → Frühstart-Strafe ----------
-const BOT_QUALI_FACTOR = [0.94, 0.98, 1.03, 1.08, 1.13]; // Bot-Quali-Zeiten relativ zur Spielerzeit
+const BOT_QUALI_FACTOR = [0.94, 0.99, 1.05, 1.11]; // Bot-Quali-Zeiten relativ zur Spielerzeit
 // Im Karrieremodus kommen die Quali-Faktoren aus dem Können der KI-Fahrer;
 // null = Einzelrennen, dann gilt BOT_QUALI_FACTOR wie bisher.
 let botQualiFaktoren = null;
@@ -4770,7 +4770,7 @@ function careerRennenStarten(rennen, physik) {
   botQualiFaktoren = (careerBotWerte || []).map(
     (w) => 1.04 - (w.cornerF - 1) * 1.9 + (Math.random() - 0.5) * 0.03);
   RACE_LAPS = Math.max(1, Math.round(rennen.runden) || 3);
-  BOT_COUNT = Math.max(1, Math.min(8, careerBotWerte?.length || rennen.gegner || 5));
+  BOT_COUNT = Math.max(1, Math.min(8, careerBotWerte?.length || rennen.gegner || 4));
   careerPhysFaktoren = physik?.faktoren || null;
 
   const ti = TRACKS.findIndex((t) => t.id === rennen.strecke);
@@ -4809,7 +4809,7 @@ function careerAufraeumen() {
   botQualiFaktoren = null;
   careerPhysFaktoren = null;
   RACE_LAPS = 5;
-  BOT_COUNT = 5;
+  BOT_COUNT = 4;
   removeBots();
   if (currentCar) applyCarPhysics(CARS[currentCarIndex]); // Serienphysik wiederherstellen
 }
