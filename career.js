@@ -3,7 +3,7 @@
 //
 // Aufbau (jede Klasse hat genau eine Verantwortung):
 //   CareerSave        Laden/Speichern inkl. Version und Migration
-//   PlayerCareer      Fahrerdaten: Level, XP, Reputation, Geld
+//   PlayerCareer      Fahrerdaten: Level, XP, Geld
 //   CareerProgression Freischaltungen und deren Begruendung
 //   CareerEconomy     Preisgelder, Startgebuehren, Reparatur, Kauf/Verkauf
 //   GarageManager     Fahrzeugbestand mit persistenten Daten je Auto
@@ -44,7 +44,7 @@ export class CareerSave {
   static leererStand() {
     return {
       version: SAVE_VERSION,
-      player: { name: 'Fahrer', level: 1, xp: 0, reputation: 0, money: BALANCE.startGeld },
+      player: { name: 'Fahrer', level: 1, xp: 0, money: BALANCE.startGeld },
       garage: { vehicles: [], aktiv: null },
       progression: { unlockedEvents: [], completedEvents: [], unlockedVehicles: [] },
       championships: { current: null, completed: [] },
@@ -71,7 +71,7 @@ export class CareerSave {
     s.player = { ...leer.player, ...(roh.player || {}) };
     s.player.level = clamp(Math.floor(zahl(s.player.level, 1)), 1, MAX_LEVEL);
     s.player.xp = Math.max(0, zahl(s.player.xp, 0));
-    s.player.reputation = Math.max(0, zahl(s.player.reputation, 0));
+    delete s.player.reputation;   // Altstaende: Feld wird stillschweigend verworfen
     s.player.money = Math.max(0, zahl(s.player.money, BALANCE.startGeld));
     if (typeof s.player.name !== 'string' || !s.player.name) s.player.name = 'Fahrer';
 
@@ -160,7 +160,6 @@ export class PlayerCareer {
 
   get level() { return this.p.level; }
   get xp() { return this.p.xp; }
-  get reputation() { return this.p.reputation; }
   get money() { return this.p.money; }
   get titel() { return titelFuerLevel(this.p.level); }
 
@@ -170,11 +169,6 @@ export class PlayerCareer {
     this.p.xp += Math.max(0, Math.round(menge));
     while (this.p.level < MAX_LEVEL && this.p.xp >= xpFuerLevel(this.p.level + 1)) this.p.level++;
     return { levelVorher: vorher, levelNachher: this.p.level, aufgestiegen: this.p.level > vorher };
-  }
-
-  reputationGeben(menge) {
-    this.p.reputation = Math.max(0, this.p.reputation + Math.round(menge));
-    return this.p.reputation;
   }
 
   // Fortschritt innerhalb des aktuellen Levels (0…1) für die Anzeige
@@ -357,9 +351,6 @@ export class CareerProgression {
     const fehlt = [];
     const p = this.s.player;
     if (vor.level && p.level < vor.level) fehlt.push(`Level ${vor.level} nötig (du: ${p.level})`);
-    if (vor.reputation && p.reputation < vor.reputation) {
-      fehlt.push(`Reputation ${vor.reputation} nötig (du: ${p.reputation})`);
-    }
     if (vor.klasse) {
       const def = fahrzeug ? fahrzeugDef(fahrzeug.def) : null;
       if (!def || klasseRang(def.klasse) < klasseRang(vor.klasse)) {
@@ -384,7 +375,7 @@ export class CareerProgression {
   fahrzeugFrei(defId) {
     const def = fahrzeugDef(defId);
     if (!def) return { frei: false, fehlt: ['Unbekanntes Fahrzeug'] };
-    return this.pruefen({ level: def.level, reputation: def.reputation });
+    return this.pruefen({ level: def.level });
   }
 
   eventAbschliessen(eventId) {
@@ -673,7 +664,7 @@ export class CareerManager {
                 schnellsteRunde: false, sauber: true, ueberholungen: 0, schaden: 0,
                 kiPlatzierungen: {}, ...ergebnis };
     const feld = e.gegner + 1;
-    const bericht = { geld: 0, xp: 0, reputation: 0, levelUp: null, meisterschaft: null, posten: [] };
+    const bericht = { geld: 0, xp: 0, levelUp: null, meisterschaft: null, posten: [] };
 
     // --- XP ---
     const posFaktor = BALANCE.xpProPosition[Math.min(e.platz - 1, BALANCE.xpProPosition.length - 1)] ?? 0.35;
@@ -689,16 +680,6 @@ export class CareerManager {
     add('Überholmanöver', Math.round(BALANCE.xpProUeberholung * e.ueberholungen));
     bericht.xp = xp;
     bericht.levelUp = this.player.xpGeben(xp);
-
-    // --- Reputation ---
-    let rep = 0;
-    if (e.platz === 1) rep += BALANCE.repSieg;
-    else if (e.platz <= 3) rep += BALANCE.repPodium;
-    else if (e.platz <= 10) rep += BALANCE.repPunkte;
-    if (e.platz === 1 && (rennen.gegnerStaerke ?? 0) >= 0.92) rep += BALANCE.repUeberlegen;
-    if (!e.sauber) rep += BALANCE.repUnsauber;
-    bericht.reputation = rep;
-    this.player.reputationGeben(rep);
 
     // --- Geld ---
     if (rennen.preisgeld) {
@@ -722,10 +703,8 @@ export class CareerManager {
         const m = r.meisterschaft;
         if (r.position === 1) {
           this.economy.einnehmen(m.siegPreis);
-          this.player.reputationGeben(m.siegReputation);
           this.state.statistics.meisterschaftsSiege += 1;
           bericht.geld += m.siegPreis;
-          bericht.reputation += m.siegReputation;
         } else if (r.position <= 3) {
           const teil = Math.round(m.siegPreis * (r.position === 2 ? 0.55 : 0.35));
           this.economy.einnehmen(teil);

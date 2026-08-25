@@ -86,6 +86,7 @@ pruefe('alten Speicherstand (v1) laden', () => {
   const c = new CareerManager(st);
   gleich(c.state.version, SAVE_VERSION, 'auf aktuelle Version migriert');
   gleich(c.state.player.level, 7, 'Level uebernommen');
+  wahr(!('reputation' in c.state.player), 'altes Reputationsfeld wird verworfen');
   gleich(c.garage.alle()[0].km, 400, 'Kilometerstand uebernommen');
   gleich(c.state.season.number, 1, 'Saison ergaenzt');
   wahr(c.state.statistics && typeof c.state.statistics.rennen === 'number', 'Statistik ergaenzt');
@@ -123,14 +124,13 @@ pruefe('unvollstaendige Save-Daten sinnvoll fuellen', () => {
 });
 
 // --- 4. Rennen gewinnen und verlieren ---------------------------------------
-pruefe('Rennen gewinnen bringt Geld, XP und Reputation', () => {
+pruefe('Rennen gewinnen bringt Geld und XP', () => {
   const c = frischeKarriere();
   const start = c.events.starten('rookie_hockenheim');
   wahr(start.ok, 'Event startbar');
   const geldVor = c.state.player.money;
   const b = c.rennenAuswerten(start.rennen, gutesErgebnis(1));
   groesser(b.xp, 0, 'XP');
-  groesser(b.reputation, 0, 'Reputation');
   gleich(c.state.player.money, geldVor + b.geld, 'Preisgeld gutgeschrieben');
   gleich(b.geld, EVENTS[0].preisgeld[1], 'Preisgeld fuer Platz 1');
   gleich(c.stats.st.siege, 1, 'Sieg gezaehlt');
@@ -145,15 +145,25 @@ pruefe('Rennen verlieren bringt weniger', () => {
   const letzter = c2.rennenAuswerten(r2, gutesErgebnis(6, { pole: false, schnellsteRunde: false }));
   groesser(sieg.xp, letzter.xp, 'Sieg gibt mehr XP');
   groesser(sieg.geld, letzter.geld, 'Sieg gibt mehr Geld');
-  groesser(sieg.reputation, letzter.reputation, 'Sieg gibt mehr Reputation');
   gleich(c2.stats.st.siege, 0, 'kein Sieg gezaehlt');
 });
 
-pruefe('unsauberes Fahren kostet Reputation', () => {
+// Freischaltungen laufen nur noch ueber Level und Fahrzeugklasse.
+pruefe('kein Reputationssystem mehr', () => {
   const c = frischeKarriere();
+  wahr(!('reputation' in c.state.player), 'Fahrerprofil ohne Reputation');
   const r = c.events.starten('rookie_hockenheim').rennen;
-  const b = c.rennenAuswerten(r, gutesErgebnis(5, { sauber: false, pole: false, schnellsteRunde: false }));
-  wahr(b.reputation < 0, `Reputation sollte sinken, ist ${b.reputation}`);
+  const b = c.rennenAuswerten(r, gutesErgebnis(1));
+  wahr(!('reputation' in b), 'Rennbericht ohne Reputation');
+  // Level und Klasse reichen: hoechstes Event nur mit Level + Klasse S frei
+  c.state.player.level = 40; c.state.player.money = 1e7;
+  const kauf = c.fahrzeugKaufen('proto_s');
+  wahr(kauf.ok, `Spitzenfahrzeug ohne Ruf kaufbar: ${kauf.grund || ''}`);
+  c.garage.waehlen(kauf.fahrzeug.id);
+  const spezial = c.events.uebersicht().find((e) => e.def.id === 'spezial_prototyp');
+  wahr(spezial.frei, `hoechstes Event frei, fehlt: ${spezial.fehlt.join(', ')}`);
+  const ms = c.championships.uebersicht().find((m) => m.def.id === 'gt_championship');
+  wahr(!ms.fehlt.some((f) => f.toLowerCase().includes('reputation')), 'keine Ruf-Huerde bei Meisterschaften');
 });
 
 // --- 5. Level-Up -------------------------------------------------------------
@@ -195,7 +205,7 @@ pruefe('Events schalten mit Level und Vorbedingung frei', () => {
 
 pruefe('Fahrzeugklasse als Voraussetzung', () => {
   const c = frischeKarriere();
-  c.state.player.level = 40; c.state.player.reputation = 2000;
+  c.state.player.level = 40;
   const gt3 = () => c.events.uebersicht().find((e) => e.def.id === 'einladung_gt3');
   wahr(!gt3().frei, 'mit Klasse D gesperrt');
   wahr(gt3().fehlt.some((f) => f.includes('Klasse A')), 'nennt die Klasse');
@@ -211,7 +221,7 @@ pruefe('Fahrzeug kaufen', () => {
   const c = frischeKarriere();
   const teuer = c.fahrzeugKaufen('sport_c');
   wahr(!teuer.ok, 'ohne Level gesperrt');
-  c.state.player.level = 5; c.state.player.reputation = 40;
+  c.state.player.level = 5;
   const ohneGeld = c.fahrzeugKaufen('sport_c');
   wahr(!ohneGeld.ok, 'ohne Geld nicht kaufbar');
   gleich(ohneGeld.grund, 'Nicht genug Geld', 'Grund');
@@ -228,7 +238,7 @@ pruefe('Fahrzeug verkaufen, aber nicht das letzte', () => {
   const c = frischeKarriere();
   const nein = c.garage.verkaufen(c.garage.aktiv().id);
   wahr(!nein.ok, 'letztes Fahrzeug bleibt');
-  c.state.player.level = 5; c.state.player.reputation = 40; c.state.player.money = 100000;
+  c.state.player.level = 5; c.state.player.money = 100000;
   c.fahrzeugKaufen('sport_c');
   const geldVor = c.state.player.money;
   const ja = c.garage.verkaufen(c.garage.alle()[0].id);
@@ -280,7 +290,7 @@ pruefe('Meisterschaft starten', () => {
   const c = frischeKarriere();
   const nein = c.championships.starten('club_championship');
   wahr(!nein.ok, 'ohne Level gesperrt');
-  c.state.player.level = 5; c.state.player.reputation = 40; c.state.player.money = 50000;
+  c.state.player.level = 5; c.state.player.money = 50000;
   const ja = c.championships.starten('club_championship');
   wahr(ja.ok, `startbar: ${ja.grund || ''}`);
   wahr(c.championships.aktuelle() !== null, 'laeuft');
@@ -290,7 +300,7 @@ pruefe('Meisterschaft starten', () => {
 
 pruefe('mehrere Meisterschaftslaeufe, Punkte stimmen', () => {
   const c = frischeKarriere();
-  c.state.player.level = 5; c.state.player.reputation = 40; c.state.player.money = 50000;
+  c.state.player.level = 5; c.state.player.money = 50000;
   c.championships.starten('club_championship');
   const m = MEISTERSCHAFTEN.find((x) => x.id === 'club_championship');
   let erwartet = 0;
@@ -315,7 +325,7 @@ pruefe('mehrere Meisterschaftslaeufe, Punkte stimmen', () => {
 
 pruefe('Meisterschaft gewinnen zahlt Siegpraemie', () => {
   const c = frischeKarriere();
-  c.state.player.level = 5; c.state.player.reputation = 40; c.state.player.money = 50000;
+  c.state.player.level = 5; c.state.player.money = 50000;
   c.championships.starten('club_championship');
   const m = MEISTERSCHAFTEN.find((x) => x.id === 'club_championship');
   let letzter = null;
@@ -329,7 +339,7 @@ pruefe('Meisterschaft gewinnen zahlt Siegpraemie', () => {
 
 pruefe('Meisterschaft verlieren: KI sammelt Punkte', () => {
   const c = frischeKarriere();
-  c.state.player.level = 5; c.state.player.reputation = 40; c.state.player.money = 50000;
+  c.state.player.level = 5; c.state.player.money = 50000;
   c.championships.starten('club_championship');
   const m = MEISTERSCHAFTEN.find((x) => x.id === 'club_championship');
   const gegner = c.championships.aktuelle().fahrer[0];
@@ -358,9 +368,9 @@ pruefe('Saison abschliessen und neue starten', () => {
   gleich(c.state.season.abgeschlosseneEvents, 0, 'Zaehler zurueckgesetzt');
 });
 
-pruefe('Saisonwechsel behaelt Fahrzeuge, Geld, Level, Reputation, Statistik', () => {
+pruefe('Saisonwechsel behaelt Fahrzeuge, Geld, Level, Statistik', () => {
   const c = frischeKarriere();
-  c.state.player.level = 12; c.state.player.reputation = 150;
+  c.state.player.level = 12;
   c.state.player.money = 90000; c.state.statistics.rennen = 17;
   c.state.player.money = 90000;
   c.state.player.level = 12;
@@ -368,7 +378,6 @@ pruefe('Saisonwechsel behaelt Fahrzeuge, Geld, Level, Reputation, Statistik', ()
   const fahrzeuge = c.garage.alle().length;
   c.saisonAbschliessen();
   gleich(c.state.player.level, 12, 'Level bleibt');
-  gleich(c.state.player.reputation, 150, 'Reputation bleibt');
   gleich(c.garage.alle().length, fahrzeuge, 'Fahrzeuge bleiben');
   gleich(c.state.statistics.rennen, 17, 'Statistik bleibt');
   groesser(c.state.player.money, 90000, 'Geld bleibt (plus Bonus)');
@@ -410,7 +419,7 @@ pruefe('Reparatur kostet und stellt den Zustand her', () => {
 // --- 12. KI ------------------------------------------------------------------
 pruefe('KI-Fahrer bleiben ueber die Meisterschaft dieselben', () => {
   const c = frischeKarriere();
-  c.state.player.level = 5; c.state.player.reputation = 40; c.state.player.money = 50000;
+  c.state.player.level = 5; c.state.player.money = 50000;
   c.championships.starten('club_championship');
   const feld1 = [...c.championships.aktuelle().fahrer];
   c.rennenAuswerten(c.championships.naechsterLauf(), gutesErgebnis(2));

@@ -56,8 +56,8 @@ unverändert in Training und Einzelrennen, „KARRIERE" in eine eigene Fortschri
 welt. Ist kein Karriere-Rennen aktiv, verhält sich das Spiel exakt wie vorher.
 
 - **Fahrerprofil**: Level 1–50 mit Titeln (Anfänger → Legende), XP aus Platzierung,
-  Renndistanz, Pole, schnellster Runde, sauberem Rennen und gutgemachten Positionen;
-  dazu **Reputation**, die Events und Fahrzeuge freischaltet
+  Renndistanz, Pole, schnellster Runde, sauberem Rennen und gutgemachten Positionen.
+  Freischaltungen laufen ausschließlich über **Level und Fahrzeugklasse**
 - **Wirtschaft**: Startkapital, Startgelder, Preisgelder nach Platz, Reparaturkosten
   nach Fahrzeugzustand, Kauf und Verkauf mit Wertverlust
 - **Garage** mit persistenten Daten je Auto: Kilometer, Rennen, Siege, Podien,
@@ -74,7 +74,7 @@ welt. Ist kein Karriere-Rennen aktiv, verhält sich das Spiel exakt wie vorher.
   Klassen-Cup, Einladungsevent, Spezialevent – je mit eigener Distanz,
   Gegnerstärke und Preisgeldstaffel
 - **Meisterschaften** über mehrere Läufe mit Punktetabelle (25/18/15/12/10/8/6/4/2/1),
-  Titelprämie und Reputationsbonus
+  und Titelprämie
 - **Persistente KI-Fahrer** mit Namen und Charakter (Tempo, Aggressivität,
   Konstanz, Fehlerquote). Sie behalten ihre Identität über die ganze Meisterschaft
 - **Rennwochenende**: Startaufstellung aus dem Können der Gegner, Quali, Ampel,

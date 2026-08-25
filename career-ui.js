@@ -74,7 +74,6 @@ export class CareerUI {
       <span>Level ${p.level}</span>
       <span class="kar-xp"><i style="width:${(k.player.levelFortschritt() * 100).toFixed(0)}%"></i></span>
       <span>${p.xp.toLocaleString('de-DE')} XP</span>
-      <span>Ruf ${p.reputation}</span>
       <span class="kar-geld">${geld(p.money)}</span>
       <span>Saison ${k.state.season.number}</span>
       <span>${autoDef ? esc(autoDef.name) : 'kein Fahrzeug'}</span>
@@ -105,7 +104,7 @@ export class CareerUI {
     const start = FAHRZEUGE.filter((f) => f.start);
     return `<h2>Neue Karriere</h2>
       <p class="kar-hinweis">Du beginnst als unbekannter Fahrer mit einem Einstiegsfahrzeug
-      und wenig Geld. Fahre Rennen, verdiene Geld, Erfahrung und Ruf – und arbeite dich
+      und wenig Geld. Fahre Rennen, verdiene Geld und Erfahrung – und arbeite dich
       bis in die Spitzenserien hoch.</p>
       <label class="kar-feld">Fahrername
         <input id="kar-name" maxlength="18" value="Fahrer">
@@ -140,7 +139,7 @@ export class CareerUI {
         <div class="kar-karte">
           <div class="kar-k-titel">Saison ${k.state.season.number} abschließen</div>
           <div class="kar-k-text">Bonus kassieren und in die nächste Saison starten.
-          Fahrzeuge, Geld, Level, Ruf und Statistik bleiben erhalten.</div>
+          Fahrzeuge, Geld, Level und Statistik bleiben erhalten.</div>
           <button class="kar-btn" data-akt="saison">Saison abschließen</button>
         </div>` : ''}`;
   }
@@ -245,7 +244,6 @@ export class CareerUI {
         <tr><td>Level</td><td>${p.level} von ${MAX_LEVEL}</td></tr>
         <tr><td>Erfahrung</td><td>${p.xp.toLocaleString('de-DE')} XP${p.level < MAX_LEVEL
           ? ` — noch ${bisLevel.toLocaleString('de-DE')} bis Level ${p.level + 1}` : ''}</td></tr>
-        <tr><td>Reputation</td><td>${p.reputation}</td></tr>
         <tr><td>Konto</td><td>${geld(p.money)}</td></tr>
         <tr><td>Saison</td><td>${k.state.season.number}</td></tr>
         <tr><td>Fahrzeuge</td><td>${k.garage.alle().length}</td></tr>
@@ -447,7 +445,6 @@ export class CareerUI {
         ${posten}
         <tr class="ich"><td><b>Erfahrung gesamt</b></td><td><b>+${b.xp} XP</b></td></tr>
         <tr class="ich"><td><b>Preisgeld</b></td><td><b>${geld(b.geld)}</b></td></tr>
-        <tr class="ich"><td><b>Reputation</b></td><td><b>${b.reputation >= 0 ? '+' : ''}${b.reputation}</b></td></tr>
       </table>
       ${b.levelUp?.aufgestiegen
         ? `<div class="kar-karte aktiv"><div class="kar-k-titel">Level ${b.levelUp.levelNachher} erreicht!</div>

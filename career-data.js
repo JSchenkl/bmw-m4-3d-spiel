@@ -27,41 +27,41 @@ export const FAHRZEUGE = [
     id: 'club_d', name: 'Clubsport 240', klasse: 'D', basis: 'm4',
     // preis 0 = geschenktes Startfahrzeug. basiswert ist trotzdem gesetzt,
     // sonst waere das Auto beim Verkauf wertlos.
-    preis: 0, basiswert: 9000, level: 1, reputation: 0, start: true,
+    preis: 0, basiswert: 9000, level: 1, start: true,
     beschreibung: 'Abgerüsteter Einstiegs-Renner. Langsam, aber gutmütig.',
     tuning: { powerWheel: 0.34, fTraction: 0.52, mass: 1.06, maxLatG: 0.72,
               brakeDecel: 0.66, vmaxKmh: 0.66, aeroMax: 0.25 },
   },
   {
     id: 'sport_c', name: 'Sport Trophy 320', klasse: 'C', basis: 'm4',
-    preis: 42000, level: 5, reputation: 40,
+    preis: 42000, level: 5,
     beschreibung: 'Deutlich mehr Druck, spürbar mehr Kurvengrip.',
     tuning: { powerWheel: 0.50, fTraction: 0.66, mass: 1.03, maxLatG: 0.82,
               brakeDecel: 0.78, vmaxKmh: 0.78, aeroMax: 0.45 },
   },
   {
     id: 'perf_b', name: 'Performance 420', klasse: 'B', basis: 'm4',
-    preis: 96000, level: 10, reputation: 120,
+    preis: 96000, level: 10,
     beschreibung: 'Seriennaher Rennwagen mit echtem Abtrieb.',
     tuning: { powerWheel: 0.68, fTraction: 0.80, mass: 1.0, maxLatG: 0.90,
               brakeDecel: 0.88, vmaxKmh: 0.88, aeroMax: 0.68 },
   },
   {
     id: 'gt3_a', name: 'BMW M4 GT3 EVO', klasse: 'A', basis: 'm4',
-    preis: 235000, level: 20, reputation: 320,
+    preis: 235000, level: 20,
     beschreibung: 'Der GT3 in Werksabstimmung – volle Originaldaten.',
     tuning: {},
   },
   {
     id: 'proto_s', name: 'Prototyp LMP (Clubversion)', klasse: 'S', basis: 'ts030',
-    preis: 420000, level: 28, reputation: 560,
+    preis: 420000, level: 28,
     beschreibung: 'Le-Mans-Prototyp, für Clubrennen entschärft.',
     tuning: { powerWheel: 0.82, fTraction: 0.88, maxLatG: 0.90, brakeDecel: 0.92,
               vmaxKmh: 0.90, aeroMax: 0.80 },
   },
   {
     id: 'lmp_r', name: 'Toyota TS030 Hybrid', klasse: 'R', basis: 'ts030',
-    preis: 780000, level: 38, reputation: 900,
+    preis: 780000, level: 38,
     beschreibung: 'Der TS030 in Le-Mans-Abstimmung – volle Originaldaten.',
     tuning: {},
   },
@@ -163,42 +163,42 @@ export const EVENT_TYPEN = {
 export const EVENTS = [
   { id: 'rookie_hockenheim', name: 'Rookie Shakedown', typ: 'einzelrennen',
     strecke: 'hockenheim', runden: 3, gegner: 4, gegnerStaerke: 0.72,
-    voraussetzung: { level: 1, reputation: 0, klasse: 'D' },
+    voraussetzung: { level: 1, klasse: 'D' },
     startgeld: 0, preisgeld: { 1: 4000, 2: 2600, 3: 1800, 4: 1200, 5: 800, 6: 500 } },
 
   { id: 'club_sprint_spielberg', name: 'Club Sprint Spielberg', typ: 'sprint',
     strecke: 'spielberg', runden: 2, gegner: 4, gegnerStaerke: 0.76,
-    voraussetzung: { level: 2, reputation: 0, klasse: 'D', events: ['rookie_hockenheim'] },
+    voraussetzung: { level: 2, klasse: 'D', events: ['rookie_hockenheim'] },
     startgeld: 300, preisgeld: { 1: 5200, 2: 3400, 3: 2300, 4: 1500, 5: 900, 6: 600 } },
 
   { id: 'zeitfahren_zandvoort', name: 'Zeitjagd Zandvoort', typ: 'zeitfahren',
     strecke: 'zandvoort', runden: 2, gegner: 3, gegnerStaerke: 0.80,
-    voraussetzung: { level: 3, reputation: 20, klasse: 'D' },
+    voraussetzung: { level: 3, klasse: 'D' },
     startgeld: 0, preisgeld: { 1: 4800, 2: 3000, 3: 2000 } },
 
   { id: 'sports_challenge', name: 'Sports Car Challenge', typ: 'klassencup',
     strecke: 'montreal', runden: 4, gegner: 4, gegnerStaerke: 0.84,
-    voraussetzung: { level: 8, reputation: 60, klasse: 'C' },
+    voraussetzung: { level: 8, klasse: 'C' },
     startgeld: 1200, preisgeld: { 1: 16000, 2: 11000, 3: 7500, 4: 5000, 5: 3000, 6: 1800 } },
 
   { id: 'marken_m4', name: 'M4-Markenpokal', typ: 'markenpokal',
     strecke: 'hockenheim', runden: 4, gegner: 4, gegnerStaerke: 0.88,
-    voraussetzung: { level: 12, reputation: 140, fahrzeug: ['perf_b', 'gt3_a'] },
+    voraussetzung: { level: 12, fahrzeug: ['perf_b', 'gt3_a'] },
     startgeld: 2000, preisgeld: { 1: 26000, 2: 17000, 3: 12000, 4: 8000, 5: 5000, 6: 3000 } },
 
   { id: 'langstrecke_saopaulo', name: '12 Runden von Interlagos', typ: 'langstrecke',
     strecke: 'saopaulo', runden: 12, gegner: 4, gegnerStaerke: 0.90,
-    voraussetzung: { level: 16, reputation: 220, klasse: 'B' },
+    voraussetzung: { level: 16, klasse: 'B' },
     startgeld: 3000, preisgeld: { 1: 44000, 2: 30000, 3: 21000, 4: 14000, 5: 9000, 6: 5000 } },
 
   { id: 'einladung_gt3', name: 'GT3-Einladungsrennen', typ: 'einladung',
     strecke: 'zandvoort', runden: 6, gegner: 4, gegnerStaerke: 0.95,
-    voraussetzung: { level: 22, reputation: 400, klasse: 'A' },
+    voraussetzung: { level: 22, klasse: 'A' },
     startgeld: 5000, preisgeld: { 1: 78000, 2: 52000, 3: 36000, 4: 24000, 5: 15000, 6: 9000 } },
 
   { id: 'spezial_prototyp', name: 'Prototypen-Showdown', typ: 'spezial',
     strecke: 'spielberg', runden: 8, gegner: 4, gegnerStaerke: 1.0,
-    voraussetzung: { level: 32, reputation: 700, klasse: 'S' },
+    voraussetzung: { level: 32, klasse: 'S' },
     startgeld: 9000, preisgeld: { 1: 150000, 2: 100000, 3: 70000, 4: 45000, 5: 28000, 6: 16000 } },
 ];
 export const eventDef = (id) => EVENTS.find((e) => e.id === id) || null;
@@ -207,9 +207,9 @@ export const eventDef = (id) => EVENTS.find((e) => e.id === id) || null;
 export const MEISTERSCHAFTEN = [
   {
     id: 'club_championship', name: 'European Club Championship',
-    voraussetzung: { level: 4, reputation: 30, klasse: 'D' },
+    voraussetzung: { level: 4, klasse: 'D' },
     gegner: 4, gegnerStaerke: 0.80, startgeld: 800,
-    siegPreis: 30000, siegReputation: 90,
+    siegPreis: 30000,
     laeufe: [
       { strecke: 'hockenheim', runden: 3 }, { strecke: 'spielberg', runden: 3 },
       { strecke: 'zandvoort', runden: 3 },  { strecke: 'montreal', runden: 3 },
@@ -218,9 +218,9 @@ export const MEISTERSCHAFTEN = [
   },
   {
     id: 'sports_championship', name: 'Sports Car Series',
-    voraussetzung: { level: 10, reputation: 100, klasse: 'C' },
+    voraussetzung: { level: 10, klasse: 'C' },
     gegner: 4, gegnerStaerke: 0.87, startgeld: 2500,
-    siegPreis: 90000, siegReputation: 180,
+    siegPreis: 90000,
     laeufe: [
       { strecke: 'spielberg', runden: 4 }, { strecke: 'montreal', runden: 4 },
       { strecke: 'hockenheim', runden: 5 }, { strecke: 'zandvoort', runden: 5 },
@@ -228,9 +228,9 @@ export const MEISTERSCHAFTEN = [
   },
   {
     id: 'gt_championship', name: 'GT Championship',
-    voraussetzung: { level: 20, reputation: 350, klasse: 'A' },
+    voraussetzung: { level: 20, klasse: 'A' },
     gegner: 4, gegnerStaerke: 0.96, startgeld: 6000,
-    siegPreis: 260000, siegReputation: 400,
+    siegPreis: 260000,
     laeufe: [
       { strecke: 'zandvoort', runden: 6 }, { strecke: 'saopaulo', runden: 6 },
       { strecke: 'montreal', runden: 6 },  { strecke: 'spielberg', runden: 7 },
@@ -263,9 +263,6 @@ export const BALANCE = {
   xpSauber: 110,        // ohne Kollision/Strafe ins Ziel
   xpProUeberholung: 12,
   xpProRunde: 14,       // Rennlänge zahlt sich aus
-  repSieg: 22, repPodium: 12, repPunkte: 4,
-  repUeberlegen: 18,    // Sieg gegen deutlich stärkere Gegner
-  repUnsauber: -14,     // sehr unsauberes Rennen
   reparaturProZustand: 900, // Kosten je Prozentpunkt fehlender Fahrzeugzustand
   wiederverkauf: 0.62,  // Anteil des Kaufpreises beim Verkauf
 };
