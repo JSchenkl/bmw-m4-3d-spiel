@@ -3505,6 +3505,7 @@ function updateTimeAttack(dt) {
   const px = carGroup.position.x, pz = carGroup.position.z;
   const progress = trackProgress(px, pz);
   const total = centerline.total;
+  race.progress = progress;   // Quelle für die Platzierung (Live-Anzeige und Ergebnis)
 
   const prev = ghost.prevProgress;
   const hadProgress = ghost.hasProgress;
@@ -3573,7 +3574,7 @@ function updateTimeAttack(dt) {
       race.lapClock = 0;
       race.crossings++;                          // 1. Überfahrt = Startlinie (Runde 1), danach je Runde +1
       if (race.crossings > RACE_LAPS) finishRace();
-      else setRaceInfo(`Runde ${race.crossings}/${RACE_LAPS}`);
+      else renderRaceInfo();
     }
   }
   ghost.prevProgress = progress;
@@ -4066,6 +4067,7 @@ const race = {
   kontakte: 0,      // Karambolagen im Rennen (für die Karriere-Wertung „sauberes Rennen")
   strafen: 0,       // kassierte Strafen (Frühstart)
   topSpeed: 0,      // höchstes Tempo im Rennen (km/h)
+  progress: 0,      // Bogenlänge des Spielers, je Bild in updateTimeAttack gesetzt
 };
 const lightsEl = document.getElementById('start-lights');
 const raceStartBtn = document.getElementById('race-start-btn');
@@ -4097,34 +4099,70 @@ function showPenaltyMsg(text) {
 
 function setRaceInfo(text) {
   if (!text) { raceInfoEl.classList.remove('visible'); return; }
-  raceInfoEl.textContent = text;
+  if (raceInfoEl.textContent !== text) raceInfoEl.textContent = text;
   raceInfoEl.classList.add('visible');
+}
+
+// Laufende Renn-Anzeige: Runde und aktuelle Platzierung. Die Platzierung kommt aus
+// derselben Quelle wie das Endergebnis (feldStand), damit beide übereinstimmen.
+function renderRaceInfo() {
+  if (!centerline || !bots.length) return;
+  const runde = Math.min(RACE_LAPS, Math.max(1, race.crossings));
+  setRaceInfo(`Runde ${runde}/${RACE_LAPS} · Platz ${spielerPlatz(feldStand())}/${BOT_COUNT + 1}`);
 }
 
 // Rennen beendet (Spieler hat RACE_LAPS Runden voll): Platzierung nach
 // zurückgelegter Gesamtstrecke (Überfahrten · Streckenlänge + aktuelle Bogenlänge).
-function finishRace() {
+// Stand des gesamten Feldes nach zurückgelegter Strecke (Überfahrten · Streckenlänge
+// + aktuelle Bogenlänge), absteigend sortiert. EINE Quelle für die Live-Anzeige und
+// für das Endergebnis – so können Anzeige während des Rennens und Schlusswertung
+// nicht auseinanderlaufen.
+function feldStand() {
   const total = centerline.total;
-  const playerDist = race.crossings * total + trackProgress(carGroup.position.x, carGroup.position.z);
-  // Gesamtwertung über die zurückgelegte Strecke – Spieler und Bots in einer Liste
-  const feld = [{ wer: 'player', dist: playerDist }];
+  const feld = [{ wer: 'player', dist: race.crossings * total + race.progress }];
   for (const b of bots) feld.push({ wer: b, dist: (b.crossings || 0) * total + b.s });
   feld.sort((a, b) => b.dist - a.dist);
-  const pos = feld.findIndex((e) => e.wer === 'player') + 1;
+  return feld;
+}
+const spielerPlatz = (feld) => feld.findIndex((e) => e.wer === 'player') + 1;
+// Name eines Feldteilnehmers für die Ergebnisliste
+const feldName = (wer) => wer === 'player' ? 'DU' : (wer.name || `GEGNER ${bots.indexOf(wer) + 1}`);
+// Gefahrene Runden: crossings zählt die Startlinie mit, gefahren sind crossings-1
+const feldRunden = (wer) => Math.max(0, (wer === 'player' ? race.crossings : (wer.crossings || 0)) - 1);
+
+function finishRace() {
+  const total = centerline.total;
+  const feld = feldStand();
+  const pos = spielerPlatz(feld);
   race.phase = 'finished';
   setRaceInfo(`🏁 Rennen beendet — Platz ${pos} von ${BOT_COUNT + 1}`);
   if (careerRennen) { careerRennenBeenden(pos, feld, total); return; }
-  showResultScreen(pos);
+  showResultScreen(pos, feld);
 }
 
-// Ergebnis-Rangliste: Platzierung + Zeit jeder gefahrenen Runde (schnellste hervorgehoben)
+// Ergebnis-Rangliste: komplette Schlusswertung (damit die Platzierung nachvollziehbar
+// ist – ein überrundeter Gegner fährt direkt neben dir und liegt trotzdem hinter dir,
+// ein Gegner, der DICH überrundet hat, genauso direkt neben dir und trotzdem vorn),
+// danach die Zeit jeder gefahrenen Runde (schnellste hervorgehoben).
 const resultScreenEl = document.getElementById('result-screen');
 const resultListEl = document.getElementById('result-list');
-function showResultScreen(pos) {
+function showResultScreen(pos, feld = feldStand()) {
   const laps = race.lapTimes;
   const best = laps.length ? Math.min(...laps) : Infinity;
   const totalTime = laps.reduce((a, b) => a + b, 0);
-  let rows = `<div class="grid-row me"><span class="pos">🏁</span><span class="nm">Platz ${pos} von ${BOT_COUNT + 1}</span><span class="tm"></span></div>`;
+  const total = centerline.total;
+  const fuehrer = feld.length ? feld[0].dist : 0;
+  let rows = feld.map((e, i) => {
+    const me = e.wer === 'player';
+    const rueck = fuehrer - e.dist;
+    // Rückstand als Runden, sobald er eine ganze Runde übersteigt – sonst in Metern
+    const abstand = i === 0 ? '—'
+      : rueck >= total ? `+${Math.floor(rueck / total)} Rd.`
+      : `+${Math.round(rueck)} m`;
+    return `<div class="grid-row${me ? ' me' : ''}"><span class="pos">P${i + 1}</span>`
+         + `<span class="nm">${feldName(e.wer)} · ${feldRunden(e.wer)} Rd.</span>`
+         + `<span class="tm">${abstand}</span></div>`;
+  }).join('');
   rows += laps.map((t, i) =>
     `<div class="grid-row${t === best ? ' me' : ''}"><span class="pos">R${i + 1}</span><span class="nm">Runde ${i + 1}${t === best ? ' ⚡' : ''}</span><span class="tm">${fmtTime(t)}</span></div>`
   ).join('');
@@ -4271,6 +4309,8 @@ function setupGrid() {
   });
 
   armLap(); // Rundenmessung sauber zurücksetzen (kein Fehl-Lap durch das Umsetzen)
+  // Bogenlänge sofort setzen, damit die Platzierung schon im ersten Bild stimmt
+  race.progress = trackProgress(carGroup.position.x, carGroup.position.z);
 
   // F1-Ampelsequenz starten
   race.phase = 'lights';
@@ -4315,10 +4355,11 @@ function updateRace(dt) {
       race.phase = 'go';
       renderLights(0);
       lightsEl.classList.remove('visible');
-      setRaceInfo(`Runde 1/${RACE_LAPS}`);
+      renderRaceInfo();
       showRaceMsg('LOS!', '#69f0ae');
     }
   } else if (race.phase === 'go') {
+    renderRaceInfo();   // Runde und Platz laufend mitführen
     race.lapClock += dt; // Zeit der laufenden Rennrunde
     race.clock += dt;    // Gesamtzeit seit „LOS!" (gemeinsame Uhr für Spieler und Bots)
     race.topSpeed = Math.max(race.topSpeed, Math.abs(speed) * 3.6);
