@@ -3875,10 +3875,59 @@ function positionBot(bot, dt) {
   return { x, z, tx: ftx, tz: ftz };
 }
 
+// Rücksicht gegenüber dem Spieler. Die Bots fahren auf ihrer eigenen Bahn
+// (bot.s/bot.offset) und werden von einer Berührung selbst nicht gebremst –
+// die Kollision schiebt nur den Spieler weg. Deshalb müssen sie den Spieler
+// als Hindernis sehen, sonst schieben sie ihn Frame für Frame vor sich her.
+// Etwas mehr Luft als untereinander, damit sie eher lupfen als anzuschieben.
+const SP_PUFFER = 8;        // m Sicherheitsabstand hinter dem Spieler
+const SP_FOLGE_LAT = 3.4;   // m quer: bis hierher gilt er als „auf meiner Spur".
+                            // Bewusst größer als der Platzbedarf: der Bot gibt erst
+                            // wieder Gas, wenn er wirklich seitlich frei ist.
+const SP_SEITE = 9.0;       // m längs: so lange hält er beim Vorbeifahren Abstand
+const SP_SEITE_LAT = 3.6;   // m quer: auf diese Lücke drückt er sich hinaus
+const SP_AUSWEICH = 3.2;    // m seitlicher Versatz beim Überholen des Spielers
+const _verkehr = [];        // Bots + Spieler, ohne Allokation je Frame
+
+// Sicherer Folgeabstand: Puffer plus der Weg, den der Bot zum Abbauen der
+// Annäherungsgeschwindigkeit braucht. Ein fester Wert genügt nicht – bei
+// 30 m/s Differenz sind über 20 m nötig, sonst ist der Einschlag schon
+// unvermeidbar, wenn der Bot zu bremsen anfängt.
+function folgeAbstand(botV, oV) {
+  const dv = botV - oV;
+  return SP_PUFFER + (dv > 0 ? (dv * dv) / (2 * BOT_BRAKE * BOT_GRIP) : 0);
+}
+
+// Spielerposition in Bot-Koordinaten: Bogenlänge auf der Mittellinie und
+// seitlicher Versatz – dieselben Größen wie bot.s und bot.offset.
+function spielerAufStrecke() {
+  const px = carGroup.position.x, pz = carGroup.position.z;
+  const P = centerline.P, n = centerline.n;
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < n; i++) {
+    const dx = px - P[i].x, dz = pz - P[i].z;
+    const d = dx * dx + dz * dz;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  const j = (best + 1) % n;
+  let tx = P[j].x - P[best].x, tz = P[j].z - P[best].z;
+  const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+  return {
+    s: centerline.s[best],
+    offset: (px - P[best].x) * -tz + (pz - P[best].z) * tx,
+    v: Math.max(0, speed),
+    spieler: true,
+  };
+}
+
 function updateBots(dt) {
   if (!centerline || !currentCar || !carForward || !bots.length) return;
   botColliders = [];
   const total = centerline.total;
+  // Einmal je Frame, nicht je Bot – die Suche nach dem Mittellinienpunkt ist O(n)
+  _verkehr.length = 0;
+  for (const b of bots) _verkehr.push(b);
+  if (race.phase === 'go') _verkehr.push(spielerAufStrecke());
   for (const bot of bots) {
     let braking = false;
     if (race.phase === 'go') {
@@ -3897,12 +3946,20 @@ function updateBots(dt) {
         else if (bot.fehlerQuote > 0 && Math.random() < bot.fehlerQuote * 0.06 * dt) bot.patzer = 0.6 + Math.random() * 1.4;
         let target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + look, bGriff) * mut);
         if (bot.patzer > 0) target *= 0.62;         // verbremst/verschätzt – kostet Zeit
-        // Auffahrschutz: dichter, gleichspuriger Gegner voraus → Tempo angleichen (nicht reinfahren)
-        for (const o of bots) {
+        // Auffahrschutz: dichter, gleichspuriger Gegner voraus → Tempo angleichen (nicht reinfahren).
+        // Der Spieler zählt mit, mit größerem Abstand – sonst wird er angeschoben.
+        for (const o of _verkehr) {
           if (o === bot) continue;
           const ds = ((o.s - bot.s) % total + total) % total;
           const dLat = Math.abs((bot.offset || 0) - (o.offset || 0));
-          if (ds > 0 && ds < 7 && dLat < 2.2) target = Math.min(target, Math.max(0, o.v - (7 - ds) * 1.2));
+          if (o.spieler) {
+            // Auf Spielertempo einreihen; unterschreitet er den Puffer, faellt er zurueck
+            if (ds > 0 && ds < folgeAbstand(bot.v, o.v) && dLat < SP_FOLGE_LAT) {
+              target = Math.min(target, Math.max(0, o.v - Math.max(0, SP_PUFFER - ds) * 1.2));
+            }
+          } else if (ds > 0 && ds < 7 && dLat < 2.2) {
+            target = Math.min(target, Math.max(0, o.v - (7 - ds) * 1.2));
+          }
         }
         // Totband um die Zieldrehzahl: kein Hin-und-Her zwischen Gas und Bremse (kein Rucken/Flackern)
         if (bot.v < target - 0.4) {
@@ -3930,29 +3987,38 @@ function updateBots(dt) {
         // Überholen mit Hysterese: dicht hinter einem langsameren Bot seitlich ausweichen.
         // Die Seite bleibt während des Manövers fest (kein seitliches Zittern), erst wenn
         // der Vordermann >20 m entfernt ist, kehrt der Bot zur eigenen Linie zurück.
-        let block = false;
-        for (const o of bots) {
+        let block = false, ovSpieler = false;
+        for (const o of _verkehr) {
           if (o === bot) continue;
           const ds = ((o.s - bot.s) % total + total) % total;
-          if (ds > 0 && ds < 20 && o.v < bot.v - 0.5 && (ds < 14 || bot.ovSide)) {
+          // Beim Spieler frueh genug ausscheren: derselbe mitwachsende Abstand wie
+          // beim Bremsen, sonst haengt der Bot erst am Heck und weicht dann aus.
+          const reich = o.spieler ? folgeAbstand(bot.v, o.v) + 6 : 20;
+          const halt = o.spieler ? reich * 0.75 : 14;
+          if (ds > 0 && ds < reich && o.v < bot.v - 0.5 && (ds < halt || bot.ovSide)) {
             if (!bot.ovSide) bot.ovSide = (bot.lineOffset >= (o.offset || 0)) ? 1 : -1;
-            block = true; break;
+            block = true; ovSpieler = !!o.spieler; break;
           }
         }
         if (!block) bot.ovSide = 0;
-        let desired = (bot.lineOffset || 0) + (bot.ovSide || 0) * 2.4;
-        // Seitlich auf Abstand bleiben: überlappt ein Gegner längs, zur Seite drücken
-        for (const o of bots) {
+        let desired = (bot.lineOffset || 0) + (bot.ovSide || 0) * (ovSpieler ? SP_AUSWEICH : 2.4);
+        // Seitlich auf Abstand bleiben: überlappt ein Gegner längs, zur Seite drücken.
+        // Dem Spieler weichen sie früher und weiter aus als einander.
+        let eilig = false;   // Ausweichen vor dem Spieler darf nicht gemächlich sein
+        for (const o of _verkehr) {
           if (o === bot) continue;
           let ds = ((o.s - bot.s) % total + total) % total; ds = Math.min(ds, total - ds);
-          if (ds < 4.6) {
+          if (ds < (o.spieler ? SP_SEITE : 4.6)) {
             const off = (bot.offset || 0) - (o.offset || 0);
-            const dir = off !== 0 ? Math.sign(off) : (bots.indexOf(bot) < bots.indexOf(o) ? 1 : -1);
-            if (Math.abs(off) < 2.2) desired += dir * 1.6; // auseinanderdrücken
+            const dir = off !== 0 ? Math.sign(off) : (o.spieler ? 1 : (bots.indexOf(bot) < bots.indexOf(o) ? 1 : -1));
+            if (Math.abs(off) < (o.spieler ? SP_SEITE_LAT : 2.2)) {
+              desired += dir * (o.spieler ? 3.6 : 1.6);
+              if (o.spieler) eilig = true;
+            }
           }
         }
         desired = Math.max(-5, Math.min(5, desired));         // auf der Strecke bleiben
-        bot.offset += (desired - bot.offset) * Math.min(1, dt * 1.4);
+        bot.offset += (desired - bot.offset) * Math.min(1, dt * (eilig ? 3.0 : 1.4));
 
         for (const w of bot.wheels) w.spin.rotateOnAxis(w.axisLocal, (bot.v / w.radius) * dt); // Räder drehen
       }
