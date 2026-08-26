@@ -2568,8 +2568,9 @@ function applyCarPhysics(cfg) {
   REAR_GRIP_MAX = p.rearGripMax;
   REAR_GRIP_MU = p.rearGripMu;
   resetReifen(); // frisches Auto = neue, kalte Reifen
-  // Bots fahren dasselbe Auto wie der Spieler → gleiches Tempolimit
+  // Bots fahren dasselbe Auto wie der Spieler → gleiches Tempolimit, gleiche Bremse
   BOT_MAX_SPEED = VMAX;
+  BOT_BRAKE = p.brakeDecel;
   // Sitzposition, Lenkrad-Geometrie und Display-Anordnung ans Cockpit anpassen
   Object.assign(COCKPIT_EYE, cfg.cockpitEye);
   Object.assign(STEER_WHEEL, cfg.steerWheel);
@@ -3717,7 +3718,11 @@ let BOT_MAX_SPEED = 280 / 3.6;  // m/s – wird von applyCarPhysics() auf den To
 const BOT_MIN_SPEED = 16;       // m/s Mindesttempo in engen Kurven (wie der Spieler dort)
 // (Kurven-Grip der Bots = Spieler-Querhaftung MAX_LAT_ACC, siehe botTargetSpeed)
 const BOT_ACCEL = 8;            // m/s² Längsbeschleunigung am Start
-const BOT_BRAKE = 24;           // m/s² Bremsverzögerung vor Kurven
+// Bremse der Bots. Fester Wert war ein Fehler: 24 m/s² lagen über der Bremse
+// jedes Spielerautos (M4 GT3: 17,5), obwohl BOT_GRIP verspricht, dass die Bots
+// 10 % schwächer sind. Die Bots bremsten dadurch deutlich später als der Spieler
+// überhaupt kann. Jetzt wie BOT_MAX_SPEED aus dem gefahrenen Auto abgeleitet.
+let BOT_BRAKE = 17.5;           // m/s² – von applyCarPhysics() gesetzt
 const BOT_GRIP = 0.9;           // Bots haben in allen Bereichen 10 % weniger Grip als der Spieler
 const bots = [];                // { group, s, offset }
 const _botFwd = new THREE.Vector3();
@@ -3939,13 +3944,28 @@ function updateBots(dt) {
         // Tagesform: unstete Fahrer schwanken über das ganze Rennen hinweg.
         const form = bot.tagesform || 1;
         const mut = (bot.cornerF || 1) * form;
-        const look = 14 * mut;                      // mutigere Bots schauen kürzer voraus → bremsen später
         const bGriff = botGriff(bot);
         // Fahrfehler: kurzer Tempoeinbruch, Wahrscheinlichkeit aus der Fehlerquote
         // des Fahrers. Ohne Karriere ist fehlerQuote 0 → passiert nie.
         if (bot.patzer > 0) bot.patzer = Math.max(0, bot.patzer - dt);
         else if (bot.fehlerQuote > 0 && Math.random() < bot.fehlerQuote * 0.06 * dt) bot.patzer = 0.6 + Math.random() * 1.4;
-        let target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + look, bGriff) * mut);
+        // Bremspunkt statt fester Vorausschau. Vorher schaute der Bot immer nur 14 m
+        // voraus und baute das Tempo mit BOT_BRAKE ab – bei 250 km/h reicht das nie,
+        // er trug also viel zu viel Tempo in die Kurve und bremste damit später, als
+        // es der Spieler überhaupt kann. Jetzt gilt dieselbe Physik wie für den
+        // Spieler: so weit vorausschauen, wie der Bremsweg lang ist, und dort vom Gas
+        // gehen, wo die Kurvengeschwindigkeit gerade noch erreichbar ist.
+        const dec = Math.max(1, BOT_BRAKE * BOT_GRIP * bGriff);
+        const bremsWeg = (bot.v * bot.v) / (2 * dec);
+        let target = Math.min(BOT_MAX_SPEED, botTargetSpeed(bot.s + 8 * mut, bGriff) * mut);
+        // botTargetSpeed(s) misst die Krümmung über die 56 m NACH s – die enge
+        // Stelle liegt also rund 28 m hinter dem Abtastpunkt. Ohne diesen Versatz
+        // bremsen die Bots eine halbe Kurvenlänge zu früh.
+        for (let d = 15; d <= Math.min(bremsWeg + 15, 240); d += 15) {
+          const vKurve = botTargetSpeed(bot.s + d, bGriff) * mut;
+          // Tempo, das hier erlaubt ist, um rechtzeitig auf vKurve zu sein
+          target = Math.min(target, Math.sqrt(vKurve * vKurve + 2 * dec * (d + 28)));
+        }
         if (bot.patzer > 0) target *= 0.62;         // verbremst/verschätzt – kostet Zeit
         // Auffahrschutz: dichter, gleichspuriger Gegner voraus → Tempo angleichen (nicht reinfahren).
         // Der Spieler zählt mit, mit größerem Abstand – sonst wird er angeschoben.
